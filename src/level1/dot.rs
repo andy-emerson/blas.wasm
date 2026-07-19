@@ -1,6 +1,6 @@
 //! `dot` — dot product: xᵀy.
 //!
-//! Implementation: reduction stream (2 accumulator registers = 4 lanes,
+//! Implementation: reduction stream (4 accumulator registers = 8 lanes,
 //! folded in a fixed order at the end).
 //!
 //! Rounding contract: lane-parallel accumulation reorders the additions

@@ -1,6 +1,6 @@
 //! `nrm2` — Euclidean length (ℓ² norm): √(Σxᵢ²).
 //!
-//! Implementation: reduction stream (2 accumulator registers = 4 lanes),
+//! Implementation: reduction stream (4 accumulator registers = 8 lanes),
 //! with a two-pass rescue for over/underflow — the wasm reshaping of
 //! LAPACK's scaled-sum-of-squares guard. Fast path: one streaming
 //! sum-of-squares pass; if the sum is non-finite (overflow) or small
