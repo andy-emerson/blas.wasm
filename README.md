@@ -19,7 +19,9 @@ bit-identical test results).
 
 **Status — all four type layers are BUILT and TUNED (f64 campaign
 closed 2026-07-19; packed-gemm race across all four types
-2026-07-20).** Unit stride
+2026-07-20; ZERO runtime dependencies since 2026-07-21 — the four
+libm entry points are vendored in `src/math.rs`, cross-checked
+bit-for-bit against libm-as-dev-dependency in CI).** Unit stride
 throughout — callers pass contiguous column slices (strided access
 defeats streaming and no consumer wants it). One-line history, full
 plain-English record in `../STATUS.md`, evidence per step in

@@ -43,7 +43,7 @@ impl C32 {
 	/// — deterministic across targets).
 	#[inline(always)]
 	pub fn abs(self) -> f32 {
-		libm::hypotf(self.re, self.im)
+		crate::math::hypotf(self.re, self.im)
 	}
 
 	/// Scale by a real (two independent roundings).

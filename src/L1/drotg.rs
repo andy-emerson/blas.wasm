@@ -26,7 +26,7 @@ pub fn drotg(a: f64, b: f64) -> Givens {
 	let roe = if a.abs() > b.abs() { a } else { b };
 	let ta = a / scale;
 	let tb = b / scale;
-	let mut r = scale * libm::sqrt(ta * ta + tb * tb);
+	let mut r = scale * crate::math::sqrt(ta * ta + tb * tb);
 	if roe < 0.0 {
 		r = -r;
 	}

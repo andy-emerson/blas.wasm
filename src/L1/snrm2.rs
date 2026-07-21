@@ -27,7 +27,7 @@ pub fn snrm2(x: &[f32]) -> f32 {
 	}
 	let ss = unsafe { sumsq(x.as_ptr(), x.len()) };
 	if ss.is_finite() && ss > RESCUE_FLOOR {
-		return libm::sqrtf(ss);
+		return crate::math::sqrtf(ss);
 	}
 	// rescue: scale by the largest magnitude, then stream again
 	let m = unsafe { maxabs(x.as_ptr(), x.len()) };
@@ -38,7 +38,7 @@ pub fn snrm2(x: &[f32]) -> f32 {
 	if m.is_infinite() {
 		return m;
 	}
-	m * libm::sqrtf(unsafe { sumsq_scaled(x.as_ptr(), x.len(), m) })
+	m * crate::math::sqrtf(unsafe { sumsq_scaled(x.as_ptr(), x.len(), m) })
 }
 
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]

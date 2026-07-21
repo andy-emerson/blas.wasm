@@ -30,7 +30,7 @@ pub fn crotg(a: C32, b: C32) -> CGivens {
 	let scale = aabs + babs;
 	let ta = aabs / scale;
 	let tb = babs / scale;
-	let norm = scale * libm::sqrtf(ta * ta + tb * tb);
+	let norm = scale * crate::math::sqrtf(ta * ta + tb * tb);
 	// α = a/|a| — the phase of a; r inherits it (reference convention)
 	let alpha = C32::new(a.re / aabs, a.im / aabs);
 	let c = aabs / norm;

@@ -49,7 +49,7 @@ impl C64 {
 	/// deterministic across targets, same code both sides).
 	#[inline(always)]
 	pub fn abs(self) -> f64 {
-		libm::hypot(self.re, self.im)
+		crate::math::hypot(self.re, self.im)
 	}
 
 	/// Scale by a real (two independent roundings).

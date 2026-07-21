@@ -11,9 +11,15 @@ publish = false
 # ../docs/blas-ab-2026-07.md. The LAPACK-layer kernels re-route onto
 # this crate as it fills in.
 
+# ZERO runtime dependencies (architect decision 2026-07-21): the four
+# math entry points formerly from libm are vendored in src/math.rs —
+# sqrt via the hardware instruction (IEEE requires it correctly
+# rounded, so bit-identical by definition), hypot ported verbatim.
 [dependencies]
-# no_std sqrt (f64::sqrt is std-only); correctly-rounded IEEE, so
-# bit-identical across targets. Same choice as ../kernels.
+
+[dev-dependencies]
+# reference for the bit-for-bit cross-check tests of the vendored math
+# (tests/math.rs) — never linked into the shipped crate
 libm = { version = "0.2", default-features = false }
 
 [profile.release]

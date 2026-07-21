@@ -33,7 +33,7 @@ pub fn zrotg(a: C64, b: C64) -> ZGivens {
 	let scale = aabs + babs;
 	let ta = aabs / scale;
 	let tb = babs / scale;
-	let norm = scale * libm::sqrt(ta * ta + tb * tb);
+	let norm = scale * crate::math::sqrt(ta * ta + tb * tb);
 	// α = a/|a| — the phase of a; r inherits it (reference convention)
 	let alpha = C64::new(a.re / aabs, a.im / aabs);
 	let c = aabs / norm;

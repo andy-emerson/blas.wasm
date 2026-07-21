@@ -4,9 +4,22 @@ One test file per BLAS routine, mirroring `../src/` (naming:
 `../src/README.md`); `main.rs` per level folder is the Cargo test
 target, `common.rs` holds the shared generator and the
 higher-precision reference summers. Run with
-`cd blas && cargo test --release` — **144 tests, all green**.
+`cargo test --release` — **156 tests, all green** (CI-enforced by
+the gate workflow on every push).
 Benchmarks live in `../bench/README.md`; this page is the
 correctness half of the contract.
+
+## The vendored-math cross-check (`tests/math.rs`)
+
+The four in-tree math functions (`src/math.rs`: sqrt/sqrtf via the
+hardware instruction, hypot/hypotf ported verbatim from libm) are
+compared against libm — a dev-dependency only — **bit-for-bit** on
+every run: 200k-value LCG sweeps per function over random bit
+patterns (every exponent, subnormals included) plus the edge-case
+grids (±0, ±inf, NaN, MAX, smallest subnormals, huge/tiny scaling
+thresholds). NaN-producing inputs compare NaN-ness, not payload bits
+(IEEE leaves payloads unspecified and hardware sqrt may differ from
+software there); everything else is exact.
 
 ## What each routine is tested to
 

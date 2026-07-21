@@ -15,6 +15,8 @@
 // call a `*gemm_packed` routine — all current consumers already do.
 extern crate alloc;
 
+#[doc(hidden)]
+pub mod math;
 mod c32;
 mod c64;
 mod kernels;

@@ -26,7 +26,7 @@ pub fn srotg(a: f32, b: f32) -> Givens {
 	let roe = if a.abs() > b.abs() { a } else { b };
 	let ta = a / scale;
 	let tb = b / scale;
-	let mut r = scale * libm::sqrtf(ta * ta + tb * tb);
+	let mut r = scale * crate::math::sqrtf(ta * ta + tb * tb);
 	if roe < 0.0 {
 		r = -r;
 	}
