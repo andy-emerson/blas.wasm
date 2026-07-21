@@ -1,0 +1,19 @@
+[package]
+name = "blas-wasm-abi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# the artifact is named for the module it produces: blas.wasm
+# (cargo emits blas_wasm_abi.wasm; the release step renames it)
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+blas-wasm = { path = ".." }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

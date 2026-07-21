@@ -21,7 +21,14 @@ bit-identical test results).
 closed 2026-07-19; packed-gemm race across all four types
 2026-07-20; ZERO runtime dependencies since 2026-07-21 — the four
 libm entry points are vendored in `src/math.rs`, cross-checked
-bit-for-bit against libm-as-dev-dependency in CI).** Unit stride
+bit-for-bit against libm-as-dev-dependency in CI).** The repo's
+namesake artifact exists: `abi/` wraps every routine in a flat
+C ABI and compiles to the standalone **`blas.wasm`** module (~217 KB,
+116 exports, raw wasm — no bindgen) for JavaScript and any non-Rust
+consumer; conventions in `abi/src/lib.rs`'s module doc, smoke test
+`abi/check.mjs`, released per tag by the release workflow. Rust
+consumers should depend on the crate instead (same code, cross-crate
+inlining, no ABI boundary). Unit stride
 throughout — callers pass contiguous column slices (strided access
 defeats streaming and no consumer wants it). One-line history, full
 plain-English record in `../STATUS.md`, evidence per step in

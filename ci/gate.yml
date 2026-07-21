@@ -1,0 +1,62 @@
+# UPDATED gate (2026-07-21): adds the C-ABI artifact build + its node
+# smoke test to the existing checks. STAGED at ci/gate.yml — paste over
+# .github/workflows/gate.yml (GitHub UI: open that file → pencil icon →
+# select-all → paste → commit), then delete this staged copy.
+name: gate
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test suite (incl. vendored-math cross-check vs libm)
+        run: cargo test --release
+
+      - name: Clippy (host + wasm, warnings denied)
+        run: |
+          cargo clippy --release --all-targets -- -D warnings
+          cargo clippy --release --target wasm32-unknown-unknown -- -D warnings
+          (cd bench && cargo clippy --release --target wasm32-unknown-unknown -- -D warnings)
+          (cd abi && cargo clippy --release --target wasm32-unknown-unknown -- -D warnings)
+
+      - name: Build bench wasm
+        run: cd bench && cargo build --release --target wasm32-unknown-unknown --lib
+
+      - name: Cross-target determinism probes (3 levels x 4 types)
+        run: |
+          cd bench
+          for lvl in 1 2 3; do
+            for ty in "" "-f32" "-z" "-c"; do
+              flag=""
+              case "$ty" in
+                "-f32") flag="--f32" ;;
+                "-z")   flag="--c64" ;;
+                "-c")   flag="--c32" ;;
+              esac
+              cargo run --release --bin native "l${lvl}-bits${ty}" > "/tmp/l${lvl}${ty}.txt"
+              node "l${lvl}-roofline.mjs" \
+                target/wasm32-unknown-unknown/release/blas_bench.wasm \
+                "/tmp/l${lvl}${ty}.txt" $flag | tee /tmp/probe-out.txt
+              grep -q "bit-identical" /tmp/probe-out.txt
+            done
+          done
+
+      - name: C-ABI module (the blas.wasm artifact) + smoke test
+        run: |
+          cd abi
+          cargo build --release --target wasm32-unknown-unknown
+          node check.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm

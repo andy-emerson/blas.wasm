@@ -1,0 +1,62 @@
+# On-demand performance measurement on the reference runners — the
+# repo's own tuning-verdict machinery (the two-draw discipline: dispatch
+# this twice, compare). STAGED at ci/bench.yml — paste as
+# .github/workflows/bench.yml, then delete the staged copy.
+name: bench
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "rooflines | packed-race | both"
+        required: false
+        default: "rooflines"
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build bench wasm + native
+        run: |
+          cd bench
+          cargo build --release --target wasm32-unknown-unknown --lib
+          cargo build --release --bin native
+
+      - name: Rooflines (all levels, all types)
+        if: ${{ inputs.suite == 'rooflines' || inputs.suite == 'both' }}
+        run: |
+          cd bench
+          for lvl in 1 2 3; do
+            for ty in "" "-f32" "-z" "-c"; do
+              flag=""
+              case "$ty" in
+                "-f32") flag="--f32" ;;
+                "-z")   flag="--c64" ;;
+                "-c")   flag="--c32" ;;
+              esac
+              cargo run --release --bin native "l${lvl}-bits${ty}" > "/tmp/l${lvl}${ty}.txt"
+              node "l${lvl}-roofline.mjs" \
+                target/wasm32-unknown-unknown/release/blas_bench.wasm \
+                "/tmp/l${lvl}${ty}.txt" $flag
+            done
+          done | tee ../bench-results.log
+
+      - name: Packed-gemm race (incumbent vs packed, all types)
+        if: ${{ inputs.suite == 'packed-race' || inputs.suite == 'both' }}
+        run: |
+          cd bench
+          node packed-gemm-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
+            | tee -a ../bench-results.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.log
