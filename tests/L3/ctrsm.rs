@@ -42,7 +42,7 @@ fn ctrsm_both_sides_residual() {
 						let tol =
 							EPS * (n.max(1) as f64) * 16.0 * bound * xmax + 1e-30;
 						assert!(
-							(ax.re as f64 - want.re).abs() + (ax.im as f64 - want.im).abs() <= tol,
+							(ax.re - want.re).abs() + (ax.im - want.im).abs() <= tol,
 							"ctrsm_left residual upper={upper} unit={unit} n={n} ({i},{j})"
 						);
 					}
@@ -60,7 +60,7 @@ fn ctrsm_both_sides_residual() {
 						let tol =
 							EPS * (n.max(1) as f64) * 16.0 * bound * xmax + 1e-30;
 						assert!(
-							(xa.re as f64 - want.re).abs() + (xa.im as f64 - want.im).abs() <= tol,
+							(xa.re - want.re).abs() + (xa.im - want.im).abs() <= tol,
 							"ctrsm_right residual upper={upper} unit={unit} n={n} ({i},{j})"
 						);
 					}
