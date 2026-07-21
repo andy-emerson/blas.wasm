@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
+use blas_wasm::L3::*;
 
 #[test]
 fn syrk_bit_for_bit() {

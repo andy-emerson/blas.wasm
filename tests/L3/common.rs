@@ -86,7 +86,7 @@ pub const TRI_DIMS: &[(usize, usize)] =
 	&[(0, 0), (1, 1), (3, 5), (5, 3), (4, 4), (8, 8), (9, 13), (16, 7), (20, 33), (33, 20)];
 
 // ---- c64 helpers ----
-use faer_wasm_blas::C64;
+use blas_wasm::C64;
 
 impl Lcg {
 	/// re then im from the same integer stream (so a seed's draw
@@ -151,7 +151,7 @@ pub fn comp_scale_c(it: impl Iterator<Item = C64>) -> f64 {
 }
 
 // ---- c32 helpers ----
-use faer_wasm_blas::C32;
+use blas_wasm::C32;
 
 impl Lcg {
 	/// re then im from the same integer stream, in f32

@@ -1,4 +1,4 @@
-# faer-wasm-blas — the BLAS layer
+# blas.wasm — the wasm-native BLAS
 
 The wasm-native BLAS layer, built as its own finished product per the
 2026-07-18 direction reset: the LAPACK-layer kernels re-route their

@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
+use blas_wasm::L3::*;
 
 #[test]
 fn gemm_bit_for_bit_and_bounded() {

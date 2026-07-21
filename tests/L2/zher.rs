@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L2::*;
-use faer_wasm_blas::C64;
+use blas_wasm::L2::*;
+use blas_wasm::C64;
 
 #[test]
 fn zher_bit_for_bit_and_real_diagonal() {

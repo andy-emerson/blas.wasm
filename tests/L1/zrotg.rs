@@ -1,7 +1,7 @@
 use super::common::*;
-use faer_wasm_blas::L1::zrotg;
-use faer_wasm_blas::L1::zrotg::ZGivens;
-use faer_wasm_blas::C64;
+use blas_wasm::L1::zrotg;
+use blas_wasm::L1::zrotg::ZGivens;
+use blas_wasm::C64;
 
 fn check_identities(a: C64, b: C64, g: ZGivens, ctx: &str) {
 	// c² + |s|² = 1

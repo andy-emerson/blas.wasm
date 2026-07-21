@@ -1,4 +1,4 @@
-use faer_wasm_blas::L1::*;
+use blas_wasm::L1::*;
 
 #[test]
 fn rotg_identities() {

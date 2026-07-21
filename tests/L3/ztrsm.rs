@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
-use faer_wasm_blas::C64;
+use blas_wasm::L3::*;
+use blas_wasm::C64;
 
 #[test]
 fn ztrsm_both_sides_residual() {

@@ -6,11 +6,11 @@ version = 4
 name = "blas-bench"
 version = "0.1.0"
 dependencies = [
- "faer-wasm-blas",
+ "blas-wasm",
 ]
 
 [[package]]
-name = "faer-wasm-blas"
+name = "blas-wasm"
 version = "0.1.0"
 dependencies = [
  "libm",

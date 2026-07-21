@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
-use faer_wasm_blas::C32;
+use blas_wasm::L3::*;
+use blas_wasm::C32;
 
 #[test]
 fn cherk_bit_for_bit_and_real_diagonal() {

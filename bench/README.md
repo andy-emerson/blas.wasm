@@ -1,7 +1,7 @@
 # bench/ — the measured benchmarks
 
 The BLAS layer's measurement harness and its current results.
-Self-contained — depends only on `faer-wasm-blas`, no faer — so it
+Self-contained — depends only on `blas-wasm`, no faer — so it
 builds in seconds and `blas/` is the complete product: code
 (`../src`), correctness (`../tests`), measurement (here). The
 append-only evidence trail with raw tables and run IDs is

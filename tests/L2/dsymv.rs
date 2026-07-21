@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L2::*;
+use blas_wasm::L2::*;
 
 #[test]
 fn symv_bounded_both_triangles() {

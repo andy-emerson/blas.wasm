@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L1::*;
-use faer_wasm_blas::C32;
+use blas_wasm::L1::*;
+use blas_wasm::C32;
 
 #[test]
 fn csrot_bit_for_bit() {

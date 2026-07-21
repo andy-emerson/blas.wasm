@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
+use blas_wasm::L3::*;
 
 #[test]
 fn trmm_both_sides_bounded() {

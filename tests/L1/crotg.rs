@@ -1,7 +1,7 @@
 use super::common::*;
-use faer_wasm_blas::L1::crotg;
-use faer_wasm_blas::L1::crotg::CGivens;
-use faer_wasm_blas::C32;
+use blas_wasm::L1::crotg;
+use blas_wasm::L1::crotg::CGivens;
+use blas_wasm::C32;
 
 fn check_identities(a: C32, b: C32, g: CGivens, ctx: &str) {
 	// c² + |s|² = 1

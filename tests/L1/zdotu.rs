@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L1::*;
+use blas_wasm::L1::*;
 
 #[test]
 fn zdotu_bounded() {
@@ -21,5 +21,5 @@ fn zdotu_bounded() {
 #[test]
 #[should_panic(expected = "length mismatch")]
 fn zdotu_length_mismatch_panics() {
-	zdotu(&[faer_wasm_blas::C64::ONE], &[]);
+	zdotu(&[blas_wasm::C64::ONE], &[]);
 }

@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 name = "native"
 
 [dependencies]
-faer-wasm-blas = { path = ".." }
+blas-wasm = { path = ".." }
 
 [profile.release]
 opt-level = 3

@@ -1,7 +1,7 @@
 //! blas-bench — the BLAS layer's own measurement harness: the roofline
 //! rows, the cross-target determinism probes, and the machine-ceiling
 //! probes, for all four number types (f64/f32/c64/c32). Self-contained:
-//! depends only on faer-wasm-blas (no faer), so it builds in seconds
+//! depends only on blas-wasm (no faer), so it builds in seconds
 //! and the blas/ folder is the complete product — code (../src),
 //! correctness (../tests), measurement (here). Scripts:
 //! `l{1,2,3}-roofline.mjs` in this folder; the results scoreboard is
@@ -43,7 +43,7 @@ struct State {
     rhsc: Vec<C32>,
 }
 
-use faer_wasm_blas::C64;
+use blas_wasm::C64;
 
 struct StateCell(core::cell::UnsafeCell<Option<State>>);
 unsafe impl Sync for StateCell {}
@@ -188,8 +188,8 @@ fn fill_z(len: usize, mut s: u64) -> Vec<C64> {
 }
 
 /// c32 twin of `alloc_mat_c64` (f32 closure).
-fn alloc_mat_c32(n: usize, next: &mut impl FnMut() -> f32) -> Vec<faer_wasm_blas::C32> {
-    use faer_wasm_blas::C32;
+fn alloc_mat_c32(n: usize, next: &mut impl FnMut() -> f32) -> Vec<blas_wasm::C32> {
+    use blas_wasm::C32;
     let mut v = vec![C32::ZERO; n * n];
     for j in 0..n {
         for i in 0..n {
@@ -217,7 +217,7 @@ fn alloc_mat_c64(n: usize, next: &mut impl FnMut() -> f64) -> Vec<C64> {
 
 #[no_mangle]
 pub extern "C" fn run_l1_layer(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -293,8 +293,8 @@ pub extern "C" fn run_l1_layer(op: usize) -> f64 {
 /// the 4·n²–16·n² the matrix stream moves).
 #[no_mangle]
 pub extern "C" fn run_l2_layer(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -334,8 +334,8 @@ pub extern "C" fn run_l2_layer(op: usize) -> f64 {
 /// 3 symv, 4 trmv, 5 trsv, 6 syr, 7 syr2.
 #[no_mangle]
 pub extern "C" fn run_l2_probe(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     const N: usize = 257;
     let mut s = 7u64;
     let mut next = || {
@@ -385,8 +385,8 @@ pub extern "C" fn run_l2_probe(op: usize) -> f64 {
 /// the solves bounded.
 #[no_mangle]
 pub extern "C" fn run_l3_layer(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -434,7 +434,7 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
 /// raced for speed only.
 #[no_mangle]
 pub extern "C" fn run_l3_tuned_gemm() -> f64 {
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -451,7 +451,7 @@ pub extern "C" fn run_l3_tuned_gemm() -> f64 {
 /// Same, for the 4-column fused candidate.
 #[no_mangle]
 pub extern "C" fn run_l3_col4_gemm() -> f64 {
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -471,8 +471,8 @@ pub extern "C" fn run_l3_col4_gemm() -> f64 {
 /// symm_right at 8.
 #[no_mangle]
 pub extern "C" fn run_l3_probe(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     const N: usize = 65;
     const K: usize = 33;
     let mut st = 11u64;
@@ -519,7 +519,7 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
 /// blas/src/lanes.rs). op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
 #[no_mangle]
 pub extern "C" fn run_l1_probe(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     const LEN: usize = 1001;
     let mut x = [0.0f64; LEN];
     let mut y = [0.0f64; LEN];
@@ -660,7 +660,7 @@ unsafe fn ceiling_flops_imp(iters: usize) -> f64 {
 
 #[no_mangle]
 pub extern "C" fn run_l1_layer_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -729,8 +729,8 @@ pub extern "C" fn run_l1_layer_f32(op: usize) -> f64 {
 
 #[no_mangle]
 pub extern "C" fn run_l2_layer_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -766,8 +766,8 @@ pub extern "C" fn run_l2_layer_f32(op: usize) -> f64 {
 
 #[no_mangle]
 pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -814,7 +814,7 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
 /// the byte threshold is inherited from f64; these race it directly.
 #[no_mangle]
 pub extern "C" fn run_l3_tuned_gemm_f32() -> f64 {
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -830,7 +830,7 @@ pub extern "C" fn run_l3_tuned_gemm_f32() -> f64 {
 
 #[no_mangle]
 pub extern "C" fn run_l3_col4_gemm_f32() -> f64 {
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let acs = s.n;
@@ -848,7 +848,7 @@ pub extern "C" fn run_l3_col4_gemm_f32() -> f64 {
 /// values cast to f32. op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
 #[no_mangle]
 pub extern "C" fn run_l1_probe_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     const LEN: usize = 1001;
     let mut x = [0.0f32; LEN];
     let mut y = [0.0f32; LEN];
@@ -877,8 +877,8 @@ pub extern "C" fn run_l1_probe_f32(op: usize) -> f64 {
 /// f32 L2 determinism probes — same 257×257 recipe cast to f32.
 #[no_mangle]
 pub extern "C" fn run_l2_probe_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     const N: usize = 257;
     let mut s = 7u64;
     let mut next = || {
@@ -920,8 +920,8 @@ pub extern "C" fn run_l2_probe_f32(op: usize) -> f64 {
 /// f32 L3 determinism probes — same 65×65 recipe cast to f32.
 #[no_mangle]
 pub extern "C" fn run_l3_probe_f32(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     const N: usize = 65;
     const K: usize = 33;
     let mut st = 11u64;
@@ -1016,7 +1016,7 @@ unsafe fn ceiling_flops_f32_imp(iters: usize) -> f64 {
 
 #[no_mangle]
 pub extern "C" fn run_l1_layer_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     let s = state_mut();
     let n = s.n;
     let ap = s.az.as_mut_ptr();
@@ -1098,8 +1098,8 @@ pub extern "C" fn run_l1_layer_z(op: usize) -> f64 {
 /// accumulating updates; trmv/trsv re-copy x fresh each call).
 #[no_mangle]
 pub extern "C" fn run_l2_layer_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     let s = state_mut();
     let n = s.n;
     let cs = s.n;
@@ -1138,8 +1138,8 @@ pub extern "C" fn run_l2_layer_z(op: usize) -> f64 {
 /// 3 her2k, 4 trmm_left, 5 trsm_left, 6 trmm_right, 7 trsm_right.
 #[no_mangle]
 pub extern "C" fn run_l3_layer_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let cs = s.n;
@@ -1187,7 +1187,7 @@ pub extern "C" fn run_l3_layer_z(op: usize) -> f64 {
 /// 1 dotc, 2 nrm2, 3 asum, 4 iamax.
 #[no_mangle]
 pub extern "C" fn run_l1_probe_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     const LEN: usize = 1001;
     let mut s = 43u64;
     let mut next = || {
@@ -1229,8 +1229,8 @@ pub extern "C" fn run_l1_probe_z(op: usize) -> f64 {
 /// 8 her, 9 her2.
 #[no_mangle]
 pub extern "C" fn run_l2_probe_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     const N: usize = 257;
     let mut s = 8u64;
     let mut next = || {
@@ -1290,8 +1290,8 @@ pub extern "C" fn run_l2_probe_z(op: usize) -> f64 {
 /// run_l3_layer_z plus hemm_right at 8.
 #[no_mangle]
 pub extern "C" fn run_l3_probe_z(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     const N: usize = 65;
     const K: usize = 33;
     let mut st = 12u64;
@@ -1340,11 +1340,11 @@ pub extern "C" fn run_l3_probe_z(op: usize) -> f64 {
 // at the end.
 // ============================================================
 
-use faer_wasm_blas::C32;
+use blas_wasm::C32;
 
 #[no_mangle]
 pub extern "C" fn run_l1_layer_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     let s = state_mut();
     let n = s.n;
     let ap = s.ac.as_mut_ptr();
@@ -1423,8 +1423,8 @@ pub extern "C" fn run_l1_layer_c(op: usize) -> f64 {
 /// Level-2 c32 roofline rows — same op order as run_l2_layer_z.
 #[no_mangle]
 pub extern "C" fn run_l2_layer_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     let s = state_mut();
     let n = s.n;
     let cs = s.n;
@@ -1462,8 +1462,8 @@ pub extern "C" fn run_l2_layer_c(op: usize) -> f64 {
 /// Level-3 c32 roofline rows — same op order as run_l3_layer_z.
 #[no_mangle]
 pub extern "C" fn run_l3_layer_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let n = s.n;
     let cs = s.n;
@@ -1509,7 +1509,7 @@ pub extern "C" fn run_l3_layer_c(op: usize) -> f64 {
 /// c32 L1 determinism probes — same op order as run_l1_probe_z.
 #[no_mangle]
 pub extern "C" fn run_l1_probe_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
+    use blas_wasm::L1 as l1;
     const LEN: usize = 1001;
     let mut s = 44u64;
     let mut next = || {
@@ -1548,8 +1548,8 @@ pub extern "C" fn run_l1_probe_c(op: usize) -> f64 {
 /// c32 L2 determinism probes — same op order as run_l2_probe_z.
 #[no_mangle]
 pub extern "C" fn run_l2_probe_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L2 as l2;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L2 as l2;
     const N: usize = 257;
     let mut s = 9u64;
     let mut next = || {
@@ -1607,8 +1607,8 @@ pub extern "C" fn run_l2_probe_c(op: usize) -> f64 {
 /// c32 L3 determinism probes — same op order as run_l3_probe_z.
 #[no_mangle]
 pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
-    use faer_wasm_blas::L1 as l1;
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L1 as l1;
+    use blas_wasm::L3 as l3;
     const N: usize = 65;
     const K: usize = 33;
     let mut st = 13u64;
@@ -1659,7 +1659,7 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
 /// incumbent and packed are bit-identical by construction, so the
 /// race script asserts the two folds match exactly before timing.
 fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
-    use faer_wasm_blas::L3 as l3;
+    use blas_wasm::L3 as l3;
     let s = state_mut();
     let cap = s.n * s.n;
     assert!(m * k <= cap && k * n <= cap && m * n <= cap, "gemm_rect: setup too small");

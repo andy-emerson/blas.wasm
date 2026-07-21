@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L3::*;
-use faer_wasm_blas::C32;
+use blas_wasm::L3::*;
+use blas_wasm::C32;
 
 #[test]
 fn chemm_both_sides_bounded_right_bit_replay() {

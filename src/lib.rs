@@ -1,4 +1,4 @@
-//! faer-wasm-blas: the wasm-native BLAS layer, one file per BLAS
+//! blas-wasm: the wasm-native BLAS layer, one file per BLAS
 //! routine per number type in netlib naming (d = f64, s = f32,
 //! z = c64, c = c32 — naming convention and call graph in
 //! src/README.md). All four type layers are built; unit stride —

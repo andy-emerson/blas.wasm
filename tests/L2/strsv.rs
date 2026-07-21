@@ -1,6 +1,6 @@
 use super::common::*;
-use faer_wasm_blas::L1::sasum;
-use faer_wasm_blas::L2::*;
+use blas_wasm::L1::sasum;
+use blas_wasm::L2::*;
 
 #[test]
 fn trsv_bit_for_bit_and_residual() {

@@ -1,5 +1,5 @@
 use super::common::*;
-use faer_wasm_blas::L1::*;
+use blas_wasm::L1::*;
 
 #[test]
 fn cdotu_bounded() {
@@ -21,5 +21,5 @@ fn cdotu_bounded() {
 #[test]
 #[should_panic(expected = "length mismatch")]
 fn cdotu_length_mismatch_panics() {
-	cdotu(&[faer_wasm_blas::C32::ONE], &[]);
+	cdotu(&[blas_wasm::C32::ONE], &[]);
 }
