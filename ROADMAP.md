@@ -1,7 +1,8 @@
 # ROADMAP — blas.wasm, the BLAS for the browser
 
 Plan of record as of 2026-10-24 (Andy, architect; drafted from the
-2026-10-17 and 2026-10-24 design conversations). Supersedes the
+2026-10-17 and 2026-10-24 design conversations; revised the same day
+after the consumer and fast-mode discussion). Supersedes the
 2026-10-17 roadmap. `README.md` is the record of what is BUILT; this
 file is the record of what comes next and of what was considered,
 deferred, or rejected. Dates and decisions go here first; README rows
@@ -13,10 +14,23 @@ move as work lands.
   project that depends on this crate. The two have different shapes
   (OpenBLAS-style library vs decomposition product) and different
   audiences; folding them together diluted both.
-- **WebGPU is deferred**, not rejected. It needs a residency-aware
-  handle API, which is a product-layer concern and not a BLAS one.
-  Its design notes are kept below so the scope is fixed when it
-  restarts.
+- **WebGPU is dropped: no consumer identified.** The audience for
+  this BLAS (below) is f64-heavy and works at sizes from tiny to
+  around a thousand; WGSL has no f64, and the GPU pays for itself only
+  on counts or sizes that audience does not reach. Recorded under
+  "considered and rejected" with the reasoning, so it is not
+  re-litigated without a named consumer.
+- **The consumer is named: scientific computing in the browser.**
+  Pyodide, JupyterLite, webR, notebook tools, statistics and
+  optimization libraries, education, interactive visualization.
+  Inference runtimes (ONNX Runtime Web, TensorFlow.js and their
+  relatives) are explicitly OUT of scope as consumers (below).
+- **Fast mode is not a product.** The relaxed-SIMD fused
+  multiply-add is a known lever worth up to 2× on compute-bound
+  Level 3; it is deliberately unused because the product's promise
+  is reproducibility and, for the named audience, reproducible mode
+  is already the fastest option in the browser. Recorded as a lever,
+  not a mode.
 - **Shared-memory threading is admitted as a feature, never as a
   requirement.** The old constraint 2 rejected SharedArrayBuffer
   because the cross-origin-isolation headers are a burden on the
@@ -26,9 +40,10 @@ move as work lands.
   rejected for the flat API (reasons below).
 - **The competitors are named: OpenBLAS and BLIS**, as deployed in
   the browser (compiled to wasm via Emscripten, generic C kernels).
-  The product claim is "the reproducible, dependency-free BLAS for the
-  web, faster than OpenBLAS and BLIS there." It is NOT "the fastest
-  gemm on the web" (see XNNPACK, Step B).
+  The product claim is: **reproducible by construction, verified by
+  test, faster than everything else that is reproducible, and within
+  2× of the fastest thing that is not.** It is NOT "the fastest gemm
+  on the web" (see XNNPACK, Step B).
 
 ## Where we are
 
@@ -60,8 +75,10 @@ OpenBLAS means closing all of these.
    that stops being looked at.
 3. **Bit-identity is kept, and now includes thread count.** Same
    inputs, same bits, on every engine and target, and for any number
-   of workers. Fused-FMA and relaxed-SIMD remain deferred (a "fast
-   mode" is recorded below as deferred, not rejected).
+   of workers. No relaxed-SIMD instruction (fused multiply-add
+   included) ever appears in a shipped artifact; the gate scans the
+   binary for relaxed opcodes and fails on any (Step 0). The promise
+   is a property of the artifact, never a runtime flag.
 4. **Threads are a host concern; kernels never synchronize.** The
    module contains no atomics, no locks, no thread-local state. The
    host partitions disjoint output regions and joins. Parallelism is
@@ -83,7 +100,7 @@ OpenBLAS means closing all of these.
 
 | claim | status | what makes it true |
 |---|---|---|
-| **Reproducible.** Bit-identical results across engines, targets, and thread counts. Nobody else in the browser offers this. | true single-threaded today; thread-count part untested | Step T's p=1 vs p=N bitwise tests per routine |
+| **Reproducible.** Bit-identical results across engines, targets, and thread counts, promised, tested, and auditable from the binary. Nobody else in the browser offers this. | true single-threaded today; thread-count part untested; binary audit not yet in the gate | Step T's p=1 vs p=N bitwise tests per routine; Step 0's relaxed-opcode scan |
 | **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | true | stays true for `blas.wasm`; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
 | **Faster than OpenBLAS and BLIS in the browser.** | plausible, unmeasured | Step B, same engine, same machine, two draws, both single- and multi-threaded |
 
@@ -92,6 +109,23 @@ relaxed-SIMD fused multiply-add, which doubles the arithmetic peak on
 every modern core; a bit-identical kernel cannot use it. The honest
 expectation is ~2× behind on sgemm while ahead on f64, complex,
 and every non-gemm Level 3 routine. Publish the row anyway.
+
+Where the reproducibility comes from, stated honestly: wasm's float
+semantics are deterministic by specification, so ANY BLAS compiled to
+wasm without relaxed instructions and run single-threaded is probably
+bit-reproducible across machines by accident, OpenBLAS included. What
+they do not have is a promise, a test suite that enforces it,
+thread-count independence, a binary audit, or an engineering practice
+that keeps it true as kernels change. The moat is rigor, not
+impossibility. Say it that way, so nobody measures OpenBLAS and calls
+the claim false.
+
+The ceiling the promise imposes is narrow: bit-identity forbids
+exactly the relaxed instructions and nothing else. Packing, blocking,
+dispatch and thread partitioning are all available. Levels 1 and 2
+and the bandwidth-bound Level 3 rows are memory-limited and lose
+nothing; the tax is confined to compute-bound gemm-like shapes and is
+at most 2× there.
 
 ## Step 0 — housekeeping (before anything is announced)
 
@@ -104,6 +138,10 @@ and every non-gemm Level 3 routine. Publish the row anyway.
   consumers are told to depend on the crate, so it must exist.
 - Gate: assert the export count and the import count (zero) of the
   built module, so Step S cannot silently change either.
+- Gate: scan every shipped artifact for relaxed-SIMD opcodes
+  (`wasm-objdump` or a small reader over the code section) and fail
+  on any occurrence. This turns constraint 3 into something anyone
+  with the binary can verify.
 
 ## Step S — complete the BLAS surface
 
@@ -246,6 +284,12 @@ with `emcc`. Rejecting Emscripten for OUR build (constraint 1) is
 fine; refusing to give them an object they can link is leaving the
 market on the table.
 
+They do not need to wait for the LAPACK project. Reference LAPACK is
+itself a BLAS consumer: nearly all of its floating-point work is
+gemm, trsm, syrk and friends. Pyodide can link the reference LAPACK
+it already builds against this BLAS and take most of the speedup at
+once; the LAPACK subset improves it later.
+
 - **E1 — static library.** Build the crate + CBLAS layer as a
   `staticlib` for `wasm32-unknown-emscripten` (or verify that the
   `wasm32-unknown-unknown` object links under Emscripten's `wasm-ld`;
@@ -277,8 +321,8 @@ syrk. Rows:
   record it. Expected to land near OpenBLAS.
 - **XNNPACK f32 gemm** (as used by TensorFlow.js / ONNX Runtime Web).
   The row we expect to lose, by ~2×, for the fused-multiply-add
-  reason above. Published so the "faster than" claim is scoped
-  honestly.
+  reason above. Published so the "within 2× of the fastest thing that
+  is not reproducible" claim is a measurement, not a slogan.
 - **A pure-JS baseline** (e.g. ml-matrix), because that is what the
   web audience currently uses and understands.
 - **faer** stays as the historical row (`bench/README.md`); no
@@ -351,23 +395,29 @@ all of it is known engineering with a clear finish line.
   ones (transposes, row swaps via strides) are closed. Its own
   conventions must include `info` return; the trap-on-error style
   does not carry over.
-- **WebGPU** — f32/c32 only (WGSL has no f64), Level 3 only, tolerance
-  not bit-identity, therefore opt-in never auto-selected, under a
-  residency-aware handle API where a chain stays on one side until a
-  result is needed. WGSL + JS host, never Rust-via-wgpu (bindgen).
-  The handle API is a product-layer construct and the reason this is
-  deferred rather than scheduled.
-- **Fast mode** — relaxed-SIMD fused multiply-add kernels as an
-  explicit opt-in that forfeits bit-identity, published alongside the
-  reproducible mode. The only route to parity with XNNPACK on sgemm.
-  Deferred because it is a second kernel set per routine and the
-  product's differentiator is the reproducible mode.
 - **Message-passing residency** — workers that permanently own
   column slabs of a distributed matrix (the ScaLAPACK model) are the
-  right substrate for headerless parallelism under a handle API, and
-  the same abstraction the GPU needs ("where do the bytes live").
+  right substrate for headerless parallelism under a handle API.
   Belongs to the product layer with the handle API; not a BLAS
   concern.
+
+## Recorded levers, deliberately unused
+
+- **Relaxed-SIMD fused multiply-add ("fast mode").** Worth up to 2×
+  on compute-bound Level 3 (less where memory binds; expect 1.3–1.7×
+  on dgemm), and the only route to parity with XNNPACK on sgemm.
+  Not shipped, because (a) the product's promise is reproducibility
+  and a mode that forfeits it dilutes the one claim no competitor can
+  match; (b) for the named audience, which is f64, reproducible mode
+  is already the fastest option in the browser, so the lever would
+  make us faster than ourselves, not catch anyone; (c) it is a second
+  kernel set with its own tolerance contract. Precedent noted: Intel
+  MKL offers Conditional Numerical Reproducibility as a slower
+  opt-in; we invert that default and omit the fast side. If a NAMED
+  consumer ever asks, it ships as a separate artifact under a
+  different name with its own tolerance contract, never as a flag on
+  the reproducible build, so the relaxed-opcode gate on `blas.wasm`
+  and `blas.threads.wasm` stays absolute.
 
 ## Considered and rejected (so they are not re-litigated)
 
@@ -410,3 +460,28 @@ all of it is known engineering with a clear finish line.
   fused-multiply-add kernels while bit-identity holds; the claim is
   reproducibility, zero dependencies, and faster than the two named
   competitors in the browser.
+- **WebGPU in this project.** No consumer identified. The audience is
+  f64-heavy and WGSL has no f64; its matrices rarely exceed ~1024 and
+  at that size the single-threaded CPU path is already well under a
+  second; the one honest GPU argument in numerical work is many small
+  matrices (a gemm per particle or pixel), which is a batched API that
+  neither Pyodide nor reference LAPACK calls. A GPU path also forfeits
+  bit-identity (vendor-specific accumulation and contraction, no WGSL
+  strict mode), so it could never be automatic. Revisit only with a
+  named consumer and a batched-shaped need. (A WGSL-shaped GPU BLAS
+  for inference runtimes would be cuBLASLt-shaped — f16/f32, int8 and
+  int4 weights dequantized in-kernel, batched, fused epilogues,
+  asynchronous — a sister project sharing nothing with this one but
+  the measurement discipline, and one whose consumer must be
+  confirmed before it is started.)
+- **Inference runtimes (ONNX Runtime Web, TensorFlow.js, and
+  relatives) as consumers.** Their hot path is f32, f16 and int8 gemm
+  where the relaxed dot-product and fused multiply-add instructions
+  are the whole game; token-by-token decoding is matrix-times-vector,
+  memory-bound, and won by weight quantization rather than a better
+  Level 3; and a BLAS is a small fraction of a runtime that is also a
+  graph compiler, hundreds of operators, convolution, attention and a
+  memory planner. They already carry hand-tuned relaxed-SIMD kernels
+  with shared-memory threads. A reproducible float BLAS has nothing
+  to offer them, and "a better ONNX on top of this" is a project ten
+  times this size.
