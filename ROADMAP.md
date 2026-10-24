@@ -1,241 +1,412 @@
-# ROADMAP — from blas.wasm to a browser linear-algebra product
+# ROADMAP — blas.wasm, the BLAS for the browser
 
-Plan of record as of 2026-10-17 (Andy, architect; drafted from the
-2026-10-17 design conversation). `README.md` is the record of what
-is BUILT; this file is the record of what comes next and, just as
-important, of what was considered and rejected. Dates and decisions
-go here first; README rows move as work lands.
+Plan of record as of 2026-10-24 (Andy, architect; drafted from the
+2026-10-17 and 2026-10-24 design conversations). Supersedes the
+2026-10-17 roadmap. `README.md` is the record of what is BUILT; this
+file is the record of what comes next and of what was considered,
+deferred, or rejected. Dates and decisions go here first; README rows
+move as work lands.
+
+## What changed since 2026-10-17, and why
+
+- **Scope narrows to BLAS.** The LAPACK subset becomes a separate
+  project that depends on this crate. The two have different shapes
+  (OpenBLAS-style library vs decomposition product) and different
+  audiences; folding them together diluted both.
+- **WebGPU is deferred**, not rejected. It needs a residency-aware
+  handle API, which is a product-layer concern and not a BLAS one.
+  Its design notes are kept below so the scope is fixed when it
+  restarts.
+- **Shared-memory threading is admitted as a feature, never as a
+  requirement.** The old constraint 2 rejected SharedArrayBuffer
+  because the cross-origin-isolation headers are a burden on the
+  user's deployment. That burden is real; the resolution is feature
+  detection with a single-threaded fallback, so no user is asked for
+  headers who did not want threads. Message-passing workers are
+  rejected for the flat API (reasons below).
+- **The competitors are named: OpenBLAS and BLIS**, as deployed in
+  the browser (compiled to wasm via Emscripten, generic C kernels).
+  The product claim is "the reproducible, dependency-free BLAS for the
+  web, faster than OpenBLAS and BLIS there." It is NOT "the fastest
+  gemm on the web" (see XNNPACK, Step B).
 
 ## Where we are
 
-`blas.wasm` is finished as a module: four type layers (f64, f32,
-c64, c32), 116 routines, SIMD on every path, zero runtime
-dependencies, zero imports, ~217 KB, bit-identical across native and
-every wasm engine. The shape is wasm32-unknown-unknown, raw wasm, no
-bindgen, no glue: a host instantiates it with an empty import object
-and talks to it through exported linear memory. Rust consumers link
-the crate; everyone else loads the module.
+`blas.wasm` is finished as a single-threaded module: four type
+layers (f64, f32, c64, c32), 116 routines, SIMD on every path, zero
+runtime dependencies, zero imports, ~217 KB, bit-identical across
+native and every wasm engine. Raw wasm, no bindgen, no glue. The
+crate is `no_std` + `alloc`, has no global state, and allocates only
+inside packed gemm (two panel buffers).
 
-That shape is the asset. Every step below is judged first on whether
-the module stays exactly what it is today.
+Gaps relative to a complete BLAS, recorded in README: transpose and
+conjugate-transpose forms of gemm/trmv/trsv/trmm/trsm are not built;
+syrk/syr2k/herk/her2k have the N form only; vectors are unit stride
+(no `incx`/`incy`); no row-major entry; no CBLAS or Fortran-style
+symbols; argument errors trap rather than report. Competing with
+OpenBLAS means closing all of these.
 
-## Constraints (standing, architect decisions)
+## Constraints (standing, architect decisions, revised 2026-10-24)
 
-These are not preferences; a step that violates one is out of scope
-until the constraint is explicitly revised here.
+1. **Our build stays pure.** No Emscripten, no wasm-bindgen, no libc
+   layer in the artifacts we build. (Producing an object that an
+   Emscripten CONSUMER can link is a distribution format, not a
+   change to our build — Step E.)
+2. **Shared memory is a feature, never a requirement.** The host
+   detects `crossOriginIsolated`; with it, the threaded artifact runs
+   on one shared memory; without it, today's single-threaded artifact
+   runs unchanged. The single-threaded path stays first-class: it is
+   measured, tested, and shipped on every release, never a fallback
+   that stops being looked at.
+3. **Bit-identity is kept, and now includes thread count.** Same
+   inputs, same bits, on every engine and target, and for any number
+   of workers. Fused-FMA and relaxed-SIMD remain deferred (a "fast
+   mode" is recorded below as deferred, not rejected).
+4. **Threads are a host concern; kernels never synchronize.** The
+   module contains no atomics, no locks, no thread-local state. The
+   host partitions disjoint output regions and joins. Parallelism is
+   a property of the JS package and of the Emscripten shim, never of
+   the Rust code.
+5. **Numbers before routing, measured where they apply.** Kernel
+   dispatch thresholds (tile/packed) are properties of the code and
+   are raced on the reference runners with two draws, as before.
+   Thread fan-out thresholds are properties of the user's machine and
+   are calibrated at runtime (Step T); CI races verify scaling, they
+   do not set the constants.
+6. **A complete BLAS, netlib semantics.** Every op/side/uplo/diag
+   flag, vector strides, quick-return rules (`alpha == 0`, `beta == 0`
+   means C is not read, zero dimensions), and the reference argument
+   checks. Where reference BLAS and this crate differ today, the
+   reference wins unless the deviation is recorded here with a reason.
 
-1. **The module stays pure.** No imports, no JavaScript glue
-   generated by a toolchain, no libc layer. Emscripten is rejected.
-   wasm-bindgen and anything built on it (wasm-bindgen-rayon
-   included) are rejected.
-2. **No shared-memory threads.** SharedArrayBuffer requires the
-   cross-origin-isolation headers (COOP/COEP), which many deployments
-   cannot send. A product that only works on isolated pages is not a
-   web product. The wasm atomics/shared-memory build is rejected for
-   the same reason, independent of toolchain.
-3. **Bit-identity is kept.** Same inputs, same bits, on every engine
-   and target, and regardless of how many workers did the work.
-   Fused-FMA and relaxed-SIMD remain deferred for this reason (README,
-   f64 close-out).
-4. **Threads are a host concern.** Wasm cannot start a thread in any
-   shape. Whoever loads the module owns parallelism. In a browser
-   that host is JavaScript; the module never knows.
-5. **Numbers before routing.** Every dispatch threshold (worker
-   fan-out, GPU hand-off) is raced on real hardware with two runner
-   draws before it ships, exactly as the gemm tile/packed thresholds
-   were.
+## The three claims, and what each requires
 
-## The product: linalg.js
+| claim | status | what makes it true |
+|---|---|---|
+| **Reproducible.** Bit-identical results across engines, targets, and thread counts. Nobody else in the browser offers this. | true single-threaded today; thread-count part untested | Step T's p=1 vs p=N bitwise tests per routine |
+| **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | true | stays true for `blas.wasm`; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
+| **Faster than OpenBLAS and BLIS in the browser.** | plausible, unmeasured | Step B, same engine, same machine, two draws, both single- and multi-threaded |
 
-A JavaScript package for web and Node developers that installs like
-any other and never requires the user to know what wasm is. It is a
-thin host over Rust modules; all arithmetic stays in wasm.
+Not claimed: faster than XNNPACK on f32 gemm. XNNPACK uses the
+relaxed-SIMD fused multiply-add, which doubles the arithmetic peak on
+every modern core; a bit-identical kernel cannot use it. The honest
+expectation is ~2× behind on sgemm while ahead on f64, complex,
+and every non-gemm Level 3 routine. Publish the row anyway.
 
-Working title `linalg.js` (repository/product name). npm status
-checked 2026-10-17: `linalg.js` (abandoned, 0.0.12, 2018) and
-`linalg` (abandoned, 2014) are TAKEN; `@linalg/core`, `linalgjs`,
-`linalg-js`, `lapack.wasm`, `blas.wasm`, `blas-wasm` are free. Decide
-the npm name before first publish; a scoped name is the safe
-default. Name rejected: anything that points at another ecosystem
-(e.g. "numpy.linalg for the browser"), which addresses an audience
-that already has OpenBLAS via Pyodide and tells everyone else the
-project is not for them. The NumPy list is a SCOPING tool (below),
-never a name.
+## Step 0 — housekeeping (before anything is announced)
 
-Responsibilities of the JS layer, in the order they are built:
+- README: remove the dangling parent-repo paths (`../STATUS.md`,
+  `../docs/…`, `../bench/`, `cd blas`), the stale "CI gate line still
+  needs adding" note (the gate runs `cargo test` already), and the
+  references to the LAPACK layer "in the parent repo". A stranger
+  must be able to read it end to end.
+- Publish `blas-wasm` on crates.io (drop `publish = false`); Rust
+  consumers are told to depend on the crate, so it must exist.
+- Gate: assert the export count and the import count (zero) of the
+  built module, so Step S cannot silently change either.
 
-1. **Load and marshal.** Instantiate the module(s); hide
-   `wasm_alloc`/`wasm_free` behind typed-array arguments; copy in,
-   compute, copy out, with an opt-in resident-buffer handle for
-   callers who chain operations.
-2. **Flat API first.** Functions on typed arrays with the names web
-   developers expect — `solve`, `inv`, `det`, `cholesky`, `qr`,
-   `eigh`, `eig`, `svd`, `lstsq`, plus the BLAS surface under its
-   netlib names — taking dtype and dimensions explicitly. Column
-   major, unit stride, as the module. A Matrix class, if ever, comes
-   after and on top.
-3. **Workers (step W below).**
-4. **GPU dispatch (step G below), last.**
+## Step S — complete the BLAS surface
 
-## Step W — parallelism by message-passing workers
+The largest step and the precondition for every claim. Done through
+the packing layer wherever possible so the microkernels do not change.
 
-The route that honors constraints 1–4. Web Workers with their OWN
-memories, communicating by `postMessage` with transferable buffers.
-Works on every page, no headers, no atomics, no change to the
-module: each worker instantiates today's `blas.wasm` bytes.
+**S1 — Level 3 op flags via packing.** gemm gains `transa`/`transb`
+in {N, T, C}; syrk/syr2k/herk/her2k gain `trans`; trmm/trsm gain
+`transa` (and C for complex). The transposed operand is packed into
+the SAME panel format from a transposed read; the kernel is unchanged
+and never knows. Below the packed threshold (tile/col4 zones) the
+transposed read is a strided column gather into a small scratch, then
+the existing shape. Bit-identity test: `gemm(T, N)` equals
+`gemm(N, N)` on an explicitly transposed copy, BITWISE, because the
+panel contents are identical. Same for every flag combination.
 
-**W1 — standalone Level 3.** For a gemm (and symm/syrk/trmm/trsm)
-above a measured size, the host ships A to every worker (the one
-true copy cost) and a column slab of B to each; each worker computes
-its slab of C with the unchanged kernel; slabs return by transfer.
-Results are bit-identical by construction (each output column is
-computed by the same kernel in the same order as the single-threaded
-call; the size-dispatch invisibility proof in `tests/README.md`
-covers a slab routing to a different gemm shape than the whole).
-Reference cost at n = 1024 f64, 8 workers: ~64 MB of copying
-(~10–20 ms) against ~270 ms of compute. Threshold raced, two draws.
+**S2 — Level 2 op flags.** gemv already has N/T/C as separate entry
+points; trmv/trsv gain `trans` (the transposed triangular forms are
+the `gemv_t`-shaped reduction stream per column — RS, not CA; new
+code, same contract).
 
-**W2 — factorizations by resident column slabs.** A blocked LU/
-Cholesky/QR is a chain of 16+ dependent trailing updates on one
-matrix; shipping the trailing block out and back at every step costs
-more than the single-threaded compute (measured expectation at
-n = 1024 f64: ~100 MB+ shipped for ~90 ms of arithmetic). The fix is
-the ScaLAPACK structure, not shared memory: each worker owns a
-column slab for the whole factorization; per step only the freshly
-factored panel (n × 64, ~0.5 MB) is broadcast; each worker updates
-its own slab locally; LU pivot indices travel with the panel and
-every worker applies the row swaps to its slab. Total traffic falls
-back to the W1 level, spread over one small synchronization per
-panel. Scope: LU, Cholesky, QR — the three factorizations that carry
-the LAPACK subset. More design than W1; not a separate project.
+**S3 — vector strides.** `incx`/`incy` on every Level 1 and Level 2
+vector argument. Unit stride keeps the SIMD streams. Non-unit stride
+takes a path that reuses `lanes.rs`'s lane emulation so the fold
+order is identical and results stay bit-identical to the unit-stride
+call on a gathered copy (tested bitwise). Negative strides per
+reference semantics. This also unblocks LU row swaps downstream.
 
-**What stays single-threaded under any design** (ours, faer's,
-OpenBLAS's): the iterative parts of the eigenvalue and SVD routines,
-and the half-Level-2 reductions (tridiagonal, bidiagonal, Hessenberg)
-that feed them. They are sequential or memory-bound. Do not spend
-worker effort there.
+**S4 — workspace, no allocation.** Packed gemm's two panel buffers
+become a caller-provided workspace (`work`, `lwork`), LAPACK style,
+with a query form that returns the size. After S4 the crate never
+allocates: `alloc` is dropped. Required by Step T (no allocator
+inside a shared memory) and good for the Emscripten shim (Step E).
 
-**Levels 1 and 2** are memory-bound and gain nothing from workers.
-Never fan them out.
+**S5 — reference semantics.** Quick returns, `beta == 0` not reading
+C, zero dimensions, NaN propagation as reference BLAS; the complex
+symmetric (non-Hermitian) symm/syrk/syr2k, which exist in reference
+BLAS and are the one family missing outright; `zrot`/`crot`
+(complex-s rotation).
 
-## Step L — the LAPACK layer (`lapack.wasm`)
+**S6 — argument errors are reportable.** The crate keeps trapping on
+memory-bounds violations (a trap is the right answer to an invalid
+pointer). Argument errors (negative n, bad flag, lda < m) are
+reported, not trapped: the C ABI gets an exported error slot and
+returns without computing, mirroring reference BLAS's
+xerbla-then-return; the CBLAS layer (Step C) reads it. Decision
+recorded: a zero-import module cannot call a host error handler, so
+the slot replaces the callback.
 
-Rust, compiled to wasm, same shape and conventions as this crate:
-one file per routine per type, netlib names, flat C ABI, zero
-imports, bit-identity tested the same two ways. The decompositions
-are NOT written in JavaScript: most of their work is gemm/trsm calls
-that must not cross a JS boundary, and the SIMD + bit-identity
-contract is only enforceable in the module. Whether it ships as a
-second module or is folded into one is an artifact decision for
-when it exists; the crate dependency is `blas-wasm` either way.
+Testing contract carries over unchanged for every new form: bitwise
+replay against the same-order scalar definition, bounds against
+higher-precision references, residuals for solves, native ↔ wasm
+probes extended to the new forms. Export count grows well past 116;
+the gate assertion in Step 0 moves with it, deliberately.
 
-Note: README refers to an existing LAPACK layer in the parent repo
-("the LAPACK-layer kernels re-route their bulk work onto this
-crate"). Before starting L1 below, inventory that layer against the
-table; this step may be a scoping of existing code rather than a
-fresh start.
+## Step C — the ABIs OpenBLAS users already call
 
-**Scope rule: the routines `numpy.linalg` calls, per type.** NumPy
-did the work of finding which dozen drivers people actually use;
-borrow the list, not the name.
+"Integrated like OpenBLAS" means callers link against the same
+symbols and change nothing.
 
-| user function | LAPACK driver(s) | depends on | tranche |
-|---|---|---|---|
-| solve, inv, det, slogdet | gesv, getrf, getrs | BLAS only | L1 |
-| cholesky | potrf, potrs | BLAS only | L1 |
-| qr | geqrf, orgqr/ungqr, ormqr | Householder helpers | L1 |
-| lstsq | gels (QR form) first; gelsd later | L1 + SVD | L1 / L3 |
-| eigh, eigvalsh | syev/heev (QR iteration) first; syevd later | sytrd + steqr | L2 |
-| svd, pinv, matrix_rank | gesvd first; gesdd later | gebrd + bdsqr | L3 |
-| eig, eigvals | geev | gehrd + hseqr + trevc | L4 |
+- **CBLAS**: `cblas_dgemm(order, transA, transB, m, n, k, alpha, A,
+  lda, B, ldb, beta, C, ldc)` and the full `cblas.h` surface, 32-bit
+  `int`. `CblasRowMajor` handled by the standard operand swap into
+  the column-major kernels; no row-major kernels.
+- **Fortran-style symbols**: `dgemm_` and friends, every argument by
+  pointer, flags as characters, trailing underscore. This is what
+  NumPy, SciPy, R, and Eigen's BLAS backend actually bind to.
+- **Error path**: CBLAS-level argument validation writes the error
+  slot (S6) and returns; a host that wants `xerbla` semantics reads
+  the slot after the call.
+- The current flat ABI (`abi/`) stays as the inner layer; CBLAS and
+  the Fortran symbols are thin wrappers over it, generated
+  mechanically from the signatures, same uniform shape.
 
-Sequencing: **L1** factorizations (almost pure BLAS; fall out
-fast) → **L2** symmetric eigen → **L3** SVD → **L4** general eigen
-(largest single piece, last). Divide-and-conquer drivers (gesdd,
-gelsd, syevd), which NumPy actually calls, roughly double the SVD and
-symmetric-eigen work for the same results within tolerance; ship the
-QR-iteration forms first and add divide-and-conquer as a raced,
-measured win. Size expectation for the whole table across four
-types in this crate's style: 40–80k lines (this crate is ~10k).
+## Step T — threading by shared memory
 
-Testing contract carries over unchanged: bit-for-bit vs a same-order
-scalar replay wherever order is deterministic; residual and
-orthogonality checks for the solves and factorizations; n-scaled
-bounds vs higher-precision references for the iterations; native ↔
-wasm bit-identity throughout.
+**T1 — the threaded artifact.** A second build of the identical
+kernels: `blas.threads.wasm`, target features `+atomics,+bulk-memory,
++mutable-globals`, memory IMPORTED and shared, data segments
+initialized once (the linker's shared-memory mode). The kernels use
+no atomics; the features exist only so the module can be instantiated
+N times over one `WebAssembly.Memory({shared: true})`. Each instance
+gets its own stack region (exported stack-pointer setter or linker
+flag, decided at implementation); after S4 there is no allocator and
+no global state, so nothing else is per-instance. Two artifacts ship:
+`blas.wasm` (zero imports, as today) and `blas.threads.wasm` (one
+import: the memory). Both built and smoke-tested by the gate.
 
-## Step G — WebGPU (after W and L1; separate shape)
+**T2 — the partitioner (JS package, Step J).** A worker pool, each
+worker holding one instance over the shared memory. Fork-join on
+disjoint output regions:
 
-Makes sense for a narrower slice than the CPU layer and under
-different rules; recorded here so its scope is fixed before anyone
-starts it.
+- gemm, symm_left/hemm_left, trmm_left, trsm_left: column slabs of
+  the output. Each column is computed by the same kernel in the same
+  order as the whole call, so the result is bit-identical for any
+  slab width (the size-dispatch invisibility already proven in
+  `tests/README.md` is the same property).
+- trmm_right, trsm_right, symm_right/hemm_right: columns are coupled;
+  partition by ROW slabs (pointer offset + the same column stride —
+  the kernels already take `cs`, so a row slab is just a view).
+- syrk/herk/syr2k/her2k: column blocks of the stored triangle, widths
+  chosen so the triangular work per block is equal, not the column
+  count.
+- Levels 1 and 2: never. Memory-bound; workers share one bus.
 
-- **f32 and c32 only.** WGSL has no f64. The f64 and c64 layers
-  have no GPU counterpart; they route to wasm always.
-- **Level 3 only.** L1/L2 are memory-bound; the transfer costs more
-  than the work. L3 crosses to the GPU above a measured size.
-- **Tolerance, not bit-identity.** GPU accumulation order and
-  contraction are vendor-specific. The GPU path is therefore OPT-IN
-  per call or per handle, never auto-selected, unless and until the
-  bit-identity constraint is revised here for that path.
-- **Residency-aware handles, not per-call routing.** The expensive
-  thing is crossing the CPU↔GPU boundary. A handle knows where its
-  bytes live; a chain of operations stays on one side until a result
-  is needed on the other. Routing rules fall out: f64/c64 → wasm;
-  L1/L2 → wasm unless operands are already resident on the GPU;
-  L3 → GPU above threshold; WebGPU unavailable → everything wasm.
-- **Shape:** WGSL shaders plus the linalg.js host. Not Rust-via-wgpu
-  (would require wasm-bindgen; constraint 1). Async API is inherent.
+**T3 — call shape and thread count.** From the main thread a threaded
+call is asynchronous (the main thread may not block in
+`Atomics.wait`); from inside a worker the package offers the
+synchronous fork-join as well. Default thread count from
+`navigator.hardwareConcurrency`, capped, overridable by the caller
+(the `OPENBLAS_NUM_THREADS` equivalent). Without
+`crossOriginIsolated`, every entry point runs single-threaded on
+`blas.wasm` with the same signatures; the caller's code does not
+change.
 
-## Step B — benchmarks still owed
+**T4 — thresholds by runtime calibration.** A short probe at package
+init (one gemm at two sizes, p=1 vs p=N), cached per origin, sets the
+fan-out threshold per routine class. CI runs the scaling race on the
+reference runners with two draws to VERIFY the shape of the curve and
+catch regressions, never to bake in a constant: GitHub runners are
+not the user's phone or workstation.
 
-- **OpenBLAS (WASM128_GENERIC target) vs this crate**, same engine,
-  same machine, two draws, sgemm/dgemm/zgemm/cgemm. The only
-  comparison on the board is faer (we win 1.25–1.8× dgemm,
-  1.49–1.71× zgemm, 3.1–3.7× cgemm; `bench/README.md`). No transitive
-  inference from faer's native comparisons is valid: OpenBLAS native
-  and OpenBLAS-in-wasm are different performers (hand-written
-  per-CPU assembly vs generic C with simd128 on a handful of
-  routines). Prior until measured: within 2× either way on real
-  gemm; ahead on complex and on everything OpenBLAS left generic.
-- **faer's decompositions vs Step L**, the same way gemm was raced.
-- **W1 threshold and scaling** per routine and type; W2 scaling for
-  LU/Cholesky/QR.
+**T5 — the reproducibility test.** For every Level 3 routine, every
+type, odd sizes that exercise tails and the block edges: p=1 vs p=2
+vs p=N, compared BITWISE, native and wasm. This test is what turns
+constraint 3's thread-count clause from an argument into a fact.
+Lands with T2, not after.
 
-## Considered and rejected (so they are not re-litigated)
+Honest expectations, to be replaced by measurements: Level 3 above a
+few hundred rows, roughly 3–5× on eight cores for gemm, less for the
+bandwidth-bound rows (syrk/syr2k sit at ~40% of peak in f64 because
+they are memory-limited and will scale worst). Levels 1–2 unchanged.
+Users without the headers: unchanged.
 
-- **Emscripten / pthreads emulation.** A libc port plus JS shims;
-  its pthreads is Workers + SharedArrayBuffer + atomics under a C
-  API. Violates constraints 1 and 2. Nothing it provides is needed.
-- **Shared-memory wasm build (atomics + imported shared memory).**
-  Avoids Emscripten but not SharedArrayBuffer and the headers.
-  Violates constraint 2. Would also require nightly Rust and a
-  std rebuild, and the allocator is not thread-safe.
-- **Rayon on wasm.** Only exists via wasm-bindgen-rayon, which is
-  Workers + SharedArrayBuffer + bindgen glue. Violates 1 and 2.
-- **WASI or memory64.** Nothing for a BLAS to gain: no syscalls
-  needed; 4 GB is beyond any web page's working set and memory64
-  costs bounds checks and engine coverage.
-- **Integer BLAS.** No integer gain on multiply-add throughput;
-  overflow instead of rounding; the algorithms leave the integers
-  at the first division. The one real integer win (int8 lanes for
-  quantized inference gemm) is a different library, not integer
-  versions of these 116 routines.
-- **Planar complex storage.** Maps to lanes more directly but
-  forces a copy at every boundary; interleaved (re, im) is what
-  every consumer already holds. The sign-folded lane product pays
-  the shuffle instead.
-- **A JavaScript LAPACK.** Would cross the JS boundary on every
-  gemm/trsm call and could not hold the bit-identity contract.
+## Step E — the Emscripten-linkable distribution
+
+The largest potential consumers of a browser BLAS (Pyodide,
+JupyterLite, webR, and anything built on NumPy/SciPy/R in wasm) link
+with `emcc`. Rejecting Emscripten for OUR build (constraint 1) is
+fine; refusing to give them an object they can link is leaving the
+market on the table.
+
+- **E1 — static library.** Build the crate + CBLAS layer as a
+  `staticlib` for `wasm32-unknown-emscripten` (or verify that the
+  `wasm32-unknown-unknown` object links under Emscripten's `wasm-ld`;
+  the C ABI for scalar and pointer arguments is the same — verify
+  before relying on it). Ship with a `cblas.h`-compatible header.
+- **E2 — the threading shim.** OpenBLAS parallelizes INSIDE a
+  `dgemm` call; NumPy expects that. A small C shim, compiled by the
+  consumer's Emscripten with its pthreads, partitions exactly as T2
+  does and calls the kernels on slabs. The shim lives in the
+  consumer's toolchain, our module stays pure, and constraint 4
+  holds: the partitioning is still the host's.
+- **E3 — the integration proof.** Link into Pyodide's NumPy in place
+  of its OpenBLAS; run NumPy's `linalg` test suite; record the
+  result. This is the adoption milestone, and it is a hypothesis
+  until it has been done once.
+
+## Step B — benchmarks owed
+
+Same engine, same machine, two runner draws, single-threaded AND
+threaded (p = hardware threads), all four gemm types plus trsm and
+syrk. Rows:
+
+- **OpenBLAS compiled to wasm via Emscripten.** No official wasm
+  target exists upstream; record the exact configuration used
+  (generic target, flags, whether its pthreads build works under
+  Emscripten) so the row is reproducible. This is the OpenBLAS users
+  actually get in a browser: generic C with little SIMD.
+- **BLIS compiled the same way.** Same note: generic configuration,
+  record it. Expected to land near OpenBLAS.
+- **XNNPACK f32 gemm** (as used by TensorFlow.js / ONNX Runtime Web).
+  The row we expect to lose, by ~2×, for the fused-multiply-add
+  reason above. Published so the "faster than" claim is scoped
+  honestly.
+- **A pure-JS baseline** (e.g. ml-matrix), because that is what the
+  web audience currently uses and understands.
+- **faer** stays as the historical row (`bench/README.md`); no
+  transitive inference from any native comparison is valid.
+
+Prior until measured: ahead of OpenBLAS and BLIS in wasm on complex
+and on every non-gemm Level 3 routine; ahead on dgemm; near or ahead
+on sgemm against their generic kernels; behind XNNPACK on sgemm.
+Why we win where we win: hand-written simd128 kernels on every path,
+not the absence of Emscripten — Emscripten does not slow a hot loop,
+and the claim must not be phrased as if it did.
+
+## Step J — the JS package (thin)
+
+- Scoped npm name (decided before first publish; `linalg.js` and
+  `linalg` are taken; a scoped name is the safe default).
+- Loads `blas.wasm` or `blas.threads.wasm` by feature detection
+  (T3); exposes the netlib/CBLAS-named functions on typed arrays with
+  explicit dtype, dimensions, strides, and flags; validates arguments
+  in JS before calling (a trap kills the instance; after a trap the
+  package re-instantiates). Views over `memory.buffer` are never
+  cached across a call that may grow memory.
+- Opt-in resident buffer handle for callers who chain operations
+  (copy in once, compute many, copy out once). This is the ONLY
+  product-layer construct in scope; the full residency/handle API
+  belongs to the deferred product layer.
+
+## Milestone 1 — "the drop-in BLAS for the web"
+
+Done when all of the following hold:
+
+1. Full netlib surface, all flags and strides, four types, CBLAS and
+   Fortran-style symbols (S, C).
+2. `blas.wasm` and `blas.threads.wasm` both built, both tested, both
+   bit-identical to native and to each other at every thread count
+   (T1, T5).
+3. The Pyodide integration has been run once and its result recorded
+   (E3), pass or fail.
+4. The Step B table is published with both competitors, both thread
+   modes, two draws.
+5. The crate is on crates.io and the package is on npm (0, J).
+
+Sizing, honestly: S is the bulk (the flag matrix across four types,
+with the full testing contract per form) and T1 has fiddly linker
+work; months of focused work, not weeks. Nothing in it is research;
+all of it is known engineering with a clear finish line.
 
 ## Order of work
 
-1. **B (OpenBLAS race)** — cheap, and it sets the market claim
-   before anything else is announced.
-2. **linalg.js 1–2** (load, marshal, flat API over blas.wasm).
-3. **L1** (LU, Cholesky, QR, QR-form lstsq) — the first useful
-   product surface; publish here.
-4. **W1** (Level 3 workers), then **W2** (resident-slab
-   factorizations).
-5. **L2, L3, L4** in that order, racing faer per tranche.
-6. **G**, only after the above and only under its own rules.
+1. **Step 0** (housekeeping, crates.io).
+2. **S4** (workspace, no allocation) — small, and it unblocks T.
+3. **S1–S3, S5, S6** (surface completion), racing each new L3 form
+   against the existing one so no regression hides in the packing.
+4. **C** (CBLAS + Fortran symbols), mechanical once S is done.
+5. **T1–T5** (threaded artifact, partitioner, calibration, the
+   reproducibility test).
+6. **E1–E3** (linkable build, shim, Pyodide proof).
+7. **B** (the full table) — last, because it measures the finished
+   thing; the OpenBLAS/BLIS single-threaded rows may be taken early
+   as a cheap sanity check, but the claim is made from the final run.
+8. **J** publishes alongside 5–7.
+
+## Deferred (not rejected; scope fixed here for when they restart)
+
+- **The LAPACK subset** — separate project, consumer of this crate.
+  Scope rule stays: the routines `numpy.linalg` calls, per type
+  (gesv/getrf/getrs, potrf/potrs, geqrf/orgqr/ormqr, gels, syev/heev,
+  gesvd, geev), sequenced L1 factorizations → symmetric eigen → SVD →
+  general eigen. It drives BLAS gaps back here; after Step S the known
+  ones (transposes, row swaps via strides) are closed. Its own
+  conventions must include `info` return; the trap-on-error style
+  does not carry over.
+- **WebGPU** — f32/c32 only (WGSL has no f64), Level 3 only, tolerance
+  not bit-identity, therefore opt-in never auto-selected, under a
+  residency-aware handle API where a chain stays on one side until a
+  result is needed. WGSL + JS host, never Rust-via-wgpu (bindgen).
+  The handle API is a product-layer construct and the reason this is
+  deferred rather than scheduled.
+- **Fast mode** — relaxed-SIMD fused multiply-add kernels as an
+  explicit opt-in that forfeits bit-identity, published alongside the
+  reproducible mode. The only route to parity with XNNPACK on sgemm.
+  Deferred because it is a second kernel set per routine and the
+  product's differentiator is the reproducible mode.
+- **Message-passing residency** — workers that permanently own
+  column slabs of a distributed matrix (the ScaLAPACK model) are the
+  right substrate for headerless parallelism under a handle API, and
+  the same abstraction the GPU needs ("where do the bytes live").
+  Belongs to the product layer with the handle API; not a BLAS
+  concern.
+
+## Considered and rejected (so they are not re-litigated)
+
+- **Message-passing workers for the flat BLAS API.** Every call
+  copies A into each worker's memory (p copies, done serially on the
+  main thread) and copies C slabs back; memory multiplies by p; the
+  practical ceiling is ~4× at n = 1024 with a break-even of several
+  hundred rows; the host grows a marshaling layer for every routine;
+  and it buys no synchrony (a threaded call from the main thread is
+  async under both designs). Its one advantage, reaching users
+  without the isolation headers, serves the population whose matrices
+  are too small to benefit. Shared memory with a single-threaded
+  fallback dominates it for one-shot calls.
+- **Mandatory isolation headers.** COEP breaks third-party iframes,
+  ads, embedded video, payment and OAuth popups, and cannot be set on
+  many static hosts. Threads are a feature, never a requirement
+  (constraint 2).
+- **Emscripten / pthreads emulation for OUR build.** A libc port
+  plus JS shims; nothing it provides is needed by the kernels.
+  Constraint 1. (Consumers' Emscripten is their business: Step E.)
+- **Rayon on wasm.** Only via wasm-bindgen-rayon: bindgen glue plus a
+  thread-safe allocator in the module. Constraint 1 and 4; after S4
+  there is no allocator to make thread-safe.
+- **Threading inside the Rust code (atomics, work queues).**
+  Constraint 4: the kernels never synchronize. All partitioning is
+  the host's or the shim's.
+- **Row-major kernels.** CBLAS row-major is the standard operand swap
+  into column-major kernels, as OpenBLAS does it.
+- **WASI or memory64.** No syscalls needed; 4 GB exceeds any page's
+  working set; memory64 costs bounds checks and engine coverage.
+- **Integer BLAS.** No multiply-add throughput gain; overflow instead
+  of rounding; the one real integer win (int8 quantized gemm) is a
+  different library.
+- **Planar complex storage.** Forces a copy at every boundary;
+  interleaved (re, im) is what every consumer holds.
+- **A JavaScript LAPACK, or a JavaScript anything in the hot path.**
+  Crosses the boundary per call; cannot hold the bit-identity
+  contract.
+- **"Fastest on the web" as the claim.** Not true on f32 gemm against
+  fused-multiply-add kernels while bit-identity holds; the claim is
+  reproducibility, zero dependencies, and faster than the two named
+  competitors in the browser.
