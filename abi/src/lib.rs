@@ -220,7 +220,7 @@ pub unsafe extern "C" fn dtrsv(n: usize, a: *const f64, cs: usize, upper: u32, u
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn dgemm(alpha: f64, m: usize, k: usize, n: usize, a: *const f64, acs: usize, b: *const f64, bcs: usize, beta: f64, c: *mut f64, ccs: usize) {
-	L3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, beta, unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dgemm_work(m, n, k)]).unwrap();
+	L3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, beta, unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -443,7 +443,7 @@ pub unsafe extern "C" fn strsv(n: usize, a: *const f32, cs: usize, upper: u32, u
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn sgemm(alpha: f32, m: usize, k: usize, n: usize, a: *const f32, acs: usize, b: *const f32, bcs: usize, beta: f32, c: *mut f32, ccs: usize) {
-	L3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, beta, unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![0.0f32; L3::sgemm_work(m, n, k)]).unwrap();
+	L3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, beta, unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![0.0f32; L3::sgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -700,7 +700,7 @@ pub unsafe extern "C" fn ztrsv(n: usize, a: *const C64, cs: usize, upper: u32, u
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn zgemm(are: f64, aim: f64, m: usize, k: usize, n: usize, a: *const C64, acs: usize, b: *const C64, bcs: usize, bre: f64, bim: f64, c: *mut C64, ccs: usize) {
-	L3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, C64::new(are, aim), unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, C64::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zgemm_work(m, n, k)]).unwrap();
+	L3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, C64::new(are, aim), unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, C64::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -957,7 +957,7 @@ pub unsafe extern "C" fn ctrsv(n: usize, a: *const C32, cs: usize, upper: u32, u
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn cgemm(are: f32, aim: f32, m: usize, k: usize, n: usize, a: *const C32, acs: usize, b: *const C32, bcs: usize, bre: f32, bim: f32, c: *mut C32, ccs: usize) {
-	L3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, C32::new(are, aim), unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, C32::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cgemm_work(m, n, k)]).unwrap();
+	L3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, C32::new(are, aim), unsafe { s(a, ml(m, k, acs)) }, acs, unsafe { s(b, ml(k, n, bcs)) }, bcs, C32::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
 }
 
 /// # Safety

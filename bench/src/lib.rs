@@ -405,7 +405,7 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
         }
     };
     match op {
-        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dgemm_work(n, n, n)]).unwrap(),
+        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
         1 => l3::dsymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
         2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyrk_work(n, n)]).unwrap(),
         3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyr2k_work(n, n)]).unwrap(),
@@ -459,7 +459,7 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
     let bv = &b[..len(bcs)];
     let cv = &mut c[..len(ccs)];
     match op {
-        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dgemm_work(N, N, K)]).unwrap(),
+        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, N, N, K)]).unwrap(),
         1 => l3::dsymm(Side::Left, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
         2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dsyrk_work(N, K)]).unwrap(),
         3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dsyr2k_work(N, K)]).unwrap(),
@@ -750,7 +750,7 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
         }
     };
     match op {
-        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::sgemm_work(n, n, n)]).unwrap(),
+        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
         1 => l3::ssymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
         2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyrk_work(n, n)]).unwrap(),
         3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyr2k_work(n, n)]).unwrap(),
@@ -874,7 +874,7 @@ pub extern "C" fn run_l3_probe_f32(op: usize) -> f64 {
     let bv = &b[..len(bcs)];
     let cv = &mut c[..len(ccs)];
     match op {
-        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::sgemm_work(N, N, K)]).unwrap(),
+        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, N, N, K)]).unwrap(),
         1 => l3::ssymm(Side::Left, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
         2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f32; l3::ssyrk_work(N, K)]).unwrap(),
         3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::ssyr2k_work(N, K)]).unwrap(),
@@ -1088,7 +1088,7 @@ pub extern "C" fn run_l3_layer_z(op: usize) -> f64 {
     let be = C64::new(0.5, 0.0);
     let one = C64::ONE;
     match op {
-        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C64::ZERO; l3::zgemm_work(n, n, n)]).unwrap(),
+        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C64::ZERO; l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
         1 => l3::zhemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
         2 => l3::zherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zherk_work(n, n)]).unwrap(),
         3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zher2k_work(n, n)]).unwrap(),
@@ -1246,7 +1246,7 @@ pub extern "C" fn run_l3_probe_z(op: usize) -> f64 {
     let al = C64::new(0.7, -0.2);
     let be = C64::new(0.3, 0.1);
     match op {
-        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C64::ZERO; l3::zgemm_work(N, N, K)]).unwrap(),
+        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C64::ZERO; l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, N, N, K)]).unwrap(),
         1 => l3::zhemm(Side::Left, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
         2 => l3::zherk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C64::ZERO; l3::zherk_work(N, K)]).unwrap(),
         3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, N, K, al, av, cs, bv, cs, 0.3, cv, cs, &mut vec![C64::ZERO; l3::zher2k_work(N, K)]).unwrap(),
@@ -1412,7 +1412,7 @@ pub extern "C" fn run_l3_layer_c(op: usize) -> f64 {
     let be = C32::new(0.5, 0.0);
     let one = C32::ONE;
     match op {
-        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C32::ZERO; l3::cgemm_work(n, n, n)]).unwrap(),
+        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C32::ZERO; l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
         1 => l3::chemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
         2 => l3::cherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cherk_work(n, n)]).unwrap(),
         3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cher2k_work(n, n)]).unwrap(),
@@ -1563,7 +1563,7 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
     let al = C32::new(0.7, -0.2);
     let be = C32::new(0.3, 0.1);
     match op {
-        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C32::ZERO; l3::cgemm_work(N, N, K)]).unwrap(),
+        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C32::ZERO; l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, N, N, K)]).unwrap(),
         1 => l3::chemm(Side::Left, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
         2 => l3::cherk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C32::ZERO; l3::cherk_work(N, K)]).unwrap(),
         3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, N, K, al, av, cs, bv, cs, 0.3, cv, cs, &mut vec![C32::ZERO; l3::cher2k_work(N, K)]).unwrap(),
@@ -1602,7 +1602,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             if packed {
                 l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_packed_work(m, n, k)]);
             } else {
-                l3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_work(m, n, k)]).unwrap();
+                l3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
             }
             c[0] + c[m * n - 1]
         }
@@ -1613,7 +1613,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             if packed {
                 l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_packed_work(m, n, k)]);
             } else {
-                l3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_work(m, n, k)]).unwrap();
+                l3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
             }
             (c[0] + c[m * n - 1]) as f64
         }
@@ -1626,7 +1626,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             if packed {
                 l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_packed_work(m, n, k)]);
             } else {
-                l3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_work(m, n, k)]).unwrap();
+                l3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
             }
             c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im
         }
@@ -1639,7 +1639,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             if packed {
                 l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_packed_work(m, n, k)]);
             } else {
-                l3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_work(m, n, k)]).unwrap();
+                l3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
             }
             (c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im) as f64
         }

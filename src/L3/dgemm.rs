@@ -7,7 +7,8 @@
 //! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
 //! stays as the raced mid-size reference. The pre-packed shapes beat
 //! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; campaign record step 6, STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
+//! large; campaign record step 6, STATUS.md). Transposed operands are copied into the
+//! workspace by `L3::transpose_into` and ride the same shapes.
 
 use super::check_mat;
 use crate::{Error, Trans};
@@ -24,13 +25,13 @@ const TILED_MAX_A_BYTES: usize = 3 << 19; // 1.5 MB
 /// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
 /// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
 /// `Xᴴ` per `transa`/`transb`. `work` is scratch of at least
-/// [`dgemm_work`]`(m, n, k)` elements; it may be empty when the query says
-/// zero.
+/// [`dgemm_work`]`(transa, transb, m, n, k)` elements; it may be empty
+/// when the query says zero.
 ///
-/// The transposed forms are not built yet (`STATUS.md`, todo S1):
-/// `transa` or `transb` other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
-/// argument 1 or 2.
+/// A transposed operand is transposed into the
+/// workspace first and the product then runs the no-transpose shapes,
+/// so every flag combination equals the unflagged call on an explicit
+/// copy, bit for bit; `ConjTrans` is `Trans` for a real matrix.
 ///
 /// Errors: a leading dimension below its row count (arguments 8, 10,
 /// 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
@@ -38,18 +39,12 @@ const TILED_MAX_A_BYTES: usize = 3 << 19; // 1.5 MB
 #[allow(clippy::too_many_arguments)]
 pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: f64, a: &[f64], lda: usize, b: &[f64], ldb: usize, beta: f64, c: &mut [f64], ldc: usize, work: &mut [f64]) -> Result<(), Error> {
 	const R: &str = "dgemm";
-	if transa != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 1));
-	}
-	if transb != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	let (ar, ac) = if transa == Trans::NoTrans { (m, k) } else { (k, m) };
 	let (br, bc) = if transb == Trans::NoTrans { (k, n) } else { (n, k) };
 	crate::error::mat(R, 7, 8, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
 	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
-	crate::error::work(R, 14, work.len(), dgemm_work(m, n, k))?;
+	crate::error::work(R, 14, work.len(), dgemm_work(transa, transb, m, n, k))?;
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
@@ -61,19 +56,37 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 		}
 		return Ok(());
 	}
+	// op(A) and op(B) are materialized in the workspace ahead of the
+	// no-transpose shapes, so every flag combination is bit-identical
+	// to the unflagged call on an explicit copy (tested); conjugation
+	// is an exact sign flip applied in the copy
+	let (work, a, lda) = if transa == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(m * k);
+		super::transpose_into(a, lda, k, m, ta, |x| x);
+		(rest, &*ta, m)
+	};
+	let (work, b, ldb) = if transb == Trans::NoTrans {
+		(work, b, ldb)
+	} else {
+		let (tb, rest) = work.split_at_mut(k * n);
+		super::transpose_into(b, ldb, n, k, tb, |x| x);
+		(rest, &*tb, k)
+	};
 	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }
 
-/// Elements of scratch [`dgemm`] needs for these dimensions: zero below
-/// the size at which the packed-panel shape is routed, the two panel
-/// buffers above it.
-pub fn dgemm_work(m: usize, n: usize, k: usize) -> usize {
-	if packed_route(m, k) {
-		dgemm_packed_work(m, n, k)
-	} else {
-		0
-	}
+/// Elements of scratch [`dgemm`] needs for these flags and dimensions:
+/// `m·k` for a transposed `A` and `k·n` for a transposed `B` (the
+/// copies), plus [`dgemm_packed_work`] when the dispatcher routes to
+/// the packed shape; zero for an unflagged call below that size.
+pub fn dgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
+	let ta = if transa == Trans::NoTrans { 0 } else { m * k };
+	let tb = if transb == Trans::NoTrans { 0 } else { k * n };
+	let packed = if packed_route(m, k) { dgemm_packed_work(m, n, k) } else { 0 };
+	ta + tb + packed
 }
 
 /// Elements of scratch [`dgemm_packed`] needs for these dimensions:

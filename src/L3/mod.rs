@@ -8,9 +8,13 @@
 //! a register tile. Same matrix convention as Level 2 (column-major
 //! slice + column stride, unit row stride).
 //!
-//! Scope today: no-transpose forms only (syrk covers A·Aᵀ). The
-//! transposed and conjugate-transposed forms are planned: STATUS.md,
-//! todo S1.
+//! Transposed and conjugate-transposed operands (gemm's `transa`/
+//! `transb`) are transposed into the caller's workspace by
+//! `transpose_into` and then take the no-transpose shapes unchanged,
+//! so a flagged call is bit-identical to the unflagged call on an
+//! explicit copy by construction; the query `*gemm_work` counts the
+//! copy. The syrk family's, trmm's and trsm's transposed forms are
+//! open: STATUS.md, todo S1.
 
 pub mod dgemm;
 pub mod dsymm;
@@ -36,6 +40,33 @@ pub mod cher2k;
 pub mod cherk;
 pub mod ctrmm;
 pub mod ctrsm;
+
+/// `dst ← f(src)ᵀ`: `src` is `rows×cols` at leading dimension `scs`,
+/// `dst` receives the `cols×rows` transpose at leading dimension
+/// `cols` (so it must hold `rows·cols` elements); `f` is applied to
+/// each element (identity, or conjugation for the `ᴴ` forms). Walked in
+/// 32×32 blocks so both the strided reads and the strided writes stay
+/// within a few cache lines per block.
+pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: usize, dst: &mut [T], f: impl Fn(T) -> T) {
+	const B: usize = 32;
+	assert!(dst.len() >= rows * cols, "transpose_into: destination too short");
+	let mut j0 = 0;
+	while j0 < cols {
+		let j1 = (j0 + B).min(cols);
+		let mut i0 = 0;
+		while i0 < rows {
+			let i1 = (i0 + B).min(rows);
+			for j in j0..j1 {
+				let col = &src[j * scs + i0..j * scs + i1];
+				for (i, &v) in (i0..i1).zip(col) {
+					dst[i * cols + j] = f(v);
+				}
+			}
+			i0 = i1;
+		}
+		j0 = j1;
+	}
+}
 
 pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed};
 #[allow(unused_imports)]

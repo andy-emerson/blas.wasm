@@ -25,39 +25,49 @@ fn gemm_reports_each_bad_argument_by_position() {
 	assert_eq!(ok(&a, 3, &b[..7], 4, &mut c, 3, &mut w), Err(e("dgemm", 9, ErrorKind::Length)));
 	assert_eq!(ok(&a, 3, &b, 4, &mut c, 2, &mut w), Err(e("dgemm", 13, ErrorKind::Argument)));
 	assert_eq!(ok(&a, 3, &b, 4, &mut c[..5], 3, &mut w), Err(e("dgemm", 12, ErrorKind::Length)));
+	// a transposed operand is sized by its stored shape (A is k×m, B is n×k)
+	// and needs its copy in the workspace
+	assert_eq!(dgemm_work(Trans::Trans, Trans::NoTrans, m, n, k), m * k);
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::ConjTrans, m, n, k), k * n);
+	assert_eq!(
+		dgemm(Trans::Trans, Trans::NoTrans, m, n, k, 1.0, &a, 3, &b, 4, 0.0, &mut c, 3, &mut w),
+		Err(e("dgemm", 8, ErrorKind::Argument))
+	);
 	assert_eq!(
 		dgemm(Trans::Trans, Trans::NoTrans, m, n, k, 1.0, &a, 4, &b, 4, 0.0, &mut c, 3, &mut w),
-		Err(e("dgemm", 1, ErrorKind::Unsupported))
+		Err(e("dgemm", 14, ErrorKind::Workspace))
 	);
-	assert_eq!(
-		dgemm(Trans::NoTrans, Trans::ConjTrans, m, n, k, 1.0, &a, 3, &b, 2, 0.0, &mut c, 3, &mut w),
-		Err(e("dgemm", 2, ErrorKind::Unsupported))
-	);
-	// nothing was written by any of the rejected calls; the valid call computes
+	// nothing was written by any of the rejected calls; the valid calls compute
 	assert!(c.iter().all(|&v| v == 0.0));
 	assert_eq!(ok(&a, 3, &b, 4, &mut c, 3, &mut w), Ok(()));
+	assert!(c.iter().all(|&v| v == 4.0));
+	let mut wt = vec![f64::NAN; m * k + k * n];
+	assert_eq!(
+		dgemm(Trans::Trans, Trans::ConjTrans, m, n, k, 1.0, &a, 4, &b, 2, 0.0, &mut c, 3, &mut wt),
+		Ok(())
+	);
 	assert!(c.iter().all(|&v| v == 4.0));
 }
 
 #[test]
 fn gemm_workspace_query_governs_the_packed_shape() {
 	// below the packed threshold no scratch is needed
-	assert_eq!(dgemm_work(64, 64, 64), 0);
-	assert_eq!(sgemm_work(64, 64, 64), 0);
-	assert_eq!(zgemm_work(16, 16, 16), 0);
-	assert_eq!(cgemm_work(16, 16, 16), 0);
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 0);
+	assert_eq!(sgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 0);
+	assert_eq!(zgemm_work(Trans::NoTrans, Trans::NoTrans, 16, 16, 16), 0);
+	assert_eq!(cgemm_work(Trans::NoTrans, Trans::NoTrans, 16, 16, 16), 0);
 	// above it the query is positive and a short slice is rejected on the work argument
 	let n = 520;
-	assert!(dgemm_work(n, n, n) > 0);
+	assert!(dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n) > 0);
 	let a = vec![0.0; n * n];
 	let b = vec![0.0; n * n];
 	let mut c = vec![0.0; n * n];
-	let mut short = vec![0.0; dgemm_work(n, n, n) - 1];
+	let mut short = vec![0.0; dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n) - 1];
 	assert_eq!(
 		dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n, &mut short),
 		Err(e("dgemm", 14, ErrorKind::Workspace))
 	);
-	let mut exact = vec![0.0; dgemm_work(n, n, n)];
+	let mut exact = vec![0.0; dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)];
 	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 1.0, &a, n, &b, n, 0.0, &mut c, n, &mut exact), Ok(()));
 }
 
@@ -113,7 +123,7 @@ fn empty_dimensions_return_ok_and_k_zero_scales_c() {
 	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 0, 2, 3, 1.0, &[], 1, &[1.0; 6], 3, 0.0, &mut [], 1, &mut w), Ok(()));
 	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 2, 0, 3, 1.0, &[1.0; 6], 2, &[], 3, 0.0, &mut c, 2, &mut w), Ok(()));
 	assert_eq!(c, vec![2.0; 4]);
-	assert_eq!(dgemm_work(0, 2, 3), 0);
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 0, 2, 3), 0);
 	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 0, 1.0, &[], 2, &[], 1, 0.5, &mut c, 2, &mut w), Ok(()));
 	assert_eq!(c, vec![1.0; 4]);
 	let mut cz = vec![C64::new(2.0, 2.0); 4];
