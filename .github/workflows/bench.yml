@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "rooflines | packed-race | tri-race | gemm-t-race | both"
+        description: "rooflines | packed-race | tri-race | gemm-t-race | b0 | both"
         required: false
         default: "rooflines"
 
@@ -68,6 +68,44 @@ jobs:
           cd bench
           node gemm-t-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
             | tee -a ../bench-results.log
+
+      # B0 sanity rows (STATUS.md): OpenBLAS and BLIS, single-threaded,
+      # native on this runner, beside our module on the same shapes and
+      # the same machine; two draws make a verdict. XNNPACK is not
+      # packaged for the runner and is not built here.
+      - name: B0 — install OpenBLAS and BLIS
+        if: ${{ inputs.suite == 'b0' }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libopenblas-dev libblis-dev
+          dpkg -l | grep -E "libopenblas|libblis" | awk '{print $2, $3}'
+          nproc; lscpu | grep -E "Model name|MHz" | head -3
+
+      - name: B0 — native rows (OpenBLAS, 1 thread)
+        if: ${{ inputs.suite == 'b0' }}
+        run: |
+          cd bench/b0
+          gcc -O2 -o b0-openblas b0.c -I/usr/include/x86_64-linux-gnu/openblas-pthread -I/usr/include/x86_64-linux-gnu -I/usr/include/openblas -lopenblas
+          OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 ./b0-openblas openblas | tee -a ../../bench-results.log
+
+      - name: B0 — native rows (BLIS, 1 thread)
+        if: ${{ inputs.suite == 'b0' }}
+        run: |
+          cd bench/b0
+          # the Ubuntu BLIS package ships its CBLAS header under blis/; a
+          # build that cannot find it is reported, not fatal, so the
+          # OpenBLAS and blas.wasm rows still land
+          if gcc -O2 -o b0-blis b0.c -I/usr/include/blis -I/usr/include/x86_64-linux-gnu/blis -lblis -lm -lpthread; then
+            BLIS_NUM_THREADS=1 OMP_NUM_THREADS=1 ./b0-blis blis | tee -a ../../bench-results.log
+          else
+            echo "blis,unavailable,0,0,0 (CBLAS header or library not found)" | tee -a ../../bench-results.log
+          fi
+
+      - name: B0 — our rows (blas.wasm on Node)
+        if: ${{ inputs.suite == 'b0' }}
+        run: |
+          cd bench
+          node b0-rows.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm | tee -a ../bench-results.log
 
       - uses: actions/upload-artifact@v4
         with:

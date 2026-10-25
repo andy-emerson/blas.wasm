@@ -1,7 +1,7 @@
 /* B0 sanity rows (STATUS.md): the same Level 3 shapes the roofline
  * scores, timed through a native CBLAS library on the same runner,
  * single-threaded. Built once against OpenBLAS and once against BLIS
- * by bench/b0.yml; prints `library,op,n,ms,gflops` per row, min over
+ * by the bench workflow's `b0` suite; prints `library,op,n,ms,gflops` per row, min over
  * the iterations. The matrices are LCG-filled like the bench's. */
 #include <cblas.h>
 #include <complex.h>
