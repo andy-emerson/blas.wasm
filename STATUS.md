@@ -49,6 +49,38 @@ plausible and unmeasured (todo B).
   before closing (the routing is provisional until then). Gates: the
   M2 merge recommendation.
 
+Four more gate the M2 merge. Each was settled by the Agent during the
+M2 reviews and is reopened here because it is the Human's to close;
+the fuller framing is owed before a ruling.
+
+- **D12 — The reference's zero-multiplier skips.** Reference BLAS
+  skips a column whose multiplier is exactly zero in ger, syr, syr2,
+  trmv, trsv, trmm and trsm (`IF (X(J).NE.ZERO)`), so a NaN or
+  infinity in that column never reaches the output there; this
+  crate's streams have no per-column branch and propagate it
+  (verified against netlib 3.12). Options: (1) record the deviation
+  under constraint 6 and leave the streams branch-free (the current
+  text); (2) mirror the skip in those seven routines, a per-column
+  test outside the SIMD loop, and race it. Gates: the M2 merge; the
+  wording of "reference semantics" in README and DESIGN.
+- **D13 — `nrm2` with both an infinity and a NaN.** The scaled
+  accumulation returns the infinity where the reference returns NaN.
+  Options: (1) record the deviation (current); (2) make the
+  accumulation NaN-aware (a small change to the guard, then the
+  determinism probes re-run). Gates: the M2 merge.
+- **D14 — Where the module's expected export count lives.** The
+  reviews found the release workflow asserting a stale count; the
+  branch now has `abi/surface.json` as the one owner, read by the
+  audit in both workflows. Options: (1) keep the file; (2) revert to
+  the two workflow literals and a review rule. Gates: the M2 merge.
+- **D15 — When the book's chapters are written.** Today the crate
+  documentation is the crate page, the call-graph chapter and one
+  routine chapter (`daxpy`); every other routine page carries its
+  module header. The approved plan writes the chapters in M5 (todo
+  D4). Options: (1) leave D4 in M5; (2) pull it forward, before the
+  M2 merge or as M2's successor. Gates: the plan's order; what README
+  may call the documentation until then.
+
 Only the Human closes these. D3's ruling (a race, not a pick) is
 closed in `DESIGN.md`; what remains open is the closing question
 above. D8 (the workspace shape) was settled by constraint 7 and is
