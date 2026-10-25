@@ -75,4 +75,7 @@ jobs:
           node book/check-includes.mjs
           mdbook-mermaid install book
           mdbook build book
-          mdbook test book -L target/release/deps
+          # A dedicated target dir: clippy's .rmeta beside the test build's
+          # .rlib in target/release/deps gives rustdoc two candidates (E0464).
+          cargo build --release --lib --target-dir target/book
+          mdbook test book -L target/book/release/deps
