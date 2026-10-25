@@ -9,6 +9,7 @@ are NOT extra nodes — they produce bit-identical results. This graph
 covers the f64 and f32 layers, which have identical structure; the
 c64 layer's differences are listed below it.
 
+<!-- ANCHOR: graph -->
 ```mermaid
 graph TD
   subgraph L3
@@ -69,6 +70,7 @@ graph TD
   syr --> axpy
   syr2 --> axpy
 ```
+<!-- ANCHOR_END: graph -->
 
 Notes:
 

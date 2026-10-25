@@ -319,8 +319,10 @@ to `main`; previewed locally with `mdbook serve`.
   programmers.
 - Source regions are marked `// ANCHOR: name` / `// ANCHOR_END: name`
   and pulled into chapters by mdBook's include directive. The code in
-  the book is the code that ships; a removed or renamed anchor fails
-  the build.
+  the book is the code that ships. mdBook renders a missing anchor as
+  an empty include without complaint, so `book/check-includes.mjs`
+  verifies every include's file and anchor pair and the gate fails on
+  a removed or renamed anchor.
 - `mdbook test` compiles and runs the Rust code blocks written
   directly in chapters, so standalone examples cannot rot. The gate
   builds and tests the book; the Pages workflow deploys it.
