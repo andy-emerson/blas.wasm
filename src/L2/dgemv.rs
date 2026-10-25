@@ -1,15 +1,15 @@
 //! `dgemv` — matrix × vector: y ← αAx + βy (and the transpose twin
 //! y ← αAᵀx + βy).
 //!
-//! Implementation: 4-column fan-in column-daxpy (tuned 2026-07-19) —
+//! Implementation: 4-column fan-in column-daxpy —
 //! groups of four A columns stream through one pass over y, so y's
 //! read-modify-write traffic drops 4× versus one `daxpy` per column;
 //! the rounding sequence per element is identical to the plain
 //! column-daxpy loop (bit-for-bit tested). Tail columns fall back to
 //! Level 1 `daxpy`. The transpose form is one `ddot` reduction stream
-//! per column. Evidence: July 2026 campaign
-//! record (not in this tree; STATUS.md). The fused-FMA
-//! variant (measured better in the step-1 race) is DEFERRED at the
+//! per column. Evidence: campaign record
+//! (STATUS.md). The fused-FMA
+//! variant (measured better in the campaign record step-1 race) is DEFERRED at the
 //! f64 campaign close (relaxed-madd rounding is implementation-
 //! dependent — architect decision; DESIGN.md, "Fast mode is a lever").
 

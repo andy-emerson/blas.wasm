@@ -1,14 +1,13 @@
 //! `sgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched family (tuned 2026-07-18, packed
-//! shape added 2026-07-20): 8×4 register tile below ~3 MB of A,
+//! Implementation: size-dispatched family: 8×4 register tile below ~3 MB of A,
 //! BLIS-style packed-panel shape above (replaced the 4-column fused
 //! stream: +3–5% at 1024³ and 512×4096×1024, two runner draws
 //! unanimous; the tile keeps everything below, where packed measured
 //! noise to −2%) — all bit-identical to the plain sgemv-per-column
 //! reference, which is kept as `sgemm_colaxpy`; col4 stays as the
-//! raced reference. f32 measurements: July 2026 campaign record,
-//! steps 10 and 14 (not in this tree; STATUS.md). Transpose forms:
+//! raced reference. f32 measurements: campaign record steps 10 and 14
+//! (STATUS.md). Transpose forms:
 //! planned (STATUS.md, todo S1).
 
 use super::check_mat;
@@ -20,7 +19,7 @@ use crate::L2::sgemv;
 ///
 /// Dispatches by A's byte size at the runner-raced f32 crossover (the
 /// register tile wins while A rides the caches, the 4-column fused
-/// stream wins above; two draws, docs step 10). All three shapes are
+/// stream wins above; two draws, campaign record step 10). All three shapes are
 /// bit-for-bit identical, so the dispatch is invisible to results.
 #[allow(clippy::too_many_arguments)]
 pub fn sgemm(
@@ -36,12 +35,12 @@ pub fn sgemm(
 	c: &mut [f32],
 	ccs: usize,
 ) {
-	// f32 crossover from the step-10 runner draws (which rule over the
+	// f32 crossover from the campaign record step-10 runner draws (which rule over the
 	// container, where col4 led from n=512): tiled wins unanimously
 	// through n=512, n=768 splits within noise — the 8-row tile
 	// survives LONGER in bytes than the f64 4-row tile's 1.5 MB.
 	// Above the threshold, the packed-panel shape replaced col4
-	// (packed-gemm race 2026-07-20, two runner draws: +3–4% at 1024³,
+	// (packed-gemm race, two runner draws: +3–4% at 1024³,
 	// +5% at 512x4096x1024, unanimous; 512³/256³ stay tiled, where
 	// packed measured noise/−2%). col4 stays as the raced reference.
 	const TILED_MAX_A_BYTES: usize = 3 << 20; // 3 MB
@@ -145,7 +144,7 @@ pub fn sgemm_tiled(
 	}
 }
 
-/// Tuning-campaign candidate 2 (2026-07-18): 4-column fused sgemm.
+/// Tuning-campaign candidate 2: 4-column fused sgemm.
 /// The 4×4 tile's k-loop walks A at column stride (TLB/prefetch-hostile
 /// at large n — measured losing above n≈512); this shape instead
 /// streams each A column SEQUENTIALLY, once per group of four C
@@ -207,7 +206,7 @@ pub fn sgemm_col4(
 	}
 }
 
-/// Tuning-campaign candidate 3 (2026-07-20): packed-panel sgemm —
+/// Tuning-campaign candidate 3: packed-panel sgemm —
 /// BLIS/Goto structure around the same 8×4 microkernel math; see
 /// `dgemm_packed` for the full rationale (deep-K motivation, cache
 /// roles of the two panels, bit-compat argument). Rounding sequence

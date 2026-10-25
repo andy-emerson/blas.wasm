@@ -8,7 +8,7 @@
 //! |re| + |im| in both lanes (addition commutes bit-exactly), so
 //! `pmax` accumulates the per-complex magnitudes directly. The fused
 //! single-pass shape was REFUTED for idamax on both runner draws
-//! (docs step 9) — not re-tried here without new evidence.
+//! (campaign record step 9) — not re-tried here without new evidence.
 //!
 //! Semantics contract (exact, tested): 0-based index of the FIRST
 //! occurrence of the maximum |re| + |im|; 0 for an empty slice; NaN

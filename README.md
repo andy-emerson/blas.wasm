@@ -4,9 +4,10 @@ blas.wasm is a BLAS (the Basic Linear Algebra Subprograms: vector,
 matrix–vector and matrix–matrix routines) written in Rust for
 WebAssembly: hand-written SIMD on every path, zero dependencies, zero
 imports, and results that are bit-identical across native and every
-wasm engine. It ships as two products, the Rust crate `blas-wasm` and
-an npm package wrapping the pre-built module; neither is published to
-a registry yet (`STATUS.md`). It is a BLAS and nothing more: the
+wasm engine. Today the tree ships the Rust crate `blas-wasm` and a standalone
+`blas.wasm` module attached to each tagged GitHub release; the npm
+package that will wrap the module is open work, and nothing is
+published to a registry (`STATUS.md`). It is a BLAS and nothing more: the
 decompositions (solve, inverse, eigen, SVD) are a separate project
 that depends on this crate. Why it is built this way is `DESIGN.md`;
 what is open is `STATUS.md`.
@@ -47,7 +48,7 @@ review (`AGENTS.md`) judges it against that reader.
   stride: callers pass contiguous column slices with a column stride
   per matrix.
 - **SIMD on every path**, tuned: four streaming-loop shapes plus one
-  scalar function (the taxonomy below), the column shapes blocked four
+  scalar function (`DESIGN.md`, "Kernels"), the column shapes blocked four
   columns at a time by shared kernels, and gemm size-dispatched
   between a register tile and a BLIS/Goto packed-panel shape in every
   type. Every tuned shape is bit-identical to its plain column-axpy
@@ -60,7 +61,7 @@ review (`AGENTS.md`) judges it against that reader.
   emulates the SIMD lane structure elementwise off-wasm) and verified
   by 90 determinism probes on every gate run (`tests/README.md`).
 - **The module.** `abi/` wraps every routine in a flat C ABI and
-  compiles to the standalone `blas.wasm` (~217 KB, 116 routines plus
+  compiles to the standalone `blas.wasm` (~220 KB, 116 routines plus
   `wasm_alloc`/`wasm_free`, raw wasm, zero imports); conventions in
   `abi/src/lib.rs`, smoke test `abi/check.mjs`, attached to the
   GitHub release for each tag by the release workflow. Rust consumers
@@ -87,10 +88,59 @@ relaxed-SIMD rounding is implementation-dependent and would forfeit
 cross-target bit-identity (`DESIGN.md`, "Fast mode is a lever").
 Banded and packed storage forms are not planned.
 
-Hard-won build rule: simd128 is NOT in rustc's default wasm32 feature
-set — every SIMD path must sit under `#[target_feature(enable =
-"simd128")]` on the whole call chain (see `src/lanes.rs`), or the
-intrinsics compile as out-of-line calls (measured 6.4× slowdown).
+## Calling it
+
+**From Rust.** Add the crate as a path or git dependency (it is not
+on crates.io: `STATUS.md`, D2). Routines live under `L1`, `L2` and
+`L3` by level and carry netlib names; every matrix is a column-major
+slice with its own column stride (`cs ≥ rows`; column `j` of an
+`rows × cols` matrix is `a[j*cs .. j*cs + rows]`), and every vector is
+a contiguous slice. Flag variants are separate functions
+(`dgemv`/`dgemv_t`, `dtrsm_left`/`dtrsm_right`); triangle and
+unit-diagonal selection are `bool`s. The same example, compiled and
+run on every build of the book, is the axpy chapter's.
+
+```rust
+use blas_wasm::{L1, L3};
+
+let x = [1.0, 2.0, 3.0];
+let mut y = [4.0, 5.0, 6.0];
+L1::daxpy(2.0, &x, &mut y);              // y ← 2x + y = [6, 9, 12]
+
+// C ← αAB + βC for 2×2 matrices, column-major, each with column stride 2.
+let a = [1.0, 3.0, 2.0, 4.0];            // [[1, 2], [3, 4]]
+let b = [5.0, 7.0, 6.0, 8.0];            // [[5, 6], [7, 8]]
+let mut c = [0.0; 4];
+L3::dgemm(1.0, 2, 2, 2, &a, 2, &b, 2, 0.0, &mut c, 2);
+assert_eq!(c, [19.0, 43.0, 22.0, 50.0]); // [[19, 22], [43, 50]]
+```
+
+The `dgemm` argument order is `(alpha, m, k, n, a, acs, b, bcs, beta,
+c, ccs)` for an `m×k` times `k×n` product; each routine's own
+signature and rounding contract are in its file's module docs.
+
+**From JavaScript, with the raw module.** `blas.wasm` has no imports,
+so it instantiates with an empty import object. Arguments are flat
+pointers into the module's memory, lengths and strides are `usize`,
+flags are `u32`, complex scalars are `(re, im)` pairs, and
+`wasm_alloc`/`wasm_free` provide 16-byte-aligned buffers; the full
+conventions are the module doc of `abi/src/lib.rs`, and
+`abi/check.mjs` is a complete worked example.
+
+```js
+const { instance } = await WebAssembly.instantiate(bytes, {});
+const e = instance.exports;
+const px = e.wasm_alloc(3 * 8), py = e.wasm_alloc(3 * 8);
+new Float64Array(e.memory.buffer, px, 3).set([1, 2, 3]);
+new Float64Array(e.memory.buffer, py, 3).set([4, 5, 6]);
+e.daxpy(2, px, py, 3);                   // y ← 2x + y, in place at py
+```
+
+This argument order is the interim flat ABI; the module's exports
+become the CBLAS names and order when todo C lands (`STATUS.md`), and
+the npm package will hide the memory management entirely. Argument
+errors trap today (the instance is lost; re-instantiate), and
+memory-bounds violations always will.
 
 ## Testing contract — two axes, both required to land
 
@@ -112,143 +162,3 @@ dev container is iteration only). The harness is self-contained;
 method and current scoreboard: `bench/README.md`. The market
 comparison against faer was raced in the predecessor repository and
 is quoted there, not reproducible from this tree.
-
-## Implementation taxonomy
-
-The whole layer reduces to **four SIMD streaming-loop shapes plus one
-scalar function** — the bold codes are the shorthand the tables below
-use:
-
-- **ES** — *elementwise stream*: one pass over the vector(s); lanes
-  are transformed and written back (includes the fused y ← αx + y
-  form).
-- **RS** — *reduction stream*: one pass; parallel accumulator lanes,
-  folded to a single number at the end.
-- **CA** — *column-axpy*: the matrix operation runs as one
-  elementwise/axpy stream per column.
-- **DCA** — *divide-then-column-axpy*: triangular solves — divide by
-  the diagonal entry, then stream the elimination update through the
-  remaining columns.
-
-**G** (`rotg`) is the sole exception: no arrays = no SIMD. Guarded
-scalar arithmetic, inlined branch-free into the sweep loops that call
-it (LAPACK's overflow guards kept — proven numerics).
-
-The tuning campaign (2026-07-18/19) blocks the column shapes four
-columns at a time without changing any of them — the shared kernels in
-`src/kernels.rs` do the work — the remaining table codes:
-
-- **+FO** — *4-column fan-out* (`axpy4`): one source column streamed
-  once into four destination columns — source traffic 4× down.
-- **+FI** — *4-column fan-in* (`axpy4in`): four source columns
-  accumulated in one pass over the destination — destination
-  read-modify-write traffic 4× down.
-- **FS** — *fused symv pass* (`axpy_dot`/`axpy_dot4`): one column
-  load serves both triangles of the symmetric update, four columns
-  grouped per pass over x and y.
-- **RT** — *register tile*: gemm's small-matrix micro-kernel (4×4 in
-  f64, 8×4 in f32 — same register count at each lane width);
-  `CA+RT/FO` means size-dispatched between the tile and fan-out at
-  the measured crossover.
-- **→d** / **→s** — *delegation*: the complex routine is a one-line
-  call onto the tuned same-precision real routine over the
-  interleaved 2n-real view (`src/c64.rs` / `src/c32.rs`) — a real
-  scale/copy/swap/rotation/reduction of complex data IS the real
-  operation on twice the elements, so speed, guards, and determinism
-  are inherited rather than duplicated.
-
-The fan-out/fan-in kernels preserve the per-element rounding
-sequence, so tuned ops stay bit-for-bit against their plain
-column-axpy replays (the two triangular right-side cases whose
-elimination order forbids that document their reorder and the tests
-mirror it; symv's fused pass legitimately re-folds its reduction and
-is bounds-tested). The tables give each op's shorthand per number
-type — matching cells across type columns are the clones doing their
-job.
-
-A three-way race measured fused-FMA better for `trmm`/`trsm`/`gemv`
-and harmful for `syrk`; those variants are deliberately not shipped
-(determinism trade-off; `DESIGN.md`, "Fast mode is a lever").
-Banded/packed forms are not planned — no consumer demand. Evidence
-per row: the July 2026 campaign record (not in this tree;
-`STATUS.md`).
-
-The type columns map to the routine-name prefixes (d/s/z/c — the
-full convention with the per-routine deviations from reference BLAS:
-`src/README.md`); a row names the routine family, so the f64 cell
-of `axpy` describes `daxpy`, the f32 cell `saxpy`. In the c64 column
-the symmetric rows describe the **Hermitian** z-routine (symv →
-`zhemv`, syr/syr2 → `zher`/`zher2`, symm → `zhemm`, syrk → `zherk`,
-syr2k → `zher2k`), per the counting note above.
-
-## Level 1 — `src/L1/`
-
-| BLAS | mathematical name | f64 | f32 | c64 | c32 |
-|---|---|---|---|---|---|
-| `axpy` | scaled vector addition (y ← αx + y) | ES | ES | ES | ES |
-| `scal` | scalar × vector | ES | ES | ES ² | ES ² |
-| `copy` | vector copy | ES | ES | →d | →s |
-| `swap` | exchange two vectors | ES | ES | →d | →s |
-| `rot` | apply a plane rotation | ES | ES | →d ³ | →s ³ |
-| `dot` | dot product | RS | RS | RS ⁴ | RS ⁴ |
-| `nrm2` | Euclidean length (ℓ² norm) | RS | RS | →d | →s |
-| `asum` | sum of absolute values (ℓ¹ norm) | RS | RS | →d ⁵ | →s ⁵ |
-| `iamax` | index of the largest element | RS | RS | RS ⁶ | RS ⁶ |
-| `rotg` | generate a plane rotation | G | G | G | G |
-
-² `zscal`/`cscal` (complex α); the real-α forms `zdscal`/`csscal`
-are delegations.
-³ `zdrot`/`csrot` — the real-c,s rotation; a real rotation acts on
-re/im independently, so it IS `drot`/`srot` on the 2n-real view. The
-complex-s apply (`zrot`) has no consumer yet (gap).
-⁴ splits into `dotu` (xᵀy) and `dotc` (xᴴy) — different results,
-both 4-accumulator reduction streams.
-⁵ reference semantics Σ(|re|+|im|) — component magnitudes ARE
-`dasum`/`sasum` of the 2n-real view.
-⁶ `izamax`/`icamax` maximize |re|+|im| per element — own lane pass
-(abs + swap-add), idamax's two-pass shape.
-
-## Level 2 — `src/L2/`
-
-| BLAS | mathematical name | f64 | f32 | c64 | c32 |
-|---|---|---|---|---|---|
-| `gemv` | matrix × vector | CA+FI | CA+FI | CA+FI | CA+FI |
-| `gemv_t` | transposed-matrix × vector (Aᵀx, transpose never formed) | RS per column | RS per column | RS per column ⁷ | RS per column ⁷ |
-| `ger` | outer-product update (rank-1) | CA | CA | CA ⁸ | CA ⁸ |
-| `symv` | symmetric matrix × vector | FS | FS | FS ⁹ | FS ⁹ |
-| `trmv` | triangular matrix × vector | CA+FI | CA+FI | CA+FI | CA+FI |
-| `syr` / `syr2` | symmetric rank-1/2 updates | CA | CA | CA | CA |
-| `trsv` | triangular solve, one vector | DCA+FI | DCA+FI | DCA+FI ¹⁰ | DCA+FI ¹⁰ |
-
-⁷ two forms: `_t` (Aᵀx, `dotu` per column) and `_c` (Aᴴx, `dotc`
-per column) — the conjugate transpose is the one complex algorithms
-actually consume.
-⁸ splits into `geru` (αxyᵀ) and `gerc` (αxyᴴ) — the conjugation
-lands on the per-column scalar, never on a stream.
-⁹ the Hermitian `hemv` fused pass is single-column
-(`zaxpy_dotc`/`caxpy_dotc`); the 4-column grouping that pushed dsymv
-to 2× is a recorded complex tuning lever.
-¹⁰ complex division by Smith's algorithm (`C64`/`C32`'s guarded `/`
-— the `dladiv` shape).
-
-## Level 3 — `src/L3/`
-
-| BLAS | mathematical name | f64 | f32 | c64 | c32 |
-|---|---|---|---|---|---|
-| `gemm` | matrix multiplication | CA+RT/FO ¹¹ | CA+RT/FO ¹¹ | CA+FO/RT ¹¹ | CA+FO/RT ¹¹ |
-| `syrk` | Gram-matrix update (αAAᵀ + βC) | CA+FO | CA+FO | CA+FO ¹² | CA+FO ¹² |
-| `trmm` | triangular matrix multiplication | CA+FO | CA+FO | CA+FO | CA+FO |
-| `symm` / `syr2k` | symmetric multiply / rank-2k update | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ |
-| `trsm` | triangular solve, many right-hand sides | DCA+FO | DCA+FO | DCA+FO | DCA+FO |
-
-¹ left-side symm/hemm is FS per column of B.
-¹¹ gemm is size-dispatched in every type since the packed-panel race
-(2026-07-20, docs step 14): d/s run the register tile small, the
-BLIS-style packed-panel shape (`*gemm_packed`) large; z/c run the
-col4 fan-out small and a packed-panel COMPLEX register tile large
-(2×4 c64, 4×4 c32 — the geometry recorded as a non-starter unpacked;
-packing removed the strided k-walk that made it one). All shapes
-bit-identical to the `_colaxpy` reference, which stays bit-checked.
-¹² the Hermitian `herk`/`her2k` take real α (herk) / real β per the
-reference signatures, and maintain the Hermitian invariant: stored
-diagonals end exactly real.

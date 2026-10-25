@@ -1,5 +1,5 @@
-//! Tuned multi-stream kernels shared across levels and types (tuning
-//! campaign, 2026-07) — the loop shapes that survived racing on the
+//! Tuned multi-stream kernels shared across levels and types — the
+//! loop shapes that survived racing on the
 //! reference runners, one section per number type at its lane
 //! geometry: d = f64 on F64x2, s = f32 on F32x4, z = c64 (one
 //! complex per F64x2), c = c32 (two complexes per F32x4). `*axpy4`
@@ -57,7 +57,7 @@ pub(crate) unsafe fn daxpy4(
 	}
 }
 
-/// Fused symv column pass (tuned 2026-07-19): one load of `a` per
+/// Fused symv column pass: one load of `a` per
 /// element serves both halves of the symmetric update —
 /// y[i] += t·a[i] (elementwise) and acc += a[i]·x[i] (reduction,
 /// two lane-pair accumulators) — where the plain shape streamed the
@@ -397,7 +397,7 @@ pub(crate) unsafe fn saxpy4(
 	}
 }
 
-/// Fused symv column pass (tuned 2026-07-19): one load of `a` per
+/// Fused symv column pass: one load of `a` per
 /// element serves both halves of the symmetric update —
 /// y[i] += t·a[i] (elementwise) and acc += a[i]·x[i] (reduction,
 /// two lane-pair accumulators) — where the plain shape streamed the
@@ -707,7 +707,7 @@ pub(crate) unsafe fn caxpy_dotc(
 }
 
 /// Four fused zhemv column passes sharing one stream over x and y
-/// (raced and shipped, 2026-07-19 close-out): y[i] += Σᵤ tᵤ·aᵤ[i]
+/// (raced and shipped): y[i] += Σᵤ tᵤ·aᵤ[i]
 /// (accumulated in u order into the loaded y value) while each
 /// accᵤ += conj(aᵤ[i])·x[i]. One y load/store and one x load per
 /// complex serve four columns — the daxpy_dot4 shape at complex

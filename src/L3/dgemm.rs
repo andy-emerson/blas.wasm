@@ -7,8 +7,7 @@
 //! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
 //! stays as the raced mid-size reference. The pre-packed shapes beat
 //! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; July 2026 campaign record, step 6 — not in this tree,
-//! STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
+//! large; campaign record step 6, STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;
@@ -39,7 +38,7 @@ pub fn dgemm(
 ) {
 	// measured crossover between n=384 (A ≈ 1.2 MB: tiled) and n=512
 	// (A = 2 MB) on both reference draws and the container. Above it,
-	// the packed-panel shape replaced col4 (packed-gemm race 2026-07-20,
+	// the packed-panel shape replaced col4 (packed-gemm race,
 	// two runner draws unanimous: 1.24x at 512³, 1.44x at 1024³,
 	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
 	// reference). Packed also edged tiled +3% at 256³ — recorded, not
@@ -76,7 +75,7 @@ pub fn dgemm_colaxpy(
 	}
 }
 
-/// Tuning-campaign candidate (2026-07-18): 4×4 register-tiled dgemm.
+/// Tuning-campaign candidate: 4×4 register-tiled dgemm.
 /// The column-daxpy dgemm re-reads and re-writes each C element once per
 /// k step; this micro-kernel holds a 4-row × 4-column tile of C in 8
 /// SIMD registers across the whole k loop — one C load and one C store
@@ -145,7 +144,7 @@ pub fn dgemm_tiled(
 	}
 }
 
-/// Tuning-campaign candidate 2 (2026-07-18): 4-column fused dgemm.
+/// Tuning-campaign candidate 2: 4-column fused dgemm.
 /// The 4×4 tile's k-loop walks A at column stride (TLB/prefetch-hostile
 /// at large n — measured losing above n≈512); this shape instead
 /// streams each A column SEQUENTIALLY, once per group of four C
@@ -207,7 +206,7 @@ pub fn dgemm_col4(
 	}
 }
 
-/// Tuning-campaign candidate 3 (2026-07-20): packed-panel dgemm —
+/// Tuning-campaign candidate 3: packed-panel dgemm —
 /// BLIS/Goto structure around the same 4×4 microkernel math. The tile's
 /// weakness is its k-walk over A at column stride (TLB/prefetch-hostile
 /// once A outgrows the near caches — why the dispatch abandons it at

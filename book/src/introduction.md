@@ -4,8 +4,9 @@ blas.wasm is a BLAS — the Basic Linear Algebra Subprograms: vector,
 matrix–vector and matrix–matrix routines — written in Rust for
 WebAssembly, with hand-written SIMD on every path, zero dependencies,
 zero imports, and results that are bit-identical across native and
-every wasm engine. It ships as a Rust crate and as an npm package
-wrapping the pre-built module. It is a BLAS and nothing more: the
+every wasm engine. It is a Rust crate; a standalone `blas.wasm`
+module is attached to each tagged release, and an npm package wrapping
+it is planned. It is a BLAS and nothing more: the
 decompositions (solve, inverse, eigen, SVD) belong to a separate
 project that depends on this crate.
 

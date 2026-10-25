@@ -1,7 +1,7 @@
 //! `ssymv` — symmetric matrix × vector: y ← αAx + βy, A symmetric with
 //! only one triangle stored.
 //!
-//! Implementation: fused 4-column pass (tuned 2026-07-19) — four
+//! Implementation: fused 4-column pass — four
 //! stored columns at a time, ONE stream over x and y serves both
 //! triangles' contributions for all four (`kernels::saxpy_dot4`; the
 //! ≤3-row ragged edge and diagonals scalar per column), where the

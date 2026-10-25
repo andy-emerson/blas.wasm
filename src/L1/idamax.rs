@@ -4,10 +4,10 @@
 //! pass finds the max VALUE, then one scalar rescan finds its first
 //! index (the realistic SIMD strategy for an argmax). Ported from the
 //! raced variant — 1.4–1.6× faster than the branching plain loop on all
-//! three runner draws (the July 2026 campaign record (not in this tree; STATUS.md), step 2). A fused
+//! three runner draws (campaign record, step 2). A fused
 //! single-pass variant (per-lane value+index tracking via gt/bitselect)
-//! was built and raced 2026-07-19 and LOST on the runners — flat on one
-//! draw, ~15% slower on the other (docs step 9): the extra blend work
+//! was built, raced, and LOST on the runners — flat on one
+//! draw, ~15% slower on the other (campaign record step 9): the extra blend work
 //! per element costs more than the rescan it saves. Don't re-try
 //! without new evidence.
 //!

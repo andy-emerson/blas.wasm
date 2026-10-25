@@ -4,7 +4,7 @@
 //! runs its columns four at a time through the shared blocked kernels
 //! (`crate::kernels`); tails and the rank-1/2 updates stay one Level 1
 //! call per column. The
-//! SIMD hot loops live in L1/kernels under their `target_feature`
+//! SIMD hot loops live in `L1/` and `kernels.rs` under their `target_feature`
 //! annotations. All four number types follow the same structure
 //! (naming: src/README.md).
 //!

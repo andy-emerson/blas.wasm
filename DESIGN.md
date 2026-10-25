@@ -35,8 +35,8 @@ web" (see XNNPACK under "Claims").
   whatever target that project uses, native or wasm. No C bindings,
   no wasm inside it, nothing pre-compiled. Idiomatic API: enums for
   transpose/side/triangle/diagonal, slices, explicit strides.
-- *The npm package* (name is a placeholder until publishing is
-  decided; see D2). Ready to run. One package containing the
+- *The npm package* (planned, todo J1; the name is a placeholder
+  until publishing is decided, D2). Ready to run. One package containing the
   JavaScript loader, the TypeScript type definitions, and the two
   pre-built wasm files as assets inside the package. Works in Node
   and in browsers. A JavaScript project installs it as one dependency
@@ -54,7 +54,8 @@ rules. Nothing is invented.
 
 - *Rust projection*: the crate's API. Primary, because the code is
   Rust.
-- *CBLAS projection*: the wasm module's export list —
+- *CBLAS projection* (ruling; today's module exports the interim
+  flat ABI, todo C): the wasm module's export list —
   `cblas_dgemm(order, transA, transB, m, n, k, alpha, A, lda, B, ldb,
   beta, C, ldc)` and the rest of the standard, 32-bit `int`,
   `CblasRowMajor` by the standard operand swap. Produced by the
@@ -120,7 +121,9 @@ not pretend otherwise.
    workers. No relaxed-SIMD instruction (fused multiply-add included)
    ever appears in a shipped artifact; the gate scans the binary for
    relaxed opcodes and fails on any. The promise is a property of the
-   artifact, never a runtime flag.
+   artifact, never a runtime flag. The thread-count clause is a
+   target until the threaded artifact and its p=1 vs p=N test exist
+   (todos T1, T5); today's artifact is single-threaded.
 4. **Threads are a host concern; kernels never synchronize.** The
    module contains no atomics, no locks, no thread-local state. The
    host partitions disjoint output regions and joins. Parallelism is
@@ -136,7 +139,8 @@ not pretend otherwise.
    0` means C is not read, zero dimensions), and the reference
    argument checks. Where reference BLAS and this crate differ, the
    reference wins unless the deviation is recorded here with a
-   reason.
+   reason. Target state: today's surface lacks the transposed forms,
+   strides and the reportable argument errors (todos S1–S3, S5, S6).
 7. **The crate never allocates.** Scratch space is the caller's,
    passed in and size-queried, LAPACK style. (Today's packed gemm
    allocates two panel buffers; closing that gap is todo S4 and the
@@ -146,7 +150,7 @@ not pretend otherwise.
 
 | claim | what makes it true |
 |---|---|
-| **Reproducible.** Bit-identical results across engines, targets, and thread counts, promised, tested, and auditable from the binary. | per-routine bitwise replays and cross-target probes (`tests/README.md`); the p=1 vs p=N bitwise test per routine (todo T5); the relaxed-opcode scan in the gate (todo 0c) |
+| **Reproducible.** Bit-identical results across engines, targets, and thread counts, promised, tested, and auditable from the binary. | per-routine bitwise replays and cross-target probes (`tests/README.md`); the p=1 vs p=N bitwise test per routine (todo T5); the relaxed-opcode scan in the gate (`abi/audit.mjs`) |
 | **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | the import-count assertion in the gate; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
 | **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded |
 
@@ -182,9 +186,9 @@ nothing; the tax is confined to compute-bound gemm-like shapes.
 
 Four SIMD streaming-loop shapes plus one scalar function, blocked
 four columns at a time by shared kernels, with gemm size-dispatched
-between a register tile and a BLIS/Goto packed-panel shape; the
-taxonomy and the per-routine cells are in `README.md`, the call graph
-and naming in `src/README.md`. Every tuned shape is bit-identical to
+between a register tile and a BLIS/Goto packed-panel shape. The
+taxonomy and the per-routine cells follow; the call graph and the
+naming convention are in `src/README.md`. Every tuned shape is bit-identical to
 its plain column-axpy reference except where an elimination order
 forbids it; those two cases are documented in their files and
 mirrored by their tests. Lane emulation off-wasm (`src/lanes.rs`)
@@ -195,6 +199,145 @@ The hard-won build rule: simd128 is not in rustc's default wasm32
 feature set, so every SIMD path sits under `#[target_feature(enable
 = "simd128")]` on the whole call chain, or the intrinsics compile as
 out-of-line calls (measured 6.4× slowdown).
+
+#### Implementation taxonomy
+
+The whole layer reduces to **four SIMD streaming-loop shapes plus one
+scalar function** — the bold codes are the shorthand the tables below
+use:
+
+- **ES** — *elementwise stream*: one pass over the vector(s); lanes
+  are transformed and written back (includes the fused y ← αx + y
+  form).
+- **RS** — *reduction stream*: one pass; parallel accumulator lanes,
+  folded to a single number at the end.
+- **CA** — *column-axpy*: the matrix operation runs as one
+  elementwise/axpy stream per column.
+- **DCA** — *divide-then-column-axpy*: triangular solves — divide by
+  the diagonal entry, then stream the elimination update through the
+  remaining columns.
+
+**G** (`rotg`) is the sole exception: no arrays = no SIMD. Guarded
+scalar arithmetic, inlined branch-free into the sweep loops that call
+it (LAPACK's overflow guards kept — proven numerics).
+
+The tuned kernels block the column shapes four columns at a time
+without changing any of them — the shared kernels in
+`src/kernels.rs` do the work — the remaining table codes:
+
+- **+FO** — *4-column fan-out* (`axpy4`): one source column streamed
+  once into four destination columns — source traffic 4× down.
+- **+FI** — *4-column fan-in* (`axpy4in`): four source columns
+  accumulated in one pass over the destination — destination
+  read-modify-write traffic 4× down.
+- **FS** — *fused symv pass* (`axpy_dot`/`axpy_dot4`): one column
+  load serves both triangles of the symmetric update, four columns
+  grouped per pass over x and y.
+- **RT** — *register tile*: gemm's small-matrix micro-kernel (4×4 in
+  f64, 8×4 in f32 — same register count at each lane width);
+  `CA+RT/FO` means size-dispatched between the tile and fan-out at
+  the measured crossover.
+- **→d** / **→s** — *delegation*: the complex routine is a one-line
+  call onto the tuned same-precision real routine over the
+  interleaved 2n-real view (`src/c64.rs` / `src/c32.rs`) — a real
+  scale/copy/swap/rotation/reduction of complex data IS the real
+  operation on twice the elements, so speed, guards, and determinism
+  are inherited rather than duplicated.
+
+The fan-out/fan-in kernels preserve the per-element rounding
+sequence, so tuned ops stay bit-for-bit against their plain
+column-axpy replays (the two triangular right-side cases whose
+elimination order forbids that document their reorder and the tests
+mirror it; symv's fused pass legitimately re-folds its reduction and
+is bounds-tested). The tables give each op's shorthand per number
+type — matching cells across type columns are the clones doing their
+job.
+
+A three-way race measured fused-FMA better for `trmm`/`trsm`/`gemv`
+and harmful for `syrk`; those variants are deliberately not shipped
+(determinism trade-off; `DESIGN.md`, "Fast mode is a lever").
+Banded/packed forms are not planned — no consumer demand. Evidence per
+row: the campaign record (`STATUS.md`, "Not in this tree").
+
+The type columns map to the routine-name prefixes (d/s/z/c — the
+full convention with the per-routine deviations from reference BLAS:
+`src/README.md`); a row names the routine family, so the f64 cell
+of `axpy` describes `daxpy`, the f32 cell `saxpy`. In the c64 column
+the symmetric rows describe the **Hermitian** z-routine (symv →
+`zhemv`, syr/syr2 → `zher`/`zher2`, symm → `zhemm`, syrk → `zherk`,
+syr2k → `zher2k`), per the counting note above.
+
+#### Level 1 — `src/L1/`
+
+| BLAS | mathematical name | f64 | f32 | c64 | c32 |
+|---|---|---|---|---|---|
+| `axpy` | scaled vector addition (y ← αx + y) | ES | ES | ES | ES |
+| `scal` | scalar × vector | ES | ES | ES ² | ES ² |
+| `copy` | vector copy | ES | ES | →d | →s |
+| `swap` | exchange two vectors | ES | ES | →d | →s |
+| `rot` | apply a plane rotation | ES | ES | →d ³ | →s ³ |
+| `dot` | dot product | RS | RS | RS ⁴ | RS ⁴ |
+| `nrm2` | Euclidean length (ℓ² norm) | RS | RS | →d | →s |
+| `asum` | sum of absolute values (ℓ¹ norm) | RS | RS | →d ⁵ | →s ⁵ |
+| `iamax` | index of the largest element | RS | RS | RS ⁶ | RS ⁶ |
+| `rotg` | generate a plane rotation | G | G | G | G |
+
+² `zscal`/`cscal` (complex α); the real-α forms `zdscal`/`csscal`
+are delegations.
+³ `zdrot`/`csrot` — the real-c,s rotation; a real rotation acts on
+re/im independently, so it IS `drot`/`srot` on the 2n-real view. The
+complex-s apply (`zrot`) has no consumer yet (gap).
+⁴ splits into `dotu` (xᵀy) and `dotc` (xᴴy) — different results,
+both 4-accumulator reduction streams.
+⁵ reference semantics Σ(|re|+|im|) — component magnitudes ARE
+`dasum`/`sasum` of the 2n-real view.
+⁶ `izamax`/`icamax` maximize |re|+|im| per element — own lane pass
+(abs + swap-add), idamax's two-pass shape.
+
+#### Level 2 — `src/L2/`
+
+| BLAS | mathematical name | f64 | f32 | c64 | c32 |
+|---|---|---|---|---|---|
+| `gemv` | matrix × vector | CA+FI | CA+FI | CA+FI | CA+FI |
+| `gemv_t` | transposed-matrix × vector (Aᵀx, transpose never formed) | RS per column | RS per column | RS per column ⁷ | RS per column ⁷ |
+| `ger` | outer-product update (rank-1) | CA | CA | CA ⁸ | CA ⁸ |
+| `symv` | symmetric matrix × vector | FS | FS | FS ⁹ | FS ⁹ |
+| `trmv` | triangular matrix × vector | CA+FI | CA+FI | CA+FI | CA+FI |
+| `syr` / `syr2` | symmetric rank-1/2 updates | CA | CA | CA | CA |
+| `trsv` | triangular solve, one vector | DCA+FI | DCA+FI | DCA+FI ¹⁰ | DCA+FI ¹⁰ |
+
+⁷ two forms: `_t` (Aᵀx, `dotu` per column) and `_c` (Aᴴx, `dotc`
+per column) — the conjugate transpose is the one complex algorithms
+actually consume.
+⁸ splits into `geru` (αxyᵀ) and `gerc` (αxyᴴ) — the conjugation
+lands on the per-column scalar, never on a stream.
+⁹ c64 `zhemv` ships the 4-column grouped fused pass
+(`zaxpy_dotc4`); c32 `chemv` keeps the single-column pass
+(`caxpy_dotc`) because the grouping lost its c32 race
+(`src/L2/chemv.rs`).
+¹⁰ complex division by Smith's algorithm (`C64`/`C32`'s guarded `/`
+— the `dladiv` shape).
+
+#### Level 3 — `src/L3/`
+
+| BLAS | mathematical name | f64 | f32 | c64 | c32 |
+|---|---|---|---|---|---|
+| `gemm` | matrix multiplication | CA+RT/FO ¹¹ | CA+RT/FO ¹¹ | CA+FO/RT ¹¹ | CA+FO/RT ¹¹ |
+| `syrk` | Gram-matrix update (αAAᵀ + βC) | CA+FO | CA+FO | CA+FO ¹² | CA+FO ¹² |
+| `trmm` | triangular matrix multiplication | CA+FO | CA+FO | CA+FO | CA+FO |
+| `symm` / `syr2k` | symmetric multiply / rank-2k update | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ |
+| `trsm` | triangular solve, many right-hand sides | DCA+FO | DCA+FO | DCA+FO | DCA+FO |
+
+¹ left-side symm/hemm is FS per column of B.
+¹¹ gemm is size-dispatched in every type: d/s run the register tile small, the
+BLIS-style packed-panel shape (`*gemm_packed`) large; z/c run the
+col4 fan-out small and a packed-panel COMPLEX register tile large
+(2×4 c64, 4×4 c32 — the geometry recorded as a non-starter unpacked;
+packing removed the strided k-walk that made it one). All shapes
+bit-identical to the `_colaxpy` reference, which stays bit-checked.
+¹² the Hermitian `herk`/`her2k` take real α (herk) / real β per the
+reference signatures, and maintain the Hermitian invariant: stored
+diagonals end exactly real.
 
 ### Completing the surface (todo group S)
 
@@ -399,8 +542,7 @@ trigger where one is worth keeping. Open decisions are in
   `STATUS.md` for open work and latest checks. Rejected: keeping a
   roadmap that mixes design, todo and chronology; GitHub Issues as
   living status (allowed by the agreement, but it moves open work off
-  the clone). The former `ROADMAP.md` is retired into this file and
-  `STATUS.md`.
+  the clone).
 - **D2 — Publishing to the registries.** Nothing is published to npm
   or crates.io for now; the package names are placeholders. The
   crates.io publish is out of the housekeeping step, `publish =
@@ -453,8 +595,7 @@ trigger where one is worth keeping. Open decisions are in
   consumer asks; it then ships as a separate artifact under a
   different name with its own tolerance contract, never as a flag on
   the reproducible build, so the relaxed-opcode gate on `blas.wasm`
-  and `blas.threads.wasm` stays absolute. This supersedes the earlier
-  "FMA variants deferred" note from the tuning campaign.
+  and `blas.threads.wasm` stays absolute.
 - **Shared memory is a feature, never a requirement; message-passing
   workers are rejected for the flat API.** Mandatory isolation
   headers break third-party iframes, ads, embedded video, payment and
@@ -479,8 +620,8 @@ trigger where one is worth keeping. Open decisions are in
 - **Fortran-style symbols (`dgemm_` by reference) are not built.** No
   consumer in scope; a day of mechanical work from the CBLAS surface
   if one appears.
-- **The module exports CBLAS names**, replacing the hand-written flat
-  ABI with its invented argument order. The standard names are known
+- **The module will export CBLAS names** (todo C), replacing the
+  hand-written flat ABI with its invented argument order. The standard names are known
   to everyone and the mapping from the Rust signatures is mechanical.
 - **Row-major is the operand swap**, as OpenBLAS does it. No
   row-major kernels.

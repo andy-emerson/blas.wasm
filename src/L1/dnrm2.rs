@@ -48,7 +48,7 @@ unsafe fn sumsq(xp: *const f64, len: usize) -> f64 {
 	let mut acc2 = F64x2::splat(0.0);
 	let mut acc3 = F64x2::splat(0.0);
 	let mut i = 0usize;
-	// 4 accumulator registers (tuning lever, 2026-07-19)
+	// 4 accumulator registers (tuning lever)
 	while i + 8 <= len {
 		let x0 = F64x2::load(xp.add(i));
 		let x1 = F64x2::load(xp.add(i + 2));

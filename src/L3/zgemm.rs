@@ -1,6 +1,6 @@
 //! `zgemm` — complex matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched (packed shape added 2026-07-20):
+//! Implementation: size-dispatched:
 //! 4-column fused column-zaxpy (`kernels::zaxpy4`) below 1 MB of A,
 //! BLIS-style packed-panel 2×4 complex register tile at and above
 //! (two runner draws unanimous at every measured size: 1.08–1.15× at
@@ -36,7 +36,7 @@ pub fn zgemm(
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
-	// packed-gemm race 2026-07-20 (two runner draws, unanimous at every
+	// packed-gemm race (two runner draws, unanimous at every
 	// measured size): packed wins 1.08–1.15x at 256³ (A = 1 MB, the
 	// smallest measured point) up to 1.33x at 1024³. Below 1 MB of A is
 	// unmeasured — col4 keeps it.
@@ -81,7 +81,7 @@ pub fn zgemm(
 	}
 }
 
-/// Tuning-campaign candidate (2026-07-20): packed-panel zgemm — the
+/// Tuning-campaign candidate: packed-panel zgemm — the
 /// BLIS/Goto structure of `dgemm_packed` at complex register geometry.
 /// This is the c64 register tile the col4 module doc recorded as "a
 /// different register geometry, not a mechanical port": 2 complexes ×

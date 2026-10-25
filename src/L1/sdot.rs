@@ -24,7 +24,7 @@ unsafe fn imp(xp: *const f32, yp: *const f32, len: usize) -> f32 {
 	let mut acc2 = F32x4::splat(0.0);
 	let mut acc3 = F32x4::splat(0.0);
 	let mut i = 0usize;
-	// 4 accumulator registers (tuning lever, 2026-07-19)
+	// 4 accumulator registers (tuning lever)
 	while i + 16 <= len {
 		acc0 = acc0.add(F32x4::load(xp.add(i)).mul(F32x4::load(yp.add(i))));
 		acc1 = acc1.add(F32x4::load(xp.add(i + 4)).mul(F32x4::load(yp.add(i + 4))));

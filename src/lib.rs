@@ -10,9 +10,10 @@
 //! README.md; why: DESIGN.md; open work: STATUS.md.
 #![no_std]
 
-// Only the packed-gemm paths allocate (pack buffers); everything else
-// stays allocation-free. Consumers must link a global allocator iff they
-// call a `*gemm_packed` routine — all current consumers already do.
+// The four gemm dispatchers allocate two pack buffers above their
+// packed threshold (and the `*gemm_packed` shapes always do); nothing
+// else allocates. Link a global allocator if you call gemm. Removing
+// this is STATUS.md todo S4.
 extern crate alloc;
 
 #[doc(hidden)]

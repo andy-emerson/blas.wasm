@@ -1,6 +1,6 @@
 //! Vendored math — the four libm entry points the layer needs (sqrt,
 //! sqrtf, hypot, hypotf), brought in-tree so `[dependencies]` is EMPTY
-//! (architect decision 2026-07-21: `no_std` stays, consumers inherit
+//! (architect decision: `no_std` stays, consumers inherit
 //! zero transitive baggage).
 //!
 //! sqrt/sqrtf are the hardware instruction via per-architecture

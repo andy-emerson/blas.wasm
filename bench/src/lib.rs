@@ -52,7 +52,8 @@ fn state_mut() -> &'static mut State {
 }
 
 // deterministic fill (splitmix-style LCG), values in [-1, 1] —
-// same recipe and seeds as the bench-harness state
+// same recipe and seeds as the predecessor harness, so the probe bit
+// patterns carry over
 fn fill(n: usize, mut s: u64) -> Vec<f64> {
     let mut v = vec![0.0f64; n * n];
     for j in 0..n {
@@ -93,7 +94,7 @@ pub extern "C" fn setup(n: usize) {
     let a = fill(n, 0x9E3779B97F4A7C15);
     let b = fill(n, 0xD1B54A32D192ED03);
     // symmetric, diagonally dominant (same construction as the
-    // bench-harness state: a + aᵀ with a boosted diagonal)
+    // predecessor harness: a + aᵀ with a boosted diagonal)
     let mut sym = vec![0.0f64; n * n];
     for j in 0..n {
         for i in 0..n {
@@ -478,7 +479,7 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
 /// Cross-target determinism probe: fixed LCG data (len 1001 — odd, so the
 /// scalar tail runs too), one reduction per op. Native bin and wasm build
 /// must return identical bits (the lane-emulation construction in
-/// blas/src/lanes.rs). op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
+/// src/lanes.rs). op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
 #[no_mangle]
 pub extern "C" fn run_l1_probe(op: usize) -> f64 {
     use blas_wasm::L1 as l1;
@@ -510,7 +511,7 @@ pub extern "C" fn run_l1_probe(op: usize) -> f64 {
 /// matrices. Bytes moved per call = 3·8·n² (read a, read b, write c).
 #[no_mangle]
 pub extern "C" fn run_ceiling_bw() -> f64 {
-    // v2 (2026-07-18): the original version allocated + copied an n×n
+    // the original version allocated + copied an n×n
     // matrix INSIDE the timed region (to_owned per call) and streamed c
     // twice — depressing the measured ceiling and miscounting traffic.
     // Now a pure single-pass triad sym ← a + 2.5·b over persistent
@@ -1578,7 +1579,7 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
     (fold + cv[0].re + cv[0].im + cv[len - 1].re) as f64
 }
 
-/// Packed-gemm race rows (tuning campaign 2026-07-20): rectangular
+/// Packed-gemm race rows (tuning campaign): rectangular
 /// m×k×n gemm over the square state's buffers reinterpreted as
 /// contiguous column-major panels (A = first m·k of a, B = first k·n
 /// of b, C = first m·n of sym). Caller must `setup(N)` with

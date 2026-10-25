@@ -17,14 +17,17 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 156 tests: L1 64, L2 40, L3 48, vendored math 4) | all pass | local, 2026-10-25, head `d803ae5` |
-| gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
+| `cargo test --release` (native, 156 tests: L1 64, L2 40, L3 48, vendored math 4) | all pass | local, 2026-10-25, head `641cecc` |
+| gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
+| gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | in progress at the time of this commit; run 16, before the mdbook test fix, passed every step up to the book and failed there with E0464; the conclusion of run 17 is recorded here when it completes | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
+| book: `node book/check-includes.mjs`, `mdbook build book`, `mdbook test book -L target/book/release/deps` | all pass (3 includes resolve; 3 chapters; the axpy example compiles and runs) | local, 2026-10-25, head `641cecc` |
+| binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 119 exports, 265 functions, 100732 instructions decoded, 0 relaxed-SIMD | local, 2026-10-25, head `641cecc` |
 | bench workflow (rooflines, packed race) | on demand; latest scoreboard in `bench/README.md` is from the July 2026 campaign draws | GitHub Actions, `workflow_dispatch` |
 
 The three claims (`DESIGN.md`, "Claims") stand as follows:
 *reproducible* is true single-threaded and tested per routine; the
-thread-count part is untested (no threaded artifact yet) and the
-binary audit is not yet in the gate (todo 0c). *Dependency-free* is
+binary audit is in the gate (`abi/audit.mjs`); the thread-count part
+is untested (no threaded artifact yet). *Dependency-free* is
 true: zero imports, verified by the smoke test instantiating with no
 import object. *Faster than OpenBLAS and BLIS in the browser* is
 plausible and unmeasured (todo B).
@@ -112,29 +115,19 @@ bottom.
 
 ### M0 — Readable to a stranger, agreement in force
 
-- [x] **0b — The records exist.** `DESIGN.md` and this file, each
-  with a named job and reader; `ROADMAP.md` retired into them.
-  Evidence: the documentation review's placement check, read against
-  each file's job.
-- [x] **0a — No dangling paths or stale notes anywhere in the tree.**
-  README opens on what the product is and where the decompositions
-  live. Evidence: a grep for the old parent-repository path patterns
-  is empty; README read end to end on a fresh clone. (1–1.5)
-- [ ] **0c — The gate audits the binary.** Relaxed-SIMD opcode scan
-  over the code section of every shipped artifact; import and export
-  counts asserted explicitly. Evidence: the scan fails on a
-  deliberately relaxed build and passes on `main`. (0.5–1)
+Done on this branch except the human action below; the exit evidence
+is in the commit log and the gate run listed under "Latest checks".
+
 - [ ] **`main` is protected** (pull request required, no direct or
   force pushes, merge commits only). Human action, GitHub settings.
 
 ### M1 — The book builds
 
-- [ ] **D1–D3 — Book scaffold.** mdBook with KaTeX and Mermaid, at
-  least one chapter including source by anchor, `mdbook test` in the
-  gate, Pages deploy on push to `main`. Evidence: the gate builds and
-  tests the book; a renamed anchor fails the build; the Pages site is
-  live. (2–3) Human action after the merge: set the repository's
-  Pages source to GitHub Actions.
+Done on this branch except the human action below.
+
+- [ ] **Pages source set to GitHub Actions** (Settings → Pages), so
+  `.github/workflows/pages.yml` can deploy the book on the first push
+  to `main` after the merge. Human action.
 
 ### M2 — Complete BLAS surface, netlib semantics
 
@@ -231,9 +224,12 @@ None open.
 
 ## Not in this tree
 
-The step-by-step evidence trail of the July 2026 campaign (the A/B
-tables with run identifiers that `bench/README.md` cites by step
-number) lives in the predecessor repository the layer was transplanted
-from, not here. The numbers quoted in `bench/README.md` and the probe
-bit patterns in `tests/README.md` are the parts that were carried
-over; the bench workflow regenerates both on demand.
+**The campaign record.** The step-by-step evidence trail of the July
+2026 tuning campaign — the A/B tables with their GitHub Actions run
+identifiers, numbered by step — lives in the predecessor repository
+the layer was transplanted from, not here. `DESIGN.md`,
+`bench/README.md`, `tests/README.md` and the module docs under `src/`
+cite it as "campaign record step N". The numbers they quote, the run
+identifiers, and the probe bit patterns are the parts that were
+carried over; the bench workflow regenerates the scoreboard and the
+probes on demand.

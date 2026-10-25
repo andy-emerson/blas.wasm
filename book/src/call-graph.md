@@ -21,6 +21,6 @@ Below the operations sits shared plumbing, deliberately not in the
 graph: the private SIMD kernels (`src/kernels.rs`, blocked hot loops
 several operations share), the lane types (`src/lanes.rs`), gemm's
 internal shapes and dispatcher, and the small helpers. `symv` has no
-outgoing arrows because its fused kernel replaced the axpy-plus-dot
-composition it used to be. `rotg` and copy/swap/rot/nrm2/asum/iamax
+outgoing arrows because its fused kernel does the work the
+axpy-plus-dot composition would otherwise do. `rotg` and copy/swap/rot/nrm2/asum/iamax
 are leaves: nothing in the crate calls them; consumers do.

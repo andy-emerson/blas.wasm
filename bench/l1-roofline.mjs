@@ -1,4 +1,4 @@
-// Level-1 roofline scoreboard for the shipped BLAS layer (blas/ crate):
+// Level-1 roofline scoreboard for the shipped BLAS layer:
 // times each L1 function streaming the n×n state column-by-column and
 // scores achieved GB/s against the SAME-RUN bandwidth ceiling (triad),
 // per the re-derived success metric. Also verifies the cross-target
@@ -6,10 +6,10 @@
 // `cargo run --release --bin native l1-bits`) to require wasm bits to
 // match exactly.
 //
-// Lives beside the layer it measures (blas/bench). Build + run:
+// Lives in bench/, beside the layer it measures. Build + run:
 //   cargo build --release --target wasm32-unknown-unknown --lib
-//   cargo run --release --bin native l1-bits[-f32|-z] > bits.txt
-//   node l1-roofline.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm bits.txt [--f32|--c64]
+//   cargo run --release --bin native l1-bits[-f32|-z|-c] > bits.txt
+//   node l1-roofline.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm bits.txt [--f32|--c64|--c32]
 import { readFileSync } from 'node:fs';
 
 const wasmPath = process.argv[2];

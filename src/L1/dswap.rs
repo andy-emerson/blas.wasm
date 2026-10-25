@@ -2,7 +2,7 @@
 //!
 //! Implementation: elementwise stream (2 lanes, 2× unrolled). Ported
 //! from the raced variant — SIMD beat the auto-vectorized plain loop
-//! 1.15–1.33× on all three runner draws (the July 2026 campaign record (not in this tree; STATUS.md),
+//! 1.15–1.33× on all three runner draws (campaign record,
 //! step 2).
 //!
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.

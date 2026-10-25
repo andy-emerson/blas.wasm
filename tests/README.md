@@ -164,7 +164,7 @@ deliberately.
 Known limits of the probes, recorded honestly: the L2/L3 probe folds
 are dominated by their solve-safe diagonals (~5e4), so they are weak
 detectors of reduction-order changes below one ULP of the total
-(July 2026 campaign record, step 8; not in this tree, see
-`../STATUS.md`) — the per-routine replay tests above are the strong
+(campaign record step 8; `../STATUS.md`, "Not in this
+tree") — the per-routine replay tests above are the strong
 order locks; the probes' job is cross-target identity, which they
 gate hard.
