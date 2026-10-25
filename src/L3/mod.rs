@@ -86,10 +86,10 @@ pub(crate) use dsyrk::dsyrk_k;
 pub use dsyr2k::{dsyr2k, dsyr2k_work};
 #[allow(unused_imports)]
 pub(crate) use dsyr2k::dsyr2k_k;
-pub use dtrmm::{dtrmm, dtrmm_work};
+pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream};
 #[allow(unused_imports)]
 pub(crate) use dtrmm::{dtrmm_left_k, dtrmm_right_k};
-pub use dtrsm::{dtrsm, dtrsm_work};
+pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream};
 #[allow(unused_imports)]
 pub(crate) use dtrsm::{dtrsm_left_k, dtrsm_right_k};
 pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed};
@@ -104,10 +104,10 @@ pub(crate) use ssyrk::ssyrk_k;
 pub use ssyr2k::{ssyr2k, ssyr2k_work};
 #[allow(unused_imports)]
 pub(crate) use ssyr2k::ssyr2k_k;
-pub use strmm::{strmm, strmm_work};
+pub use strmm::{strmm, strmm_work, strmm_copy, strmm_copy_work, strmm_stream};
 #[allow(unused_imports)]
 pub(crate) use strmm::{strmm_left_k, strmm_right_k};
-pub use strsm::{strsm, strsm_work};
+pub use strsm::{strsm, strsm_work, strsm_copy, strsm_copy_work, strsm_stream};
 #[allow(unused_imports)]
 pub(crate) use strsm::{strsm_left_k, strsm_right_k};
 pub use zgemm::{zgemm, zgemm_work, zgemm_packed_work, zgemm_colaxpy, zgemm_packed};
@@ -122,10 +122,10 @@ pub(crate) use zherk::zherk_k;
 pub use zher2k::{zher2k, zher2k_work};
 #[allow(unused_imports)]
 pub(crate) use zher2k::zher2k_k;
-pub use ztrmm::{ztrmm, ztrmm_work};
+pub use ztrmm::{ztrmm, ztrmm_work, ztrmm_copy, ztrmm_copy_work, ztrmm_stream};
 #[allow(unused_imports)]
 pub(crate) use ztrmm::{ztrmm_left_k, ztrmm_right_k};
-pub use ztrsm::{ztrsm, ztrsm_work};
+pub use ztrsm::{ztrsm, ztrsm_work, ztrsm_copy, ztrsm_copy_work, ztrsm_stream};
 #[allow(unused_imports)]
 pub(crate) use ztrsm::{ztrsm_left_k, ztrsm_right_k};
 pub use cgemm::{cgemm, cgemm_work, cgemm_packed_work, cgemm_colaxpy, cgemm_packed};
@@ -140,10 +140,10 @@ pub(crate) use cherk::cherk_k;
 pub use cher2k::{cher2k, cher2k_work};
 #[allow(unused_imports)]
 pub(crate) use cher2k::cher2k_k;
-pub use ctrmm::{ctrmm, ctrmm_work};
+pub use ctrmm::{ctrmm, ctrmm_work, ctrmm_copy, ctrmm_copy_work, ctrmm_stream};
 #[allow(unused_imports)]
 pub(crate) use ctrmm::{ctrmm_left_k, ctrmm_right_k};
-pub use ctrsm::{ctrsm, ctrsm_work};
+pub use ctrsm::{ctrsm, ctrsm_work, ctrsm_copy, ctrsm_copy_work, ctrsm_stream};
 #[allow(unused_imports)]
 pub(crate) use ctrsm::{ctrsm_left_k, ctrsm_right_k};
 

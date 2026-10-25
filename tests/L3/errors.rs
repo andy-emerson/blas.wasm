@@ -117,7 +117,12 @@ fn symm_and_triangular_sides_size_a_by_side() {
 	let mut bb = b.clone();
 	assert_eq!(dtrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, m, n, 1.0, &a, 2, &mut bb, 2, &mut w), Ok(()));
 	assert_eq!(dtrsm(Side::Right, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, m, n, 1.0, &a, 2, &mut bb, 2, &mut w), Err(e("dtrsm", 9, ErrorKind::Argument)));
-	assert_eq!(dtrsm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, m, n, 1.0, &a, 2, &mut bb, 2, &mut w), Err(e("dtrsm", 3, ErrorKind::Unsupported)));
+	// the transposed forms: the stream candidate needs no workspace, the
+	// copy candidate's query is the square of op(A)'s order
+	assert_eq!(dtrsm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, m, n, 1.0, &a, 2, &mut bb, 2, &mut vec![f64::NAN; dtrsm_work(Side::Left, Trans::Trans, m, n)]), Ok(()));
+	assert_eq!(dtrsm_copy_work(Side::Left, m, n), m * m);
+	assert_eq!(dtrsm_copy_work(Side::Right, m, n), n * n);
+	assert_eq!(dtrmm_work(Side::Right, Trans::ConjTrans, 0, n), 0);
 	assert_eq!(dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::Unit, m, n, 1.0, &a, 2, &mut bb, 1, &mut w), Err(e("dtrmm", 11, ErrorKind::Argument)));
 	assert_eq!(dtrmm_work(Side::Left, Trans::NoTrans, m, n), 0);
 }

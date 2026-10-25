@@ -172,3 +172,56 @@ fn ztrmm_bit_replay_both_sides() {
 		}
 	}
 }
+
+#[test]
+fn ztrmm_transposed_candidates_equal_the_explicit_transpose_bitwise() {
+	// the definition of the flag: op(A) through `transa` is bit-identical
+	// to the no-transpose call on an explicitly transposed (conjugated)
+	// copy with the triangle flipped. Both candidates (copy, stream) and
+	// the routed wrapper, every side/uplo/diag, several shapes including
+	// row counts off the kernels' block sizes, workspace NaN-filled.
+	let mut rng = Lcg(0x7A11 + 5);
+	for (m, n) in [(1, 1), (2, 3), (3, 2), (4, 4), (5, 7), (7, 5), (8, 9), (9, 8), (17, 13), (33, 6), (6, 33), (64, 65)] {
+		for side in [Side::Left, Side::Right] {
+			let na = if side == Side::Left { m } else { n };
+			let (lda, ldb) = (na + 2, m + 1);
+			let a = rng.mat_c64(na, na, lda);
+			let b0 = rng.mat_c64(m, n, ldb);
+			for transa in [Trans::Trans, Trans::ConjTrans] {
+				// the explicit copy of op(A), at its own leading dimension
+				let (oa, lda2) = op_c64(&a, lda, na, na, transa);
+				for uplo in [Uplo::Upper, Uplo::Lower] {
+					let flipped = if uplo == Uplo::Upper { Uplo::Lower } else { Uplo::Upper };
+					for dg in [Diag::NonUnit, Diag::Unit] {
+						for alpha in [C64::new(0.9, -0.3), C64::ONE] {
+							let mut x1 = b0.clone();
+							ztrmm(side, flipped, Trans::NoTrans, dg, m, n, alpha, &oa, lda2, &mut x1, ldb, &mut []).unwrap();
+							let mut x2 = b0.clone();
+							let mut w = vec![C64::new(f64::NAN, f64::NAN); ztrmm_copy_work(side, m, n)];
+							ztrmm_copy(side, uplo, transa, dg, m, n, alpha, &a, lda, &mut x2, ldb, &mut w);
+							let mut x3 = b0.clone();
+							ztrmm_stream(side, uplo, transa, dg, m, n, alpha, &a, lda, &mut x3, ldb);
+							let mut x4 = b0.clone();
+							let mut w4 = vec![C64::new(f64::NAN, f64::NAN); ztrmm_work(side, transa, m, n)];
+							ztrmm(side, uplo, transa, dg, m, n, alpha, &a, lda, &mut x4, ldb, &mut w4).unwrap();
+							for j in 0..n {
+								for i in 0..m {
+									let x2v = x2[j * ldb + i];
+									let x3v = x3[j * ldb + i];
+									let x4v = x4[j * ldb + i];
+									for (which, x2) in [("copy", &x2), ("stream", &x3), ("routed", &x4)] {
+										assert!(
+											bits_eq_c(x1[j * ldb + i], x2[j * ldb + i]),
+											"ztrmm {which} vs explicit transpose {side:?} {uplo:?} {transa:?} {dg:?} m={m} n={n} ({i},{j})"
+										);
+									}
+									let _ = (x2v, x3v, x4v);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}

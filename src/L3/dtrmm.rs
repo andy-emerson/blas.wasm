@@ -34,10 +34,11 @@ use crate::L2::dtrmv_k;
 /// `op(A)` is `A`, `Aᵀ` or `Aᴴ` per `transa`. `work` is scratch of at
 /// least [`dtrmm_work`]`(side, transa, m, n)` elements.
 ///
-/// The transposed forms are not built yet (`STATUS.md`, todo S1):
-/// `transa` other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
-/// argument 3.
+/// The transposed forms are defined as the no-transpose form on an
+/// explicit transpose; `ConjTrans` is `Trans` for a real matrix, and two
+/// candidates compute them, [`dtrmm_copy`] and [`dtrmm_stream`],
+/// both bit-identical to that definition; which one this routine routes
+/// to per side is the race's verdict (`STATUS.md`, D3).
 ///
 /// Errors: a leading dimension below its row count (arguments 9, 11);
 /// `a` or `b` shorter than its extent (arguments 8, 10); `work` shorter
@@ -45,9 +46,6 @@ use crate::L2::dtrmv_k;
 #[allow(clippy::too_many_arguments)]
 pub fn dtrmm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize, b: &mut [f64], ldb: usize, work: &mut [f64]) -> Result<(), Error> {
 	const R: &str = "dtrmm";
-	if transa != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 3));
-	}
 	let na = if side == Side::Left { m } else { n };
 	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
 	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
@@ -55,18 +53,32 @@ pub fn dtrmm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
-	match side {
-		Side::Left => dtrmm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
-		Side::Right => dtrmm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+	match (side, transa) {
+		(Side::Left, Trans::NoTrans) => dtrmm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+		(Side::Right, Trans::NoTrans) => dtrmm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb, Trans::NoTrans),
+		(Side::Left, _) if LEFT_T_STREAM => dtrmm_stream(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb),
+		(Side::Right, _) if RIGHT_T_STREAM => dtrmm_stream(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb),
+		_ => dtrmm_copy(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb, work),
 	}
 	Ok(())
 }
 
-/// Elements of scratch [`dtrmm`] needs for these dimensions. Zero: no form
-/// built so far uses scratch.
-pub fn dtrmm_work(_side: Side, _transa: Trans, _m: usize, _n: usize) -> usize {
-	0
+/// Elements of scratch [`dtrmm`] needs for these flags and dimensions:
+/// zero for the no-transpose forms and for a transposed form routed to
+/// the streaming candidate; the `na×na` copy ([`dtrmm_copy_work`])
+/// where the copy candidate is routed.
+pub fn dtrmm_work(side: Side, transa: Trans, m: usize, n: usize) -> usize {
+	if m == 0 || n == 0 || transa == Trans::NoTrans {
+		return 0;
+	}
+	let stream = if side == Side::Left { LEFT_T_STREAM } else { RIGHT_T_STREAM };
+	if stream { 0 } else { dtrmm_copy_work(side, m, n) }
 }
+
+// Which candidate the transposed forms route to, per side (the race:
+// `STATUS.md`, decision D3). Both candidates stay exported and tested.
+const LEFT_T_STREAM: bool = true;
+const RIGHT_T_STREAM: bool = true;
 
 /// B ← αAB. A is m×m triangular, B is m×n.
 #[allow(clippy::too_many_arguments)]
@@ -158,9 +170,19 @@ pub(crate) fn dtrmm_right_k(
 	unit: bool,
 	b: &mut [f64],
 	bcs: usize,
+	op: Trans,
 ) {
 	check_mat(a.len(), n, n, acs);
 	check_mat(b.len(), m, n, bcs);
+	// `upper` and the accessor describe op(A): for a transposed op the
+	// stored triangle is the other one and the element roles swap
+	let at = |row: usize, col: usize| -> f64 {
+		if op == Trans::NoTrans {
+			a[col * acs + row]
+		} else {
+			a[row * acs + col]
+		}
+	};
 	// result column j = α·Σ_{k in triangle} a`[k,j]`·B_orig[:,k]. The
 	// column order (descending for upper, ascending for lower) touches
 	// each original column before anything overwrites it; groups of
@@ -174,19 +196,19 @@ pub(crate) fn dtrmm_right_k(
 	let col_ref =
 		|idx: usize| unsafe { core::slice::from_raw_parts(bp.add(idx * bcs) as *const f64, m) };
 	let do_col = |j: usize| {
-		let diag = if unit { 1.0 } else { a[j * acs + j] };
+		let diag = if unit { 1.0 } else { at(j, j) };
 		dscal(alpha * diag, col_mut(j));
 		let (lo, hi) = if upper { (0, j) } else { (j + 1, n) };
 		for k in lo..hi {
-			daxpy_k(alpha * a[j * acs + k], col_ref(k), col_mut(j));
+			daxpy_k(alpha * at(k, j), col_ref(k), col_mut(j));
 		}
 	};
 	let fan_out = |gs: usize, k: usize| {
 		let t = [
-			alpha * a[gs * acs + k],
-			alpha * a[(gs + 1) * acs + k],
-			alpha * a[(gs + 2) * acs + k],
-			alpha * a[(gs + 3) * acs + k],
+			alpha * at(k, gs),
+			alpha * at(k, gs + 1),
+			alpha * at(k, gs + 2),
+			alpha * at(k, gs + 3),
 		];
 		unsafe {
 			daxpy4(
@@ -208,10 +230,10 @@ pub(crate) fn dtrmm_right_k(
 			// in-group first, original descending order (sources still
 			// original when read)
 			for tc in (gs..gs + 4).rev() {
-				let diag = if unit { 1.0 } else { a[tc * acs + tc] };
+				let diag = if unit { 1.0 } else { at(tc, tc) };
 				dscal(alpha * diag, col_mut(tc));
 				for k in gs..tc {
-					daxpy_k(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
+					daxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
 				}
 			}
 			// out-of-group sources, one shared stream each
@@ -228,10 +250,10 @@ pub(crate) fn dtrmm_right_k(
 			// in-group ascending: per-element add order stays fully
 			// ascending — bit-identical to the plain sweep for lower
 			for tc in gs..gs + 4 {
-				let diag = if unit { 1.0 } else { a[tc * acs + tc] };
+				let diag = if unit { 1.0 } else { at(tc, tc) };
 				dscal(alpha * diag, col_mut(tc));
 				for k in tc + 1..gs + 4 {
-					daxpy_k(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
+					daxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
 				}
 			}
 			for k in gs + 4..n {
@@ -241,6 +263,329 @@ pub(crate) fn dtrmm_right_k(
 		}
 		for j in gs..n {
 			do_col(j);
+		}
+	}
+}
+
+/// Candidate for the transposed forms (`STATUS.md`, decision D3): op(A)
+/// is transposed into `work` and the no-transpose
+/// kernel runs on the copy with the triangle flipped, so the result is
+/// the explicit-copy definition itself. `work` needs
+/// [`dtrmm_copy_work`]`(side, m, n)` elements. Exported so the
+/// tests and the benchmarks can race it; it asserts rather than
+/// returning errors, and `transa` must not be `NoTrans`.
+#[allow(clippy::too_many_arguments)]
+pub fn dtrmm_copy(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize, b: &mut [f64], ldb: usize, work: &mut [f64]) {
+	assert!(transa != Trans::NoTrans, "dtrmm_copy: a transposed form only");
+	let na = if side == Side::Left { m } else { n };
+	check_mat(a.len(), na, na, lda);
+	assert!(work.len() >= na * na, "dtrmm_copy: workspace shorter than dtrmm_copy_work");
+	let ta = &mut work[..na * na];
+		super::transpose_into(a, lda, na, na, ta, |x| x);
+	let upper = !uplo.is_upper();
+	match side {
+		Side::Left => dtrmm_left_k(alpha, m, n, ta, na.max(1), upper, diag.is_unit(), b, ldb),
+		Side::Right => dtrmm_right_k(alpha, m, n, ta, na.max(1), upper, diag.is_unit(), b, ldb, Trans::NoTrans),
+	}
+}
+
+/// Elements of scratch [`dtrmm_copy`] needs: the `na×na` copy of
+/// op(A), `na` being `m` on the left and `n` on the right.
+pub fn dtrmm_copy_work(side: Side, m: usize, n: usize) -> usize {
+	let na = if side == Side::Left { m } else { n };
+	na * na
+}
+
+/// Candidate for the transposed forms (`STATUS.md`, decision D3): no
+/// copy; on the right the no-transpose kernel reads A through a
+/// transposed accessor (it only ever reads A as scalars), on the left
+/// `dtrmm_left_t_k` reduces down the stored columns. Bit-identical
+/// to [`dtrmm_copy`] (tested). Exported so the tests and the
+/// benchmarks can race it; it asserts rather than returning errors, and
+/// `transa` must not be `NoTrans`.
+#[allow(clippy::too_many_arguments)]
+pub fn dtrmm_stream(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize, b: &mut [f64], ldb: usize) {
+	assert!(transa != Trans::NoTrans, "dtrmm_stream: a transposed form only");
+	let upper = !uplo.is_upper();
+	match side {
+		Side::Left => dtrmm_left_t_k(alpha, m, n, a, lda, upper, diag.is_unit(), b, ldb),
+		Side::Right => dtrmm_right_k(alpha, m, n, a, lda, upper, diag.is_unit(), b, ldb, transa),
+	}
+}
+
+/// B ← α·op(A)·B with op(A) = Aᵀ, computed from the stored A
+/// without a copy: `upper` names op(A)'s triangle (stored A holds the
+/// other). Each element's arithmetic sequence is the lockstep
+/// dtrmv sweep's — the diagonal product first, then the products added one at a
+/// time down the stored column (ascending for upper, descending for
+/// lower), then the α scaling — so the result is bit-identical to
+/// [`dtrmm_left_k`] on an explicit transpose (tested). The four
+/// right-hand sides of a group ride the lanes, and rows go four at a
+/// time so one step loads four A values and four B values for sixteen
+/// multiply-adds; op(A)'s row l is stored column l, read contiguously.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn dtrmm_left_t_k(
+	alpha: f64,
+	m: usize,
+	n: usize,
+	a: &[f64],
+	acs: usize,
+	upper: bool,
+	unit: bool,
+	b: &mut [f64],
+	bcs: usize,
+) {
+	check_mat(a.len(), m, m, acs);
+	check_mat(b.len(), m, n, bcs);
+	let mut j = 0usize;
+	while j + 4 <= n {
+		let bp = b.as_mut_ptr();
+		let c: [*mut f64; 4] = [
+			unsafe { bp.add(j * bcs) },
+			unsafe { bp.add((j + 1) * bcs) },
+			unsafe { bp.add((j + 2) * bcs) },
+			unsafe { bp.add((j + 3) * bcs) },
+		];
+		unsafe { dtrmm_left_t4(m, a, acs, upper, unit, c) };
+		if alpha != 1.0 {
+			for u in 0..4 {
+				dscal(alpha, &mut b[(j + u) * bcs..(j + u) * bcs + m]);
+			}
+		}
+		j += 4;
+	}
+	while j < n {
+		let col = &mut b[j * bcs..j * bcs + m];
+		dtrmm_left_t1(m, a, acs, upper, unit, col);
+		if alpha != 1.0 {
+			dscal(alpha, col);
+		}
+		j += 1;
+	}
+}
+
+/// Four right-hand sides of [`dtrmm_left_t_k`] in lockstep.
+/// # Safety
+/// Each column pointer must be valid for `m` elements; the columns must
+/// not alias each other.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+unsafe fn dtrmm_left_t4(m: usize, a: &[f64], acs: usize, upper: bool, unit: bool, c: [*mut f64; 4]) {
+	use crate::lanes::F64x2;
+	let ap = a.as_ptr();
+	if upper {
+		let mut lb = 0usize;
+		while lb + 4 <= m {
+			let mut acc: [[F64x2; 2]; 4] = [[F64x2::pair(*c[0].add(lb), *c[1].add(lb)), F64x2::pair(*c[2].add(lb), *c[3].add(lb))], [F64x2::pair(*c[0].add(lb + 1), *c[1].add(lb + 1)), F64x2::pair(*c[2].add(lb + 1), *c[3].add(lb + 1))], [F64x2::pair(*c[0].add(lb + 2), *c[1].add(lb + 2)), F64x2::pair(*c[2].add(lb + 2), *c[3].add(lb + 2))], [F64x2::pair(*c[0].add(lb + 3), *c[1].add(lb + 3)), F64x2::pair(*c[2].add(lb + 3), *c[3].add(lb + 3))]];
+			let x: [[F64x2; 2]; 4] = acc;
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb) * acs + lb));
+				acc[0][0] = acc[0][0].mul(d);
+				acc[0][1] = acc[0][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 1) * acs + lb + 1));
+				acc[1][0] = acc[1][0].mul(d);
+				acc[1][1] = acc[1][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 2) * acs + lb + 2));
+				acc[2][0] = acc[2][0].mul(d);
+				acc[2][1] = acc[2][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 3) * acs + lb + 3));
+				acc[3][0] = acc[3][0].mul(d);
+				acc[3][1] = acc[3][1].mul(d);
+			}
+			let av = F64x2::splat(*ap.add((lb) * acs + lb + 1));
+			acc[0][0] = acc[0][0].add(av.mul(x[1][0]));
+			acc[0][1] = acc[0][1].add(av.mul(x[1][1]));
+			let av = F64x2::splat(*ap.add((lb) * acs + lb + 2));
+			acc[0][0] = acc[0][0].add(av.mul(x[2][0]));
+			acc[0][1] = acc[0][1].add(av.mul(x[2][1]));
+			let av = F64x2::splat(*ap.add((lb + 1) * acs + lb + 2));
+			acc[1][0] = acc[1][0].add(av.mul(x[2][0]));
+			acc[1][1] = acc[1][1].add(av.mul(x[2][1]));
+			let av = F64x2::splat(*ap.add((lb) * acs + lb + 3));
+			acc[0][0] = acc[0][0].add(av.mul(x[3][0]));
+			acc[0][1] = acc[0][1].add(av.mul(x[3][1]));
+			let av = F64x2::splat(*ap.add((lb + 1) * acs + lb + 3));
+			acc[1][0] = acc[1][0].add(av.mul(x[3][0]));
+			acc[1][1] = acc[1][1].add(av.mul(x[3][1]));
+			let av = F64x2::splat(*ap.add((lb + 2) * acs + lb + 3));
+			acc[2][0] = acc[2][0].add(av.mul(x[3][0]));
+			acc[2][1] = acc[2][1].add(av.mul(x[3][1]));
+			for i in lb + 4..m {
+				let t0 = F64x2::pair(*c[0].add(i), *c[1].add(i));
+				let t1 = F64x2::pair(*c[2].add(i), *c[3].add(i));
+				for (v, row) in acc.iter_mut().enumerate() {
+					let av = F64x2::splat(*ap.add((lb + v) * acs + i));
+					row[0] = row[0].add(av.mul(t0));
+					row[1] = row[1].add(av.mul(t1));
+				}
+			}
+			*c[0].add(lb) = acc[0][0].lane0();
+			*c[1].add(lb) = acc[0][0].lane1();
+			*c[2].add(lb) = acc[0][1].lane0();
+			*c[3].add(lb) = acc[0][1].lane1();
+			*c[0].add(lb + 1) = acc[1][0].lane0();
+			*c[1].add(lb + 1) = acc[1][0].lane1();
+			*c[2].add(lb + 1) = acc[1][1].lane0();
+			*c[3].add(lb + 1) = acc[1][1].lane1();
+			*c[0].add(lb + 2) = acc[2][0].lane0();
+			*c[1].add(lb + 2) = acc[2][0].lane1();
+			*c[2].add(lb + 2) = acc[2][1].lane0();
+			*c[3].add(lb + 2) = acc[2][1].lane1();
+			*c[0].add(lb + 3) = acc[3][0].lane0();
+			*c[1].add(lb + 3) = acc[3][0].lane1();
+			*c[2].add(lb + 3) = acc[3][1].lane0();
+			*c[3].add(lb + 3) = acc[3][1].lane1();
+			lb += 4;
+		}
+		for l in lb..m {
+			let mut acc: [F64x2; 2] = [F64x2::pair(*c[0].add(l), *c[1].add(l)), F64x2::pair(*c[2].add(l), *c[3].add(l))];
+			if !unit {
+				let d = F64x2::splat(*ap.add(l * acs + l));
+				acc[0] = acc[0].mul(d);
+				acc[1] = acc[1].mul(d);
+			}
+			for i in l + 1..m {
+				let t0 = F64x2::pair(*c[0].add(i), *c[1].add(i));
+				let t1 = F64x2::pair(*c[2].add(i), *c[3].add(i));
+				let av = F64x2::splat(*ap.add(l * acs + i));
+				acc[0] = acc[0].add(av.mul(t0));
+				acc[1] = acc[1].add(av.mul(t1));
+			}
+			*c[0].add(l) = acc[0].lane0();
+			*c[1].add(l) = acc[0].lane1();
+			*c[2].add(l) = acc[1].lane0();
+			*c[3].add(l) = acc[1].lane1();
+		}
+	} else {
+		let r = m % 4;
+		let mut lb = m;
+		while lb >= r + 4 {
+			lb -= 4;
+			let mut acc: [[F64x2; 2]; 4] = [[F64x2::pair(*c[0].add(lb), *c[1].add(lb)), F64x2::pair(*c[2].add(lb), *c[3].add(lb))], [F64x2::pair(*c[0].add(lb + 1), *c[1].add(lb + 1)), F64x2::pair(*c[2].add(lb + 1), *c[3].add(lb + 1))], [F64x2::pair(*c[0].add(lb + 2), *c[1].add(lb + 2)), F64x2::pair(*c[2].add(lb + 2), *c[3].add(lb + 2))], [F64x2::pair(*c[0].add(lb + 3), *c[1].add(lb + 3)), F64x2::pair(*c[2].add(lb + 3), *c[3].add(lb + 3))]];
+			let x: [[F64x2; 2]; 4] = acc;
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb) * acs + lb));
+				acc[0][0] = acc[0][0].mul(d);
+				acc[0][1] = acc[0][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 1) * acs + lb + 1));
+				acc[1][0] = acc[1][0].mul(d);
+				acc[1][1] = acc[1][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 2) * acs + lb + 2));
+				acc[2][0] = acc[2][0].mul(d);
+				acc[2][1] = acc[2][1].mul(d);
+			}
+			if !unit {
+				let d = F64x2::splat(*ap.add((lb + 3) * acs + lb + 3));
+				acc[3][0] = acc[3][0].mul(d);
+				acc[3][1] = acc[3][1].mul(d);
+			}
+			let av = F64x2::splat(*ap.add((lb + 3) * acs + lb + 2));
+			acc[3][0] = acc[3][0].add(av.mul(x[2][0]));
+			acc[3][1] = acc[3][1].add(av.mul(x[2][1]));
+			let av = F64x2::splat(*ap.add((lb + 2) * acs + lb + 1));
+			acc[2][0] = acc[2][0].add(av.mul(x[1][0]));
+			acc[2][1] = acc[2][1].add(av.mul(x[1][1]));
+			let av = F64x2::splat(*ap.add((lb + 3) * acs + lb + 1));
+			acc[3][0] = acc[3][0].add(av.mul(x[1][0]));
+			acc[3][1] = acc[3][1].add(av.mul(x[1][1]));
+			let av = F64x2::splat(*ap.add((lb + 1) * acs + lb));
+			acc[1][0] = acc[1][0].add(av.mul(x[0][0]));
+			acc[1][1] = acc[1][1].add(av.mul(x[0][1]));
+			let av = F64x2::splat(*ap.add((lb + 2) * acs + lb));
+			acc[2][0] = acc[2][0].add(av.mul(x[0][0]));
+			acc[2][1] = acc[2][1].add(av.mul(x[0][1]));
+			let av = F64x2::splat(*ap.add((lb + 3) * acs + lb));
+			acc[3][0] = acc[3][0].add(av.mul(x[0][0]));
+			acc[3][1] = acc[3][1].add(av.mul(x[0][1]));
+			let mut i = lb;
+			while i > 0 {
+				i -= 1;
+				let t0 = F64x2::pair(*c[0].add(i), *c[1].add(i));
+				let t1 = F64x2::pair(*c[2].add(i), *c[3].add(i));
+				for (v, row) in acc.iter_mut().enumerate() {
+					let av = F64x2::splat(*ap.add((lb + v) * acs + i));
+					row[0] = row[0].add(av.mul(t0));
+					row[1] = row[1].add(av.mul(t1));
+				}
+			}
+			*c[0].add(lb) = acc[0][0].lane0();
+			*c[1].add(lb) = acc[0][0].lane1();
+			*c[2].add(lb) = acc[0][1].lane0();
+			*c[3].add(lb) = acc[0][1].lane1();
+			*c[0].add(lb + 1) = acc[1][0].lane0();
+			*c[1].add(lb + 1) = acc[1][0].lane1();
+			*c[2].add(lb + 1) = acc[1][1].lane0();
+			*c[3].add(lb + 1) = acc[1][1].lane1();
+			*c[0].add(lb + 2) = acc[2][0].lane0();
+			*c[1].add(lb + 2) = acc[2][0].lane1();
+			*c[2].add(lb + 2) = acc[2][1].lane0();
+			*c[3].add(lb + 2) = acc[2][1].lane1();
+			*c[0].add(lb + 3) = acc[3][0].lane0();
+			*c[1].add(lb + 3) = acc[3][0].lane1();
+			*c[2].add(lb + 3) = acc[3][1].lane0();
+			*c[3].add(lb + 3) = acc[3][1].lane1();
+		}
+		for l in (0..r).rev() {
+			let mut acc: [F64x2; 2] = [F64x2::pair(*c[0].add(l), *c[1].add(l)), F64x2::pair(*c[2].add(l), *c[3].add(l))];
+			if !unit {
+				let d = F64x2::splat(*ap.add(l * acs + l));
+				acc[0] = acc[0].mul(d);
+				acc[1] = acc[1].mul(d);
+			}
+			let mut i = l;
+			while i > 0 {
+				i -= 1;
+				let t0 = F64x2::pair(*c[0].add(i), *c[1].add(i));
+				let t1 = F64x2::pair(*c[2].add(i), *c[3].add(i));
+				let av = F64x2::splat(*ap.add(l * acs + i));
+				acc[0] = acc[0].add(av.mul(t0));
+				acc[1] = acc[1].add(av.mul(t1));
+			}
+			*c[0].add(l) = acc[0].lane0();
+			*c[1].add(l) = acc[0].lane1();
+			*c[2].add(l) = acc[1].lane0();
+			*c[3].add(l) = acc[1].lane1();
+		}
+	}
+}
+
+/// One right-hand side of [`dtrmm_left_t_k`], scalar, the same
+/// per-element sequence.
+fn dtrmm_left_t1(m: usize, a: &[f64], acs: usize, upper: bool, unit: bool, x: &mut [f64]) {
+	if upper {
+		for l in 0..m {
+			let mut acc = x[l];
+			if !unit {
+				acc *= a[l * acs + l];
+			}
+			for i in l + 1..m {
+				acc += a[l * acs + i] * x[i];
+			}
+			x[l] = acc;
+		}
+	} else {
+		let mut l = m;
+		while l > 0 {
+			l -= 1;
+			let mut acc = x[l];
+			if !unit {
+				acc *= a[l * acs + l];
+			}
+			let mut i = l;
+			while i > 0 {
+				i -= 1;
+				acc += a[l * acs + i] * x[i];
+			}
+			x[l] = acc;
 		}
 	}
 }
