@@ -1,7 +1,6 @@
 //! The argument contract of the Level 3 wrappers: every checkable
 //! precondition comes back as an `Error` naming the routine and the
-//! argument position, nothing is written when it does, and forms not
-//! built yet say so rather than computing something else.
+//! argument position, and nothing is written when it does.
 use blas_wasm::L3::*;
 use blas_wasm::{Diag, Error, ErrorKind, Side, Trans, Uplo, C64};
 

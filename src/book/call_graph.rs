@@ -12,10 +12,13 @@
 //! nodes: `dot` splits into `dotu` and `dotc`, `ger` into `geru` and
 //! `gerc`, `gemv` gains the conjugate-transpose form `gemv_c`, and the
 //! symmetric family becomes Hermitian (`hemv`, `her`, `her2`, `hemm`,
-//! `herk`, `her2k`). Six complex Level 1 routines are one-line
-//! delegations onto the same-precision real routine over the
-//! interleaved view (copy, swap, the real rotation, the real-α scale,
-//! nrm2, asum) and are not nodes of their own.
+//! `herk`, `her2k`) and exists a second time unconjugated as the
+//! complex symmetric `symm`, `syrk` and `syr2k`, with the same edges
+//! as the real ones. The complex-sine rotation `rot` (`zrot`) is a
+//! node of its own with no outgoing edge. Six complex Level 1 routines
+//! are one-line delegations onto the same-precision real routine over
+//! the interleaved view (copy, swap, the real rotation, the real-α
+//! scale, nrm2, asum) and are not nodes of their own.
 //!
 //! ## What Level 3 calls
 //!

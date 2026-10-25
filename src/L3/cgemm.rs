@@ -1,17 +1,19 @@
 //! `cgemm` — complex matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched:
-//! 4-column fused column-caxpy (`kernels::caxpy4`) below 8 MB of A,
-//! BLIS-style packed-panel 4×4 complex register tile at and above —
-//! the only zone where the packed shape measured a win (+12% at
-//! 1024³, two runner draws unanimous; 256³–512³ and deep-K were
-//! noise, so col4 keeps them). The plain cgemv-per-column loop stays
-//! as `cgemm_colaxpy`, the raced-and-bit-checked reference; all
-//! shapes are bit-for-bit identical, per-element sequence βC then
-//! ascending k. Transposed or conjugated operands
-//! (conjugation an exact sign flip) are packed from a transposed read
-//! above the packed threshold (`cgemm_packed_op`) and copied into the
-//! workspace below it (`cgemm_copy_op`), per the race.
+//! Implementation: a 4-column fused column-caxpy (`kernels::caxpy4`)
+//! below 8 MB of A and a BLIS-style packed-panel 4×4 complex register
+//! tile at and above. A transposed or conjugated A (conjugation an
+//! exact sign flip) is packed from a transposed read above the packed
+//! threshold (`cgemm_packed_op`); a transposed B with A untransposed,
+//! and every transposed operand below the threshold, is copied into
+//! the workspace first (`cgemm_copy_op`), per the race in
+//! `bench/README.md`, where the B-only pack lost at every size. The
+//! plain cgemv-per-column loop stays as `cgemm_colaxpy`, the
+//! raced-and-bit-checked reference; all shapes are bit-for-bit
+//! identical, per-element sequence βC then ascending k. Measured: the
+//! packed shape wins only at and above 8 MB (+12% at 1024³, two runner
+//! draws unanimous; 256³–512³ and deep-K were noise, so col4 keeps
+//! them).
 
 use super::check_mat;
 use crate::{Error, Trans};
@@ -379,13 +381,14 @@ unsafe fn ctile_4x4_packed(
 	}
 }
 
-/// The other candidate for the transposed forms (`STATUS.md`, decision
-/// D3): a transposed operand is transposed (and conjugated) into `work`
+/// The other candidate for the transposed forms (decision D3 in
+/// `DESIGN.md`; the race in `bench/README.md`): a transposed operand is transposed (and conjugated) into `work`
 /// with `transpose_into` and the product then runs the size-dispatched
 /// no-transpose shapes on the copy, so every flag combination is the
-/// explicit-copy definition itself. The netlib wrapper routes it below
-/// the packed threshold, where the two candidates coincide; above it the
-/// race chose [`cgemm_packed_op`]. `work` needs [`cgemm_copy_op_work`]
+/// explicit-copy definition itself. The netlib wrapper routes it for
+/// every call below the packed threshold and, above it, whenever only
+/// B is transposed (where the race chose the copy) or neither operand
+/// is; a transposed A above the threshold goes to [`cgemm_packed_op`]. `work` needs [`cgemm_copy_op_work`]
 /// elements. Exported so the benchmarks can race it; it asserts rather
 /// than returning errors.
 #[allow(clippy::too_many_arguments)]

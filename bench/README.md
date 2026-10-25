@@ -14,9 +14,9 @@ name the GitHub Actions runs they came from.
 Timing runs in the wasm runtime on the reference CI machines. Score =
 **% of the machine's same-run measured ceiling**: Levels 1–2 against
 the fastest same-run memory stream (GB/s), Level 3 against the
-same-run register-resident arithmetic peak (GFLOP/s) — per the
-re-derived success metric (distance from the ceiling; scipy/faer are
-market comparisons only). Every figure is the range across **two
+same-run register-resident arithmetic peak (GFLOP/s); the success
+metric is distance from the ceiling (scipy/faer are market
+comparisons only). Every figure is the range across **two
 independent runner draws**.
 
 ### Level 1 (n = 2048, % of fastest same-run stream)
@@ -64,7 +64,7 @@ per-element scalar rescan — recorded lever).
 than the single-column shape on both draws (runs
 29705606221/29705603966); its % range spans one normal-class and one
 slow-class machine draw. The same grouping lost for c32 (~2% slower,
-both draws, overruling the dev container's prediction), so chemv
+both draws), so chemv
 keeps the single-column pass; its 12% marks the c32 hemv gap honestly:
 at two complexes per register the extra blend work costs more than
 the saved traffic. The remaining recorded levers here are the i*amax
@@ -120,9 +120,13 @@ predecessor repository's `gemm-tune-ab.mjs` — pre-packed; packed adds 1.24–1
 1.08–1.33× on top); cgemm 3.11–3.67× at every size including 128,
 unanimous (campaign record step 13, the predecessor repository's
 `cplx-gemm-ab.mjs` — conservative against us: the blas rows do the full αAB+βC blend
-where faer's row is a plain replace). The packed-vs-incumbent race
-itself: `packed-gemm-ab.mjs`, runs 29720778259/29720782633, full
-tables in campaign record step 14.
+where faer's row is a plain replace). The packed race itself:
+`packed-gemm-ab.mjs`, runs 29720778259/29720782633, full tables in
+campaign record step 14. The script now calls the 4-column fused
+shape (`*gemm_col4`) and the packed shape directly with the workspace
+hoisted out of the timed call, so a re-run races the two shapes and
+not the routed wrapper against itself; the recorded verdict predates
+that change and stands until a re-run.
 
 ### The transposed-form races (decision D3)
 
@@ -134,12 +138,7 @@ or `pack ÷ copy` (gemm) wall time, min-of-iters, the range across the
 two draws; `copy` is the operand transposed into the workspace ahead
 of the existing kernel. Both candidates are called directly and take
 their workspace from the bench's setup state, grown on the warmup
-call, so no allocation lands inside a timed call (an earlier pair of
-draws, runs 40208127781/40208130046 and 40208724791/40208727304, had
-charged the copy a zero-filling allocation and, for gemm, raced the
-wrapper after it already routed the pack; they are superseded, and
-every routing they chose survived the re-run except c32 gemm's B-only
-form).
+call, so no allocation lands inside a timed call.
 
 **trmm/trsm** (`tri-t-ab.mjs`, runs 40212210771 / 40212213162;
 `stream` = the no-copy candidate: a transposed accessor on the right,
@@ -205,7 +204,9 @@ runner, beside this module on Node on the same runner and the same
 shapes (`bench/b0/b0.c`, `bench/b0-rows.mjs`, the `b0` suite of
 `bench.yml`; runs 40213117656 / 40213120395, GFLOP/s, the range across
 the two draws; flop counts gemm 2n³, symm 2n³, syrk/trmm/trsm n³,
-complex ×4). The native libraries run AVX2 or AVX-512 with fused
+complex ×4; the blas.wasm gemm rows were taken with the workspace
+allocated inside the timed call, since hoisted, a cost under 1% of a
+512³ call). The native libraries run AVX2 or AVX-512 with fused
 multiply-add; this module runs 128-bit lanes without it, so the
 instruction set alone caps it at roughly a quarter of their peak per
 core (see "What's measured how").

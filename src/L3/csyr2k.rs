@@ -56,7 +56,7 @@ pub fn csyr2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C32, a: &[C32
 	}
 	// op(A) and op(B) are materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
-	// the unflagged call on an explicit copy (tested); conjugation is an exact sign flip
+	// the unflagged call on an explicit copy (tested)
 	let (work, a, lda) = if trans == Trans::NoTrans {
 		(work, a, lda)
 	} else {

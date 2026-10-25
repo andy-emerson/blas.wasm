@@ -1,6 +1,7 @@
 //! The flag arguments of the netlib interface as Rust enums, with
-//! netlib meanings. The CBLAS projection maps each variant onto the
-//! standard `CBLAS_*` constant one to one.
+//! netlib meanings. The CBLAS projection (todo C in `STATUS.md`) will
+//! map each variant onto the standard `CBLAS_*` constant one to one;
+//! today's flat module takes `u32` flags.
 
 /// Whether an operand is used as itself, transposed, or conjugate
 /// transposed (`TRANS` in netlib: `'N'`, `'T'`, `'C'`).

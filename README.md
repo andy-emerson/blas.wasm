@@ -3,8 +3,9 @@
 blas.wasm is a BLAS (the Basic Linear Algebra Subprograms: vector,
 matrix–vector and matrix–matrix routines) written in Rust for
 WebAssembly: hand-written SIMD on every path, zero dependencies, zero
-imports, and results that are bit-identical across native and every
-wasm engine. Today the tree ships the Rust crate `blas-wasm` and a standalone
+imports, and finite results that are bit-identical between native and
+wasm (verified on Node; every engine that follows the wasm
+specification's deterministic float semantics gets the same bits). Today the tree ships the Rust crate `blas-wasm` and a standalone
 `blas.wasm` module attached to each tagged GitHub release; the npm
 package that will wrap the module is open work, and nothing is
 published to a registry (`STATUS.md`). It is a BLAS and nothing more: the
@@ -55,20 +56,18 @@ review (`AGENTS.md`) judges it against that reader.
   type. Every tuned shape is bit-identical to its plain column-axpy
   reference except where an elimination order forbids it; those two
   cases are documented in their files and mirrored by their tests.
-- **Every flag form.** Level 2: gemv's N/T/C, and the transposed trmv
-  and trsv as dot-fold reductions down the stored columns. Level 3:
-  `transa`/`transb` on gemm, `trans` on the syrk family, `transa` on
-  trmm and trsm, each bit-identical to the
-  no-transpose call on an explicit transpose and each the winner of a
-  two-draw runner race between candidates (`bench/README.md`): large
-  gemm packs the transposed operand from a transposed read, trmm/trsm
-  read the stored matrix through transposed kernels on the right and
-  in the real types on the left, and the complex left side and the
-  rest copy the operand into the caller's workspace first.
-- **Zero runtime dependencies, zero allocation.** `no_std` without
-  `alloc`: the one routine family that needs scratch (gemm above its
-  packed threshold) takes it from the caller, sized by a query. The
-  four math entry points the layer needs are vendored in
+- **Every flag form.** `Trans`, `Side`, `Uplo` and `Diag` on every
+  routine that has them, in all four types. Each transposed form is
+  bit-identical to the no-transpose call on an explicit transpose;
+  some transposed forms need scratch, which the routine's `*_work`
+  query reports. The transposed trmv and trsv reduce with the dot
+  kernels' fold, a documented rounding order of their own.
+- **Zero runtime dependencies; the crate never allocates.** `no_std`
+  without `alloc`: gemm, the syrk family, trmm and trsm take a
+  trailing `work` slice sized by their `*_work` query, which is zero
+  for every no-transpose call below gemm's packed threshold and for
+  the transposed forms that need no copy, so an empty slice is often
+  enough. The four math entry points the layer needs are vendored in
   `src/math.rs` and cross-checked bit for bit against libm (a
   dev-dependency only) on every CI run.
 - **Bit-identical native ↔ wasm** for finite results (NaN sign and
@@ -78,17 +77,18 @@ review (`AGENTS.md`) judges it against that reader.
   every flag form included.
 - **The module.** `abi/` wraps every routine in a flat C ABI (the
   interim argument order, to be replaced by CBLAS names and order in
-  todo C) and compiles to the standalone `blas.wasm` (~290 KB, 126 routines plus
-  `wasm_alloc`/`wasm_free`, raw wasm, zero imports); conventions in
+  todo C) and compiles to the standalone `blas.wasm` (~285 KB, raw
+  wasm, zero imports; 133 exports, asserted by the gate: 126 routines,
+  `wasm_alloc`/`wasm_free`, the four error-slot exports and the
+  memory); conventions in
   `abi/src/lib.rs`, smoke test `abi/check.mjs`, attached to the
   GitHub release for each tag by the release workflow. Rust consumers
   depend on the crate instead (same code, cross-crate inlining, no
   ABI boundary).
 - **Measured against the machine's ceilings**, two runner draws per
   verdict; the scoreboard and the method are in `bench/README.md`.
-  Verdicts that lost are recorded where they lost: the fused
-  single-pass iamax (its module docs), the 4-column hemv grouping for
-  c32 (`src/L2/chemv.rs`; it won for c64 and ships there).
+  Verdicts that lost are recorded where they lost (`DESIGN.md`,
+  "Decisions closed"; the losing candidates stay exported).
 
 ## What is not built
 
@@ -114,8 +114,8 @@ character flags as enums (`Trans`, `Side`, `Uplo`, `Diag`) and the
 strides `incx`/`incy` not yet present. Every routine that checks a
 precondition returns `Result<(), Error>`; an `Error` names the routine
 and the position of the offending argument, and nothing is written when
-one is returned. Routines that pack (gemm above its packed threshold)
-take a caller-provided scratch slice sized by their `*_work` query. The
+one is returned. gemm, the syrk family, trmm and trsm take a trailing
+scratch slice sized by their `*_work` query (often zero). The
 `daxpy` chapter in the crate documentation carries the same example,
 compiled and run by `cargo test`.
 
@@ -138,11 +138,8 @@ assert_eq!(c, [19.0, 43.0, 22.0, 50.0]); // [[19, 22], [43, 50]]
 The `dgemm` argument order is netlib's, `(transa, transb, m, n, k,
 alpha, a, lda, b, ldb, beta, c, ldc)`, plus the trailing `work`; each
 routine's own signature, error positions and rounding contract are in
-its module documentation. Every Level 3 flag form is built; a
-transposed form is bit-identical to the no-transpose call on an
-explicit transpose, and the work query counts whatever scratch the
-form routed needs. The transposed trmv and trsv reduce with the dot
-kernels' fold, a documented rounding order of their own.
+its module documentation; the work query counts whatever scratch the
+flag form needs.
 
 **From JavaScript, with the raw module.** `blas.wasm` has no imports,
 so it instantiates with an empty import object. Arguments are flat
@@ -189,7 +186,7 @@ why) and the per-routine table live in `tests/README.md`.
 **Performance — `bench/` in this crate**: the score is **distance
 from the machine's measured ceiling** — streaming ops against the
 bandwidth ceiling, multiply-class ops against the arithmetic peak —
-per the re-derived success metric, with same-machine interleaved A/B
+with same-machine interleaved A/B
 rows and the verdict-stability rule (two runner draws per claim; the
 dev container is iteration only). The harness is self-contained;
 method and current scoreboard: `bench/README.md`. The market

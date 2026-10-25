@@ -761,16 +761,18 @@ pub(crate) unsafe fn zaxpy_dotc4(
 	]
 }
 
-/// Fused symmetric (unconjugated) column pass — `zaxpy_dotc` with the plain `zdotu` product form, for `zsymm`'s left side: one load of `a` per element serves both
-/// halves of the Hermitian update — `y[i]` += t·`a[i]` (elementwise) and
-/// acc += conj(`a[i]`)·`x[i]` (reduction, two register accumulators).
-/// The conjugated product is dup0(a)·x + neg1(dup1(a)·swap(x)):
-/// lane0 = a.re·x.re + a.im·x.im, lane1 = a.re·x.im − a.im·x.re —
-/// bit-exactly `a.conj() * x` in the canonical order. Returns the
-/// accumulated dot part. Fold order (acc0+acc1, then scalar tail)
-/// differs from a sequential loop — zhemv is bounds-tested, not
-/// bit-locked, and determinism holds through the lane emulation as
-/// everywhere else.
+/// Fused symmetric (unconjugated) column pass, `zaxpy_dotc` with the
+/// plain `zdotu` product form, for `zsymm`'s left side: one load of
+/// `a` per element serves both halves of the symmetric update —
+/// `y[i]` += t·`a[i]` (elementwise) and acc += `a[i]`·`x[i]`
+/// (reduction, two register accumulators). The unconjugated product
+/// is dup0(a)·x + neg0(dup1(a)·swap(x)): lane0 = a.re·x.re − a.im·x.im,
+/// lane1 = a.re·x.im + a.im·x.re — bit-exactly `a * x` in the
+/// canonical order. Returns the accumulated dot part. Fold order
+/// (acc0+acc1, then scalar tail) differs from a sequential loop —
+/// zsymm's left side is bounds-tested, not bit-locked, and determinism
+/// holds through the lane emulation as everywhere else. Not raced:
+/// it inherits the shape zhemv raced.
 ///
 /// # Safety
 /// `a`, `x`, `y` must each be valid for `len` C64s; `y` must not
@@ -817,12 +819,13 @@ pub(crate) unsafe fn zaxpy_dotu(
 	s
 }
 
-/// Four fused unconjugated column passes (`zaxpy_dotc4` with the `zdotu` product form, for `zsymm`'s left side) sharing one stream over x and y
-/// (raced and shipped): `y[i]` += Σᵤ tᵤ·`aᵤ[i]`
-/// (accumulated in u order into the loaded y value) while each
-/// accᵤ += conj(`aᵤ[i]`)·`x[i]`. One y load/store and one x load per
-/// complex serve four columns — the daxpy_dot4 shape at complex
-/// lane geometry.
+/// Four fused unconjugated column passes (`zaxpy_dotc4` with the
+/// `zdotu` product form, for `zsymm`'s left side) sharing one stream
+/// over x and y: `y[i]` += Σᵤ tᵤ·`aᵤ[i]` (accumulated in u order into
+/// the loaded y value) while each accᵤ += `aᵤ[i]`·`x[i]`. One y
+/// load/store and one x load per complex serve four columns — the
+/// daxpy_dot4 shape at complex lane geometry, inherited from the
+/// grouping zhemv raced; not raced on its own.
 ///
 /// # Safety
 /// All six array pointers must be valid for `len` C64s; `y` must not
@@ -872,12 +875,14 @@ pub(crate) unsafe fn zaxpy_dotu4(
 	]
 }
 
-/// Fused unconjugated column pass (`caxpy_dotc` with the `cdotu` product form, for `csymm`'s left side): `y[i]` += t·`a[i]` while acc += conj(`a[i]`)·`x[i]`
-/// — the c32 twin of `zaxpy_dotc` (conjugated product =
-/// dup_even(a)·x + neg_odd(dup_odd(a)·swap_pairs(x)), bit-exactly
-/// `a.conj() * x` per complex). Returns the accumulated dot part;
+/// Fused unconjugated column pass (`caxpy_dotc` with the `cdotu`
+/// product form, for `csymm`'s left side): `y[i]` += t·`a[i]` while
+/// acc += `a[i]`·`x[i]` — the c32 twin of `zaxpy_dotu` (unconjugated
+/// product = dup_even(a)·x + neg_even(dup_odd(a)·swap_pairs(x)),
+/// bit-exactly `a * x` per complex). Returns the accumulated dot part;
 /// fold order (two register accumulators, cross-pair add, scalar
-/// tail) is the pass's own — chemv is bounds-tested, not bit-locked.
+/// tail) is the pass's own — csymm's left side is bounds-tested, not
+/// bit-locked.
 ///
 /// # Safety
 /// `a`, `x`, `y` must each be valid for `len` C32s; `y` must not

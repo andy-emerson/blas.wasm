@@ -7,8 +7,8 @@
 //! overflow-safe `hypot`, the norm formed from scaled moduli, the
 //! phase factor α = a/|a| carrying r's complex sign. The a = 0
 //! special case (c=0, s=1, r=b) is reference behavior. Consumers:
-//! the complex-s rotation application (`zrot`) has no consumer yet —
-//! explicit gap; `zdrot` applies the real-c,s form.
+//! `zrot` applies the (real c, complex s) rotation it generates;
+//! `zdrot` applies the real-c,s form.
 
 use crate::c64::C64;
 

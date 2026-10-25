@@ -30,8 +30,8 @@ Notes:
 ## The complex layers (z- and c-routines) — same graph, renamed nodes
 
 The two complex layers (c64 z-prefixed, c32 c-prefixed — identical
-structure) are the same picture with node substitutions — **26
-routines / 31 operations** each (counting convention: crate README):
+structure) are the same picture with node substitutions — **30
+routines / 36 operations** each (counting convention: crate README):
 
 - *Splits*: `dot` → `dotu` + `dotc` (unconjugated/conjugated are
   different results); `ger` → `geru` + `gerc`; `gemv` gains a third
@@ -40,16 +40,19 @@ routines / 31 operations** each (counting convention: crate README):
 - *Renames*: the symmetric family becomes Hermitian — `symv` → `hemv`
   (fused, no outgoing arrows, same as symv), `syr`/`syr2` →
   `her`/`her2`, `symm` → `hemm`, `syrk` → `herk`, `syr2k` → `her2k` —
-  with the same edges as their real twins.
+  with the same edges as their real twins — and exists a second time
+  unconjugated: `symm`/`syrk`/`syr2k` (reference `zsymm`, `zsyrk`,
+  `zsyr2k`), the same edges again, beside the Hermitian nodes.
 - *Delegations, not nodes*: copy/swap/rot/the real-α scal/nrm2/asum
   are one-line calls to the tuned same-precision real routines on the
   interleaved 2n-real view (`c64.rs`/`c32.rs`) — they inherit the
   real stream's speed, guards, and determinism rather than
   duplicating the loops (c64: zcopy/zswap/zdrot/zdscal/dznrm2/dzasum;
   c32: ccopy/cswap/csrot/csscal/scnrm2/scasum).
-- `rot` is the real-c,s form (`zdrot`/`csrot`); `zrotg`/`crotg`
-  generate the complex Givens (c real, s complex) — the complex-s
-  application (`zrot`) has no consumer yet.
+- `rot` exists twice: the real-c,s form (`zdrot`/`csrot`) delegates
+  as above, and `zrot`/`crot` (real c, complex s) are nodes of their
+  own, the scalar definition per element with no fold; `zrotg`/`crotg`
+  generate the complex Givens (c real, s complex).
 
 ## Routine naming — the netlib convention (applies to L1/, L2/, L3/)
 
@@ -99,8 +102,9 @@ The names are netlib's; the signatures are ours (documented per file):
   query) take the slice too.
 - **Netlib quick returns on dimensions.** After the argument checks, a
   zero `m` or `n` returns `Ok` with nothing written; gemm with `k = 0`
-  scales `C` by `β`. The `alpha == 0` / `beta == 1` quick returns are
-  todo S5 (`../STATUS.md`).
+  scales `C` by `β`. `alpha == 0` reads neither operand and `beta ==
+  0` never reads the output, as reference BLAS (tested with
+  NaN-poisoned operands).
 - **Unit stride only.** Callers pass contiguous column slices with a
   column stride per matrix — no `incx`/`incy` today. Strides are
   planned (`../STATUS.md`, todo S3; the API shape is decision D7).
@@ -112,12 +116,14 @@ The names are netlib's; the signatures are ours (documented per file):
   they carry a suffix: `dgemm_colaxpy` (the plain reference shape),
   `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` (and the s twins) —
   `dgemm` itself validates and size-dispatches. z/c export
-  `*gemm_colaxpy` and `*gemm_packed` only; their packed shape is the
-  complex register tile. The alternates take `(alpha, m, n, k, a, lda,
+  `*gemm_colaxpy`, `*gemm_col4` and `*gemm_packed`; their packed
+  shape is the complex register tile. The alternates take `(alpha, m, n, k, a, lda,
   b, ldb, beta, c, ldc)`, no flags, and assert rather than return
   errors: they are kernels, exported so the tests and the benchmarks
   can race them. The transposed-form candidates follow the same rule:
-  `*gemm_packed_op` (flags, then the kernel arguments, then `work`),
+  `*gemm_copy_op` and `*gemm_packed_op` (flags, then the kernel
+  arguments, then `work`, sized by `*gemm_copy_op_work` /
+  `*gemm_packed_op_work`),
   `*trmm_copy`/`*trsm_copy` (the netlib arguments plus `work`, sized
   by `*_copy_work`) and `*trmm_stream`/`*trsm_stream` (the netlib
   arguments, no workspace).

@@ -39,7 +39,7 @@ use crate::L2::dtrmv_k;
 /// explicit transpose; `ConjTrans` is `Trans` for a real matrix, and two
 /// candidates compute them, [`dtrmm_copy`] and [`dtrmm_stream`],
 /// both bit-identical to that definition; which one this routine routes
-/// to per side is the race's verdict (`STATUS.md`, D3).
+/// to per side is the race's verdict (`bench/README.md`; decision D3 in `DESIGN.md`).
 ///
 /// Errors: a leading dimension below its row count (arguments 9, 11);
 /// `a` or `b` shorter than its extent (arguments 8, 10); `work` shorter
@@ -279,7 +279,7 @@ pub(crate) fn dtrmm_right_k(
 	}
 }
 
-/// Candidate for the transposed forms (`STATUS.md`, decision D3): op(A)
+/// Candidate for the transposed forms (decision D3 in `DESIGN.md`; the race in `bench/README.md`): op(A)
 /// is transposed into `work` and the no-transpose
 /// kernel runs on the copy with the triangle flipped, so the result is
 /// the explicit-copy definition itself. `work` needs
@@ -308,7 +308,7 @@ pub fn dtrmm_copy_work(side: Side, m: usize, n: usize) -> usize {
 	na * na
 }
 
-/// Candidate for the transposed forms (`STATUS.md`, decision D3): no
+/// Candidate for the transposed forms (decision D3 in `DESIGN.md`; the race in `bench/README.md`): no
 /// copy; on the right the no-transpose kernel reads A through a
 /// transposed accessor (it only ever reads A as scalars), on the left
 /// `dtrmm_left_t_k` reduces down the stored columns. Bit-identical

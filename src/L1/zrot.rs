@@ -1,5 +1,6 @@
 //! `zrot` — plane rotation with a real cosine and a complex sine:
-//! (x, y) ← (c·x + s·y, c·y − conj(s)·x), reference BLAS's `zrot`.
+//! (x, y) ← (c·x + s·y, c·y − conj(s)·x): LAPACK's auxiliary `zrot`
+//! (reference BLAS has no complex-sine rotation; `zdrot` is its real one).
 //!
 //! Implementation: the scalar complex definition per element, in the
 //! canonical product order (`c64.rs`); the four products of each

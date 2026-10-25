@@ -384,13 +384,15 @@ pub fn zgemm_colaxpy(
 	}
 }
 
-/// The other candidate for the transposed forms (`STATUS.md`, decision
-/// D3): a transposed operand is transposed (and conjugated) into `work`
+/// The other candidate for the transposed forms (decision D3 in
+/// `DESIGN.md`; the race in `bench/README.md`): a transposed operand is transposed (and conjugated) into `work`
 /// with `transpose_into` and the product then runs the size-dispatched
 /// no-transpose shapes on the copy, so every flag combination is the
-/// explicit-copy definition itself. The netlib wrapper routes it below
-/// the packed threshold, where the two candidates coincide; above it the
-/// race chose [`zgemm_packed_op`]. `work` needs [`zgemm_copy_op_work`]
+/// explicit-copy definition itself. The netlib wrapper routes it for
+/// every call below the packed threshold and for the no-transpose call
+/// above it (where the two coincide with the plain dispatch); a
+/// transposed operand above the threshold goes to [`zgemm_packed_op`],
+/// the race's choice. `work` needs [`zgemm_copy_op_work`]
 /// elements. Exported so the benchmarks can race it; it asserts rather
 /// than returning errors.
 #[allow(clippy::too_many_arguments)]

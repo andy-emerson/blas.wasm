@@ -9,8 +9,9 @@
 //! complex matrix-vector routine); right side is a 4-column fan-out
 //! column-axpy sweep with the symmetric element looked up across the
 //! stored triangle (`zsym_at`, the mirror unconjugated, the diagonal an
-//! ordinary complex element); per-element rounding sequence identical
-//! to the plain sweep, bit-for-bit tested.
+//! ordinary complex element) whose per-element rounding sequence is
+//! identical to the plain sweep, bit-for-bit tested; the left side's
+//! fused pass re-folds its reduction and is bounds-tested.
 
 use super::{check_mat, zsym_at};
 use crate::{Error, Side, Uplo};

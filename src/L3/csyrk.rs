@@ -52,7 +52,7 @@ pub fn csyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C32, a: &[C32]
 	}
 	// op(A) is materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
-	// the unflagged call on an explicit copy (tested); conjugation is an exact sign flip
+	// the unflagged call on an explicit copy (tested)
 	let (a, lda) = if trans == Trans::NoTrans {
 		(a, lda)
 	} else {

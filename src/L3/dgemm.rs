@@ -1,15 +1,17 @@
 //! `dgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched family: 4×4 register tile below ~1.5 MB of A,
-//! BLIS-style packed-panel shape above (replaced the 4-column fused
-//! stream after two unanimous runner draws: 1.24× at 512³, 1.44× at
-//! 1024³, 1.10–1.23× deep-K) — all bit-identical to the plain
-//! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
-//! stays as the raced mid-size reference. The pre-packed shapes beat
-//! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; campaign record step 6, STATUS.md). Transposed operands are packed from a
-//! transposed read above the packed threshold (`dgemm_packed_op`) and
-//! copied into the workspace below it (`dgemm_copy_op`), per the race.
+//! Implementation: a 4×4 register tile below ~1.5 MB of A and a
+//! BLIS-style packed-panel shape above it; transposed operands are
+//! packed from a transposed read above the packed threshold
+//! (`dgemm_packed_op`) and copied into the workspace below it
+//! (`dgemm_copy_op`), per the race in `bench/README.md`. Every shape
+//! is bit-identical to the plain dgemv-per-column reference, kept as
+//! `dgemm_colaxpy`; `dgemm_col4` stays as the raced mid-size
+//! reference. Measured: the packed shape replaced the 4-column fused
+//! stream after two unanimous runner draws (1.24× at 512³, 1.44× at
+//! 1024³, 1.10–1.23× deep-K), and the pre-packed shapes beat faer's
+//! blocked dgemm at every measured size (1.4–1.8× small, ~1.25× large;
+//! campaign record step 6).
 
 use super::check_mat;
 use crate::{Error, Trans};
@@ -111,11 +113,10 @@ pub(crate) fn packed_route(m: usize, k: usize) -> bool {
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
 ///
-/// Dispatches by size (raced on the reference runners, two draws
-/// agreeing within 3%): the 4×4 register tile wins while A stays small
-/// enough that its column-strided k-walk rides the caches (best
-/// 128–384, 1.4–1.8× over faer); the 4-column fused stream wins above
-/// (512+, ~1.25× over faer). All three shapes are bit-for-bit
+/// Dispatches by A's byte size (`packed_route`): the 4×4 register tile
+/// while A stays small enough that its column-strided k-walk rides the
+/// caches, the packed-panel shape above (it replaced the 4-column fused
+/// stream there, two runner draws). Every shape is bit-for-bit
 /// identical, so the dispatch is invisible to results.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dgemm_k(
@@ -309,8 +310,9 @@ pub fn dgemm_col4(
 /// block of A into contiguous packed panels, so the microkernel streams
 /// both operands sequentially regardless of matrix size. Motivating
 /// evidence: deep-K prefill shapes (k ≥ 2048), where a packed-panel
-/// competitor beat the col4 stream ~2× in a container probe — runner
-/// race pending.
+/// competitor beat the col4 stream ~2× in a container probe; the
+/// runner race (two draws, `bench/README.md`) confirmed it and this
+/// shape is routed above the threshold.
 ///
 /// Rounding sequence per element is IDENTICAL to the column-daxpy path:
 /// k-blocking resumes each element's accumulation from its stored
@@ -517,13 +519,15 @@ unsafe fn tile_4x4(
 	}
 }
 
-/// The other candidate for the transposed forms (`STATUS.md`, decision
-/// D3): a transposed operand is transposed into `work`
+/// The other candidate for the transposed forms (decision D3 in
+/// `DESIGN.md`; the race in `bench/README.md`): a transposed operand is transposed into `work`
 /// with `transpose_into` and the product then runs the size-dispatched
 /// no-transpose shapes on the copy, so every flag combination is the
-/// explicit-copy definition itself. The netlib wrapper routes it below
-/// the packed threshold, where the two candidates coincide; above it the
-/// race chose [`dgemm_packed_op`]. `work` needs [`dgemm_copy_op_work`]
+/// explicit-copy definition itself. The netlib wrapper routes it for
+/// every call below the packed threshold and for the no-transpose call
+/// above it (where the two coincide with the plain dispatch); a
+/// transposed operand above the threshold goes to [`dgemm_packed_op`],
+/// the race's choice. `work` needs [`dgemm_copy_op_work`]
 /// elements. Exported so the benchmarks can race it; it asserts rather
 /// than returning errors.
 #[allow(clippy::too_many_arguments)]

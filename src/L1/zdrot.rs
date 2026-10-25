@@ -3,9 +3,8 @@
 //!
 //! Implementation: pure delegation — a real rotation acts on re and im
 //! independently, so it IS `drot` on the 2n-real views. The tuned
-//! d-stream carries over for free. (The complex-s rotation LAPACK
-//! calls `zrot` has no consumer yet — explicit gap; `zrotg` already
-//! produces its complex s for when one arrives.)
+//! d-stream carries over for free. The complex-sine rotation is
+//! `zrot`, a routine of its own.
 
 use crate::c64::{as_re_mut, C64};
 use crate::Error;

@@ -1,7 +1,7 @@
 //! The argument contract of the Level 2 wrappers: every checkable
 //! precondition comes back as an `Error` naming the routine and the
 //! argument position; longer slices are used up to the declared
-//! lengths; forms not built yet say so.
+//! lengths.
 use super::common::*;
 use blas_wasm::L2::*;
 use blas_wasm::{Diag, Error, ErrorKind, Trans, Uplo, C64};

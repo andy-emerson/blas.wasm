@@ -17,13 +17,13 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 212 tests: L1 68, L2 54, L3 85, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S5 and S6 |
+| `cargo test --release` (native, 218 tests: L1 68, L2 54, L3 91, vendored math 4, one doctest) | all pass | local, 2026-10-25, head `96b3248` |
 | 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S5 |
 | `bench.yml` tri-race and gemm-t-race (two draws each, candidates called directly, workspaces outside the timed call) | every fold identical; verdicts and tables in `bench/README.md` | runs 40212210771, 40212213162, 40212214964, 40212217524 |
 | `bench.yml` b0 (two draws: OpenBLAS, BLIS, blas.wasm on one runner, one thread) | rows in `bench/README.md` | runs 40213117656, 40213120395 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test (the error slot included), binary audit at 133 exports, the book with warnings denied | run 22, head `b398cca`, github.com/andy-emerson/blas.wasm/actions/runs/40213122120 |
-| the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
+| the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; the one doctest (the `daxpy` chapter's example) passes | local, 2026-10-25, head `767299a` |
 | binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 133 exports, 333 functions, 128455 instructions decoded, 0 relaxed-SIMD | local, 2026-10-25, head `767299a` |
 | bench workflow (rooflines, packed race) | on demand; latest scoreboard in `bench/README.md` is from the July 2026 campaign draws | GitHub Actions, `workflow_dispatch` |
 
@@ -49,13 +49,11 @@ plausible and unmeasured (todo B).
   before closing (the routing is provisional until then). Gates: the
   M2 merge recommendation.
 
-Only the Human closes these. D3, D4 and D8 are closed and recorded in
-`DESIGN.md`; D8 turned out to be settled by constraint 7 rather than
-by a ruling, and D3 is a race, not a pick. Each names its options, the
-recommendation, and what it gates; the fuller framing (user and
-developer points of view) is in the plan the Human approved on
-2026-10-25 and is reproduced here in brief so the repository, not a
-chat log, holds it.
+Only the Human closes these. D3's ruling (a race, not a pick) is
+closed in `DESIGN.md`; what remains open is the closing question
+above. D8 (the workspace shape) was settled by constraint 7 and is
+recorded as design in `DESIGN.md`, "The surface". Each entry below
+names its options, the recommendation, and what it gates.
 
 - **D5 — Allocation in the threaded artifact.** Gates C's export
   list, T1, the J1 loader. The allocator's state would live in the
@@ -96,13 +94,23 @@ chat log, holds it.
   sit at 55–57% of the measured arithmetic peak and the syrk family
   and trmm/trsm at 38–50% in f64 (`bench/README.md`); XNNPACK runs
   near the fused-multiply-add peak, twice ours, so "within 2×" is at
-  risk as written. Options: (1) two campaigns before B — K1 moves the
+  risk as written. B0 is measured (two draws, `bench/README.md`):
+  single-threaded on the runner, blas.wasm sits at 17–28% of native
+  OpenBLAS and BLIS on every Level 3 row — gemm near the quarter the
+  instruction set alone allows (128-bit lanes without fused
+  multiply-add against AVX-512 with it) for the complex types and
+  about three quarters of it for the real ones, the triangular and
+  rank-k routines at 17–20%, below gemm's own share. Those are native
+  rows; the browser rows of Step B, where the competitors also lose
+  the fused multiply-add, are the only measurement that can speak to
+  "within 2×". Options now: (1) two campaigns before B — K1 moves the
   syrk family and trmm/trsm onto the packing layer, K2 is a gemm
   micro-kernel campaign, both raced two draws; (2) no kernel work,
-  weaken the claim to the measurement; (3) measure first (todo B0),
-  then rule. Recommendation: 3. Either way: never write success for a
-  miss; the claim is weakened before Step B if the campaigns are
-  declined or lose.
+  weaken the claim to the measurement. Recommendation: 1, K1 first,
+  since the triangular and rank-k routines are the larger lever on
+  this evidence. Either way: never write success for a miss; the
+  claim is weakened before Step B if the campaigns are declined or
+  lose.
 
 ## Todos, by milestone
 
@@ -133,46 +141,19 @@ warnings denied.
 
 ### M2 — Complete BLAS surface, netlib semantics
 
-- [x] **S0 — Enums, netlib argument order, `Result` on every routine,
-  workspace slices and size queries.** Done on this branch.
-- [x] **S4 — The crate never allocates.** Done on this branch:
-  `extern crate alloc` is gone (the build is the check), the packed
-  gemm shapes run on the caller's slice, probe bit patterns unchanged.
-- [x] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,
-  four types.** Done on this branch: every flagged call equals the
-  unflagged call on an explicitly transposed copy, bitwise, every
-  combination (`tests/L3`); the candidates raced on two runner draws
-  (`bench/README.md`, D3 in `DESIGN.md`), winners routed, losers
-  exported. Not built: trmm/trsm on the packing layer (a lever
-  below).
-- [x] **B0 — Early sanity rows: OpenBLAS, BLIS single-threaded**,
-  two draws on the reference runner (`bench/README.md`): gemm at
-  17–28% of the native libraries, the triangular and rank-k routines
-  at 17–20%. XNNPACK is not packaged for the runner and was not
-  built; its row is open if D11 wants it.
-- [x] **S2 — Level 2 op flags: transposed trmv and trsv.** Done on
-  this branch: dot-fold reductions, replayed bit for bit (`tests/L2`),
-  probed native versus wasm; no routine reports `Unsupported` any
-  more and the error kind is gone.
+Done on this branch except S3: every flag form in four types with the
+D3 race's winners routed (S0, S4, S1, S2), the reference alpha, beta,
+dimension and NaN rules, the complex symmetric family and `zrot`/`crot`
+(S5), the module error slot (S6), and the B0 rows (gemm at 17–28% of
+native OpenBLAS and BLIS, the triangular and rank-k routines at
+17–20%; XNNPACK is not packaged for the runner and has no row). What
+is built is in `README.md` and `DESIGN.md`, the numbers in
+`bench/README.md`, the evidence in the commit log and the checks
+above.
+
 - [ ] **S3 — Vector strides on every Level 1 and 2 vector argument.**
   Evidence: the strided call equals the unit-stride call on a gathered
   copy, bitwise; negative strides versus reference. Gated by D7. (5–8)
-- [x] **S5 — Reference semantics.** Done on this branch: the
-  `alpha == 0` / `beta == 1` / `k == 0` rules in every wrapper (what the
-  reference does not read is NaN-poisoned in the tests), the complex
-  symmetric symm/syrk/syr2k and `zrot`/`crot` in both complex types,
-  iamax's NaN rule. One known deviation: `nrm2` of a vector holding
-  both an infinity and a NaN returns the infinity where the reference
-  returns NaN (its scaled accumulation never compares the NaN); every
-  other NaN input propagates as in the reference.
-- [x] **S6 — Argument errors reported with the xerbla index; the
-  module error slot.** Done on this branch: the crate's `Error` has
-  carried the routine name and argument position since S0; the module
-  now records it in a per-instance slot (`error_arg`, `error_kind`,
-  `error_routine`, `error_clear`) and returns without computing, and
-  the smoke test drives a bad leading dimension through the slot and
-  a valid call after it.
-
 ### M3 — Release-ready: crate and single-threaded package, nothing published
 
 - [ ] **C — CBLAS-named exports replace the flat ABI.** Evidence: the
@@ -239,9 +220,11 @@ current numbers.
   (`ztrmm_left_t_k` and twins): the scalar one lost its race to the
   copy 0.26–0.76× (both draws); the real-type lane kernels won 1.3–2.8×,
   so the complex lane form is the obvious next candidate.
-- trmm/trsm rebuilt on the packing layer (D3's third candidate), which
-  would also change the no-transpose shapes; motivated only if the
-  B0 rows show the triangular routines far from the ceiling.
+- trmm/trsm rebuilt on the packing layer (D3's third candidate, the
+  K1 campaign's shape), which would also change the no-transpose
+  shapes; the B0 rows put the triangular and rank-k routines at
+  17–20% of the native libraries, below gemm's 17–28%, which is the
+  motivation D11 asked for.
 - The f32 left transposed trmm/trsm ascending-walk cases (trmm upper,
   trsm lower) sit at 0.85–1.0 of the copy on 1024² while the
   descending walks win 1.3×; the asymmetry is unexplained.

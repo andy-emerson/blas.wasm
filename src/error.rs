@@ -6,8 +6,10 @@
 //! query says). A failed check returns an [`Error`] naming the routine
 //! and the position of the offending argument in this crate's
 //! signature, counted from one, the way `xerbla` reports it; nothing
-//! has been written when an error is returned. The crate never panics
-//! on input. Out-of-range lane access, which would be a bug in a
+//! has been written when an error is returned. The netlib-named
+//! routines never panic on input; the exported raced kernels
+//! (`*_colaxpy`, `*_copy_op`, `*_packed_op`, `*_copy`, `*_stream`)
+//! assert their preconditions instead. Out-of-range lane access, which would be a bug in a
 //! kernel rather than a bad argument, still asserts.
 
 /// Why an argument was rejected.

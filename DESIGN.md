@@ -45,8 +45,8 @@ web" (see XNNPACK under "Claims").
   inside the package, and the loader fetches the one the page can
   use.
 
-Plus the book (`book/`, GitHub Pages) and the crate's API reference on
-docs.rs, which renders itself.
+Plus the book: the crate documentation, published to GitHub Pages
+by the Pages workflow, and on docs.rs once the crate is published.
 
 **One semantic surface, three projections.** The semantics are
 netlib BLAS: names, argument meanings, flag meanings, quick-return
@@ -139,10 +139,19 @@ not pretend otherwise.
    0` means C is not read, zero dimensions), and the reference
    argument checks. Where reference BLAS and this crate differ, the
    reference wins unless the deviation is recorded here with a
-   reason. Target state: today's surface lacks the transposed forms,
-   strides and the reference quick-return rules (todos S1–S3, S5);
-   the flags, the argument order and the reportable errors are in
-   place.
+   reason. Today's surface lacks only vector strides (todo S3). Two
+   recorded deviations, both about NaN: `nrm2` of a vector holding
+   both an infinity and a NaN returns the infinity where the
+   reference returns NaN (the scaled accumulation never compares the
+   NaN); and the reference skips a column whose multiplier is exactly
+   zero in ger, syr, syr2, trmv, trsv, trmm and trsm (`IF (X(J).NE.
+   ZERO)`), so a NaN or infinity in that column never reaches the
+   output there, while this crate's streams have no per-column branch
+   and propagate it (0·NaN = NaN). The reference's gemv, symv, gemm,
+   symm, syrk and syr2k have no such skip and agree with this crate.
+   Checked against netlib 3.12 on the dev container; not mirrored,
+   because the skip would put a branch inside every SIMD stream for a
+   case no consumer has asked for.
 7. **The crate never allocates.** Scratch space is the caller's,
    passed in and size-queried, LAPACK style: the crate is `no_std`
    without `alloc`, and the build is the check.
@@ -151,7 +160,7 @@ not pretend otherwise.
 
 | claim | what makes it true |
 |---|---|
-| **Reproducible.** Bit-identical results across engines, targets, and thread counts, promised, tested, and auditable from the binary. | per-routine bitwise replays and cross-target probes (`tests/README.md`); the p=1 vs p=N bitwise test per routine (todo T5); the relaxed-opcode scan in the gate (`abi/audit.mjs`) |
+| **Reproducible.** Finite results bit-identical across engines, targets, and thread counts (a NaN's sign and payload bits are outside the promise), tested, and auditable from the binary. | per-routine bitwise replays and native ↔ wasm probes on Node (`tests/README.md`), held for other engines by the wasm specification's deterministic float semantics; the p=1 vs p=N bitwise test per routine (todo T5, the thread-count part is a target until then); the relaxed-opcode scan in the gate (`abi/audit.mjs`) |
 | **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | the import-count assertion in the gate; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
 | **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded |
 
@@ -266,7 +275,10 @@ full convention with the per-routine deviations from reference BLAS:
 of `axpy` describes `daxpy`, the f32 cell `saxpy`. In the c64 column
 the symmetric rows describe the **Hermitian** z-routine (symv →
 `zhemv`, syr/syr2 → `zher`/`zher2`, symm → `zhemm`, syrk → `zherk`,
-syr2k → `zher2k`), per the counting note above.
+syr2k → `zher2k`), per the counting note above. The complex symmetric
+`zsymm`/`zsyrk`/`zsyr2k` (and the c twins) exist beside them with the
+same codes: `zsymm` is the `zhemm` shape unconjugated, `zsyrk` and
+`zsyr2k` the `dsyrk`/`dsyr2k` shape on complex lanes.
 
 #### Level 1 — `src/L1/`
 
@@ -286,8 +298,9 @@ syr2k → `zher2k`), per the counting note above.
 ² `zscal`/`cscal` (complex α); the real-α forms `zdscal`/`csscal`
 are delegations.
 ³ `zdrot`/`csrot` — the real-c,s rotation; a real rotation acts on
-re/im independently, so it IS `drot`/`srot` on the 2n-real view. The
-complex-s apply (`zrot`) has no consumer yet (gap).
+re/im independently, so it IS `drot`/`srot` on the 2n-real view.
+`zrot`/`crot` (real c, complex s) are routines of their own, the
+scalar definition per element with no fold (`src/L1/zrot.rs`).
 ⁴ splits into `dotu` (xᵀy) and `dotc` (xᴴy) — different results,
 both 4-accumulator reduction streams.
 ⁵ reference semantics Σ(|re|+|im|) — component magnitudes ARE
@@ -340,27 +353,30 @@ bit-identical to the `_colaxpy` reference, which stays bit-checked.
 reference signatures, and maintain the Hermitian invariant: stored
 diagonals end exactly real.
 
-### Completing the surface (todo group S)
+### The surface
 
 - **Level 3 op flags.** The test is the definition: a flagged call
   equals the no-transpose call on an explicitly transposed (and
   conjugated — an exact sign flip) copy, bitwise, for every flag
   combination; every form is bit-identical to it by construction,
   because each one performs the same per-element arithmetic sequence
-  as the no-transpose kernel. Above the packed threshold gemm packs
-  the transposed operand into the panel format from a transposed read
+  as the no-transpose kernel. Two candidates exist for every form and
+  the wrappers route the winners of decision D3's race (`DESIGN.md`,
+  "Decisions closed"; the numbers in `bench/README.md`); the losers
+  stay exported and tested. Above the packed threshold gemm packs the
+  transposed operand into the panel format from a transposed read
   (op(A)'s row is a stored column; the three tails that read operands
   directly are gathered into the workspace, and a transposed A's
-  column tail rides a zero-padded fourth column group); below it, and
-  for the syrk family, the operand is transposed into the caller's
-  workspace ahead of the existing shape (a cost of order mk against
-  mnk of arithmetic). trmm and trsm route per side between the same
-  copy and no-copy kernels: a transposed accessor on the right (the
-  right-side kernels only ever read A as scalars) and, on the left,
+  column tail rides a zero-padded fourth column group); below it, for
+  the syrk family, and for c32 gemm when only B is transposed, the
+  operand is transposed into the caller's workspace ahead of the
+  existing shape (a cost of order mk against mnk of arithmetic). trmm
+  and trsm route per side between the same copy and no-copy kernels:
+  a transposed accessor on the right (the right-side kernels only
+  ever read A as scalars) in every type, and on the left
   column-reduction kernels that walk op(A)'s rows as stored columns,
-  lanes across four right-hand sides. Which candidate each form
-  routes to is the verdict of decision D3's race; the losers stay
-  exported and tested.
+  lanes across four right-hand sides, in f64 and f32; the complex
+  left side copies.
 - **Level 2 op flags.** gemv has N/T/C. The transposed trmv and trsv
   are the `gemv_t`-shaped reduction per stored column: each new
   element is the Level 1 dot kernel's fold of the column's triangle
@@ -369,58 +385,69 @@ diagonals end exactly real.
   for bit by the tests — rather than the sweep's sequence, which no
   single-vector SIMD reduction can keep. The alternative, a copy of
   op(A), costs as much as the operation itself and was not raced.
-- **Strides.** `incx`/`incy` on every Level 1 and Level 2 vector
-  argument. Unit stride keeps the SIMD streams. Non-unit stride takes
-  a path that reuses the lane emulation so the fold order is
-  identical and results stay bit-identical to the unit-stride call on
-  a gathered copy. Negative strides per reference semantics. How the
-  stride appears in the Rust signatures is decision D7.
 - **Workspace.** Scratch is a caller-provided slice, `work: &mut
-  [T]`, on every routine that needs it, beside a per-routine size
-  query (`dgemm_work(transa, transb, m, n, k) -> usize`). Below the
-  packed threshold
-  the query returns zero, so small calls pass an empty slice; a slice
-  shorter than the query is an argument error, never a silent slower
-  path. The crate never allocates and has no `alloc` (constraint 7,
-  required by threading: no allocator inside a shared memory): the
-  packed gemm shape carves its two panels from the slice, and the
-  tests hand it a NaN-filled slice of exactly the queried size so a
-  read of unpacked scratch would show. This shape is settled by
-  constraint 7 together with the
-  no-silent-miss rule rather than by a separate ruling: an optional
-  workspace would hide a performance cliff, an owning value would
-  need to allocate or be the same slice underneath, and exported
-  block constants push the arithmetic onto every consumer. In the
-  module, whose CBLAS signatures carry no workspace argument, the
-  host registers a scratch region once per instance through an
-  exported `set_workspace(ptr, bytes)` and reads the same size
-  queries as exports; a wrapper whose registered region is too small
-  writes the error slot and returns. Per-instance registration is a
-  mutable global, which wasm already makes per instance, so threads
-  need no synchronization. Which routines take scratch is decision
-  D3.
-- **Reference semantics.** Quick returns, `beta == 0` not reading C,
-  zero dimensions, NaN propagation as reference BLAS; the complex
-  symmetric (non-Hermitian) symm/syrk/syr2k; `zrot`/`crot`.
-- **Argument errors are reportable.** The crate keeps trapping on
+  [T]`, on gemm, the syrk family, trmm and trsm, beside a per-routine
+  size query that takes the flags (`dgemm_work(transa, transb, m, n,
+  k) -> usize`, `dtrmm_work(side, transa, m, n)`), because the routed
+  candidate decides the size. The query is zero for every
+  no-transpose call below gemm's packed threshold and for the
+  transposed forms that need no copy, so those calls pass an empty
+  slice; a slice shorter than the query is an argument error, never a
+  silent slower path, and the query does not see α, so the slice is
+  required even for a call with α = 0. The crate never allocates and has no `alloc`
+  (constraint 7, required by threading: no allocator inside a shared
+  memory): the packed gemm shape carves its panels from the slice,
+  and the tests hand it a NaN-filled slice of exactly the queried
+  size so a read of unpacked scratch would show. This shape is
+  settled by constraint 7 together with the no-silent-miss rule
+  rather than by a separate ruling: an optional workspace would hide
+  a performance cliff, an owning value would need to allocate or be
+  the same slice underneath, and exported block constants push the
+  arithmetic onto every consumer. In the module, whose signatures
+  carry no workspace argument, each wrapper today allocates the
+  queried scratch per call inside the module (the crate itself never
+  allocates); the CBLAS surface (todo C) replaces that with a scratch
+  region the host registers once per instance through an exported
+  `set_workspace(ptr, bytes)`, a wrapper whose registered region is
+  too small writing the error slot and returning. Per-instance
+  registration is a mutable global, which wasm already makes per
+  instance, so threads need no synchronization.
+- **Reference semantics.** `alpha == 0` reads neither operand,
+  `beta == 0` never reads the output, `k == 0` scales, a zero
+  dimension returns, NaN propagates as in reference BLAS (the one
+  recorded deviation is under constraint 6); the complex symmetric
+  (non-Hermitian) symm/syrk/syr2k; `zrot`/`crot`; iamax's NaN rule
+  (a NaN first element wins, any other NaN is skipped).
+- **Argument errors are reported.** The crate keeps trapping on
   memory-bounds violations: a trap is the right answer to an invalid
   pointer. Argument errors (negative n, bad flag, lda < m) are
-  reported, not trapped. The module gets an exported error slot and
-  returns without computing, mirroring reference BLAS's
-  xerbla-then-return; the JavaScript layer reads it and throws.
-  *Recorded decision:* a zero-import module cannot call a host error
-  handler, so the slot replaces the callback. In the crate every
-  routine returns `Result<(), Error>`; `Error` names the routine and
-  the position of the offending argument, so it maps one to one onto
-  xerbla and onto the slot. Every checkable precondition returns
-  `Err`, a slice shorter than the declared dimensions included; the
-  crate never panics on input (D4, under "Decisions closed").
+  reported, not trapped: every netlib-named routine returns
+  `Result<(), Error>`, and `Error` names the routine and the position
+  of the offending argument, so it maps one to one onto xerbla.
+  Every checkable precondition returns `Err`, a slice shorter than
+  the declared dimensions included (D4, under "Decisions closed");
+  the exported raced kernels assert theirs. The module writes the
+  error in a per-instance slot (`error_arg`, `error_kind`,
+  `error_routine`, `error_clear`) and returns without computing,
+  mirroring reference BLAS's xerbla-then-return; the JavaScript layer
+  reads it and throws. *Recorded decision:* a zero-import module
+  cannot call a host error handler, so the slot replaces the
+  callback.
+- **Strides** (todo S3). `incx`/`incy` on every Level 1 and Level 2
+  vector argument. Unit stride keeps the SIMD streams. Non-unit
+  stride takes a path that reuses the lane emulation so the fold
+  order is identical and results stay bit-identical to the
+  unit-stride call on a gathered copy. Negative strides per reference
+  semantics. How the stride appears in the Rust signatures is
+  decision D7.
 
-The testing contract carries over unchanged for every new form:
-bitwise replay against the same-order scalar definition, bounds
-against higher-precision references, residuals for solves, native ↔
-wasm probes extended to the new forms. The export count grows well
-past 116; the gate's assertion moves with it, deliberately.
+The testing contract is the same for every form: bitwise replay
+against the same-order scalar definition, bounds against
+higher-precision references, residuals for solves, native ↔ wasm
+probes for every form. The module's expected import and export counts
+have one owner, `abi/surface.json` (0 and 133 today), read by the
+audit in the gate and the release workflow; the file moves with the
+surface, deliberately.
 
 ### The module's export surface (todo C)
 
@@ -511,14 +538,14 @@ added to the repository for the book.
 
 Why not tangling (Markdown as the source of truth, Rust files
 generated from its code blocks): for this codebase it means
-rewriting all 98 routine files as Markdown, compiler and clippy
+rewriting all 106 routine files as Markdown, compiler and clippy
 diagnostics that point into generated files while kernels are being
 tuned, and a tangler in CI; the paradigm is legitimate and the
 reasons are about this codebase. Why not mdBook with live includes:
 it was built and replaced. It is a standard tool, but here it was a
 second toolchain beside the code (a build tool, two preprocessors,
 generated assets, an include checker) for prose that rustdoc already
-places next to the code. Ruling by the Human, 2026-10-25.
+places next to the code.
 
 ### Measurement (todo group B)
 
@@ -568,9 +595,7 @@ are checked against the reference definitions (bitwise where the
 rounding order is deterministic, bounded where it is not), and
 performance against the machine's measured ceiling, by someone who
 did not write the code. A check that only proves a build succeeded is
-not evidence for a claim about what the code computes. Convention set
-by the Human on 2026-10-25 after the book was reported done on the
-strength of its build log while its rendered pages were wrong.
+not evidence for a claim about what the code computes.
 
 ## Decisions closed
 
@@ -598,10 +623,8 @@ trigger where one is worth keeping. Open decisions are in
   existing kernels' losers do. Rejected: ruling on a dev-container
   measurement of one candidate against an inference about the
   others. Every routine that needs scratch takes the workspace slice
-  described under "Completing the surface". Applied so far to two of
-  the three candidates, and to gemm as well (`bench/README.md` holds
-  the verdicts, the wrappers route them); whether the packed
-  trmm/trsm candidate is still owed before D3 is closed is an open
+  described under "The surface". The verdicts and the routing are in
+  `bench/README.md`; the third candidate's standing is the closing
   question in `STATUS.md`.
 - **D4 — The Rust crate's error convention.** `Result<(), Error>` on
   every routine, the error carrying the routine and the argument
@@ -615,10 +638,9 @@ trigger where one is worth keeping. Open decisions are in
   unchecked twins: a consumer measures the argument checks as a cost
   on small calls.
 - **D2 — Publishing to the registries.** Nothing is published to npm
-  or crates.io for now; the package names are placeholders. The
-  crates.io publish is out of the housekeeping step, `publish =
-  false` stays, and no alias layer is kept for the S0 signature
-  change, since no one depends on the crate. Milestone M3 produces
+  or crates.io for now; the package names are placeholders;
+  `publish = false` stays, and no compatibility layer is kept for
+  signature changes, since no one depends on the crate. Milestone M3 produces
   release-ready artifacts attached to the GitHub release only. Reopen
   trigger: the Human says the surface is ready to publish; the
   publish jobs are then a short code pass on the release workflow.

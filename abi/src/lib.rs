@@ -12,8 +12,10 @@
 //!   `cs >= 1`);
 //! - argument errors are REPORTED, not trapped, mirroring reference
 //!   BLAS's xerbla-then-return: the wrapper writes the error slot and
-//!   returns without computing (a value-returning wrapper returns NaN,
-//!   an index-returning one 0). The slot is per instance: `error_arg()`
+//!   returns without computing (through this ABI only the wrappers with
+//!   a leading dimension or a workspace can fail; the dot and index
+//!   wrappers take one length for both vectors and cannot). The slot
+//!   is per instance: `error_arg()`
 //!   is the 1-based argument position of the crate signature (0 = no
 //!   error), `error_kind()` 1 = invalid value, 2 = slice shorter than
 //!   its extent, 3 = workspace shorter than the query, and
@@ -26,7 +28,11 @@
 //!   Fortran layout); complex-valued results write through an out
 //!   pointer;
 //! - `wasm_alloc`/`wasm_free` are provided so a host without its own
-//!   view of linear memory can create buffers (16-byte aligned).
+//!   view of linear memory can create buffers (16-byte aligned);
+//! - workspace: the wrappers of gemm, the syrk family, trmm and trsm
+//!   allocate the routine's queried scratch per call inside the module
+//!   (the crate itself never allocates); a host-registered region
+//!   replaces that with the CBLAS surface (todo C).
 //!
 //! Written mechanically from the crate's public signatures and
 //! maintained by hand - one wrapper per

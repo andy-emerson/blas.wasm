@@ -3,8 +3,10 @@
 //! A BLAS (the Basic Linear Algebra Subprograms: vector, matrix–vector
 //! and matrix–matrix routines) written in Rust for WebAssembly, with
 //! hand-written SIMD on every path, zero dependencies, zero imports,
-//! and results that are bit-identical across native and every wasm
-//! engine. It is a BLAS and nothing more: the decompositions (solve,
+//! and finite results that are bit-identical between native and wasm
+//! (verified on Node; a NaN's sign and payload bits are outside the
+//! promise, and other engines get the same bits by the wasm
+//! specification's deterministic float semantics). It is a BLAS and nothing more: the decompositions (solve,
 //! inverse, eigen, SVD) belong to a separate project that depends on
 //! this crate.
 //!

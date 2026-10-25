@@ -4,8 +4,12 @@ One test file per BLAS routine, mirroring `../src/` (naming:
 `../src/README.md`); `main.rs` per level folder is the Cargo test
 target, `common.rs` holds the shared generator and the
 higher-precision reference summers. Run with
-`cargo test --release` — **156 tests, all green** (CI-enforced by
-the gate workflow on every push).
+`cargo test --release` — **218 tests, all green** (L1 68, L2 54, L3
+91, the vendored-math cross-check 4, one doctest; CI-enforced by the
+gate workflow on every push). The three level suites share one helper
+file, `shared.rs` (the generator, the summers, the bit-equality
+checks), through `#[path]`; each level's `common.rs` adds its size
+lists and level-specific replays.
 Benchmarks live in `../bench/README.md`; this page is the
 correctness half of the contract.
 
@@ -53,7 +57,12 @@ forms them).
 | zhemm | left: bounds (rides zhemv); right: **bit-for-bit replay** through the conjugating triangle lookup |
 | zherk, zher2k | **bit-for-bit replay** incl. the real-β component scale and the exactly-real diagonals; the `ConjTrans` forms **bit-identical to the no-transpose call on an explicit conjugate transpose** |
 | ztrmm, ztrsm | **bit-for-bit replay** both sides — same reorder disclosures as the real twins, replays mirror them; residuals for ztrsm |
+| zsymm | left: bounds (rides the unconjugated fused pass); right: **bit-for-bit replay** of the plain sweep through the unconjugated triangle lookup |
+| zsyrk, zsyr2k | **bit-for-bit replay** of the dsyrk/dsyr2k sequence on complex lanes, unconjugated; `Trans` **bit-identical to the no-transpose call on an explicit transpose**; `ConjTrans` is an argument error, as in the reference |
+| zrot | **bit-for-bit** vs the scalar definition x ← c·x + s·y, y ← c·y − conj(s)·x, and equal to `zdrot` bitwise when s is real |
 | the c-routines (c32) | the z-suite cloned one-for-one at the two-complexes-per-register lane geometry: same replays bit-for-bit, bounds vs f64-accumulated references, crotg identities in f32 at 1e±15/±30 extremes, the same conjugation cross-checks and Hermitian-diagonal invariants |
+| `semantics.rs` (every level) | the reference's rules about what is not read: `alpha == 0` (and `k == 0`) leaves the operands unread and scales or zeroes the output, `beta == 0` never reads the output, herk/her2k return untouched for `alpha == 0` with `beta == 1`, iamax's NaN rule — the operands that must not be read are NaN-poisoned, so a read would show |
+| `errors.rs` (Levels 2 and 3) | every checkable precondition returns `Error` with the routine and the argument position, nothing written; the `*_work` queries asserted against the routed candidate; the dot-fold replays checked against the public dot routines |
 
 ## Cross-target bit-identity — the results
 
@@ -192,7 +201,7 @@ These values are checked on every gate run and on every roofline
 run; they change only when an accumulation order is changed
 deliberately.
 
-Known limits of the probes, recorded honestly: the L2/L3 probe folds
+Known limits of the probes: the L2/L3 probe folds
 are dominated by their solve-safe diagonals (~5e4), so they are weak
 detectors of reduction-order changes below one ULP of the total
 (campaign record step 8; `../STATUS.md`, "Not in this
