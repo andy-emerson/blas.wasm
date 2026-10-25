@@ -50,12 +50,17 @@ fn gemm_reports_each_bad_argument_by_position() {
 
 #[test]
 fn gemm_workspace_query_governs_the_packed_shape() {
-	// below the packed threshold no scratch is needed
-	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 0);
-	assert_eq!(sgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 0);
+	// the real types pack at every size, with panels no larger than the
+	// problem: a 64³ call needs k·n4 + m·k elements, not the full panels
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 64 * 64 + 64 * 64);
+	assert_eq!(sgemm_work(Trans::NoTrans, Trans::NoTrans, 64, 64, 64), 64 * 64 + 64 * 64);
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 2, 2, 2), 0); // m < MR: the row tail alone
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 5, 3, 7), 0); // n < 4: the column tail alone
+	assert_eq!(dgemm_work(Trans::NoTrans, Trans::NoTrans, 5, 4, 7), 7 * 4 + 4 * 7);
+	// the complex types keep their packed threshold
 	assert_eq!(zgemm_work(Trans::NoTrans, Trans::NoTrans, 16, 16, 16), 0);
 	assert_eq!(cgemm_work(Trans::NoTrans, Trans::NoTrans, 16, 16, 16), 0);
-	// above it the query is positive and a short slice is rejected on the work argument
+	// the query is positive and a short slice is rejected on the work argument
 	let n = 520;
 	assert!(dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n) > 0);
 	let a = vec![0.0; n * n];

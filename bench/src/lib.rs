@@ -1735,6 +1735,7 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
 enum GemmShape {
     Shipped,
     Col4,
+    Tiled,
     Packed,
     PackedBcast,
 }
@@ -1753,6 +1754,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, shape: GemmShape) -> f64 {
             match shape {
                 GemmShape::Shipped => l3::dgemm(nt, nt, m, n, k, 0.001, a, m, b, k, 0.5, c, m, ws(&mut s.work, l3::dgemm_work(nt, nt, m, n, k), 0.0)).unwrap(),
                 GemmShape::Col4 => l3::dgemm_col4(0.001, m, n, k, a, m, b, k, 0.5, c, m),
+                GemmShape::Tiled => l3::dgemm_tiled(0.001, m, n, k, a, m, b, k, 0.5, c, m),
                 GemmShape::Packed => l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work, l3::dgemm_packed_work(m, n, k), 0.0)),
                 GemmShape::PackedBcast => l3::dgemm_packed_bcast(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work, l3::dgemm_packed_work(m, n, k), 0.0)),
             }
@@ -1765,6 +1767,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, shape: GemmShape) -> f64 {
             match shape {
                 GemmShape::Shipped => l3::sgemm(nt, nt, m, n, k, 0.001, a, m, b, k, 0.5, c, m, ws(&mut s.work32, l3::sgemm_work(nt, nt, m, n, k), 0.0)).unwrap(),
                 GemmShape::Col4 => l3::sgemm_col4(0.001, m, n, k, a, m, b, k, 0.5, c, m),
+                GemmShape::Tiled => l3::sgemm_tiled(0.001, m, n, k, a, m, b, k, 0.5, c, m),
                 GemmShape::Packed => l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work32, l3::sgemm_packed_work(m, n, k), 0.0)),
                 GemmShape::PackedBcast => l3::sgemm_packed_bcast(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work32, l3::sgemm_packed_work(m, n, k), 0.0)),
             }
@@ -1779,6 +1782,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, shape: GemmShape) -> f64 {
             match shape {
                 GemmShape::Shipped => l3::zgemm(nt, nt, m, n, k, al, a, m, b, k, be, c, m, ws(&mut s.workz, l3::zgemm_work(nt, nt, m, n, k), C64::ZERO)).unwrap(),
                 GemmShape::Col4 => l3::zgemm_col4(al, m, n, k, a, m, b, k, be, c, m),
+                GemmShape::Tiled => return f64::NAN, // the complex types have no unpacked tile
                 GemmShape::Packed => l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m, ws(&mut s.workz, l3::zgemm_packed_work(m, n, k), C64::ZERO)),
                 GemmShape::PackedBcast => return f64::NAN, // no complex candidate: the complex kernels already fold α and broadcast at pack time
             }
@@ -1793,6 +1797,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, shape: GemmShape) -> f64 {
             match shape {
                 GemmShape::Shipped => l3::cgemm(nt, nt, m, n, k, al, a, m, b, k, be, c, m, ws(&mut s.workc, l3::cgemm_work(nt, nt, m, n, k), C32::ZERO)).unwrap(),
                 GemmShape::Col4 => l3::cgemm_col4(al, m, n, k, a, m, b, k, be, c, m),
+                GemmShape::Tiled => return f64::NAN, // the complex types have no unpacked tile
                 GemmShape::Packed => l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m, ws(&mut s.workc, l3::cgemm_packed_work(m, n, k), C32::ZERO)),
                 GemmShape::PackedBcast => return f64::NAN, // no complex candidate: the complex kernels already fold α and broadcast at pack time
             }
@@ -1818,6 +1823,13 @@ pub extern "C" fn run_gemm_rect_col4(ty: usize, m: usize, k: usize, n: usize) ->
 #[no_mangle]
 pub extern "C" fn run_gemm_rect_packed(ty: usize, m: usize, k: usize, n: usize) -> f64 {
     gemm_rect(ty, m, k, n, GemmShape::Packed)
+}
+
+/// The unpacked register tile (real types only), the shape below the
+/// packed threshold.
+#[no_mangle]
+pub extern "C" fn run_gemm_rect_tiled(ty: usize, m: usize, k: usize, n: usize) -> f64 {
+    gemm_rect(ty, m, k, n, GemmShape::Tiled)
 }
 
 /// The K2 candidate (real types only).

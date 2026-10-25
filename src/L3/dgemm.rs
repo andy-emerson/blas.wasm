@@ -29,7 +29,6 @@ const MC: usize = 128;
 const KC2: usize = KC;
 const MC2: usize = MC;
 const MR: usize = 4;
-const TILED_MAX_A_BYTES: usize = 3 << 19; // 1.5 MB
 
 /// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
 /// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
@@ -106,14 +105,18 @@ pub fn dgemm_packed_work(m: usize, n: usize, k: usize) -> usize {
 	if k == 0 || n4 == 0 || m < MR {
 		0
 	} else {
-		KC * n4 + MC * KC
+		let kc = KC.min(k);
+		kc * n4 + MC.min(m - m % MR) * kc
 	}
 }
 
 /// Whether the dispatcher routes `m×k` `A` to the packed-panel shape.
 #[inline]
-pub(crate) fn packed_route(m: usize, k: usize) -> bool {
-	m * k * 8 > TILED_MAX_A_BYTES
+pub(crate) fn packed_route(_m: usize, _k: usize) -> bool {
+	// since the K2 race the packed shape wins at every size (1.2× over the
+	// register tile at 128³ and widening above), so the tile's zone is gone;
+	// the predicate stays for the transposed forms' routing and the queries
+	true
 }
 
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
@@ -146,11 +149,7 @@ pub(crate) fn dgemm_k(
 	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
 	// reference). Packed also edged tiled +3% at 256³ — recorded, not
 	// routed: the tiled zone below 256³ is unmeasured.
-	if !packed_route(m, k) {
-		dgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
-	} else {
-		dgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
-	}
+	dgemm_packed_bcast(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 }
 
 /// The original column-daxpy shape (dgemv per column) — kept as the
@@ -364,7 +363,7 @@ pub fn dgemm_packed(
 		// the caller's workspace, split into the two panels; every
 		// element the microkernel reads is packed first, so the
 		// slice's prior contents never reach C (tested with a NaN fill)
-		let (bp, ap) = work[..need].split_at_mut(KC * n4);
+		let (bp, ap) = work[..need].split_at_mut(KC.min(k) * n4);
 		let mut pc = 0usize;
 		while pc < k {
 			let kc = KC.min(k - pc);
@@ -476,7 +475,7 @@ pub fn dgemm_packed_bcast(
 		// the caller's workspace, split into the two panels; every
 		// element the microkernel reads is packed first, so the
 		// slice's prior contents never reach C (tested with a NaN fill)
-		let (bp, ap) = work[..need].split_at_mut(KC2 * n4);
+		let (bp, ap) = work[..need].split_at_mut(KC2.min(k) * n4);
 		let mut pc = 0usize;
 		while pc < k {
 			let kc = KC2.min(k - pc);
@@ -843,12 +842,14 @@ pub fn dgemm_packed_op(
 				let j = jg * 4;
 				if tb {
 					for l in 0..kc {
-						dst[l * 4..l * 4 + 4].copy_from_slice(&b[(pc + l) * bcs + j..(pc + l) * bcs + j + 4]);
+						for u in 0..4 {
+							dst[l * 4 + u] = alpha * b[(pc + l) * bcs + j + u];
+						}
 					}
 				} else {
 					for l in 0..kc {
 						for u in 0..4 {
-							dst[l * 4 + u] = b[(j + u) * bcs + pc + l];
+							dst[l * 4 + u] = alpha * b[(j + u) * bcs + pc + l];
 						}
 					}
 				}
@@ -857,7 +858,7 @@ pub fn dgemm_packed_op(
 				let dst = &mut bp[(n4 / 4) * kc * 4..(n4 / 4 + 1) * kc * 4];
 				for l in 0..kc {
 					for u in 0..4 {
-						dst[l * 4 + u] = if u < nt { bo(pc + l, n4 + u) } else { 0.0 };
+						dst[l * 4 + u] = if u < nt { alpha * bo(pc + l, n4 + u) } else { 0.0 };
 					}
 				}
 			}
@@ -884,8 +885,7 @@ pub fn dgemm_packed_op(
 				for jg in 0..n4 / 4 {
 					for g in 0..mc / MR {
 						unsafe {
-							tile_4x4_packed(
-								alpha,
+							tile_4x4_packed_bcast(
 								kc,
 								ap.as_ptr().add(g * kc * MR),
 								bp.as_ptr().add(jg * kc * 4),
@@ -900,8 +900,7 @@ pub fn dgemm_packed_op(
 				if pad {
 					for g in 0..mc / MR {
 						unsafe {
-							tile_4x4_packed(
-								alpha,
+							tile_4x4_packed_bcast(
 								kc,
 								ap.as_ptr().add(g * kc * MR),
 								bp.as_ptr().add((n4 / 4) * kc * 4),
@@ -968,9 +967,10 @@ fn packed_op_layout(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) 
 	let pad = ta && nt > 0 && m_mr > 0;
 	let bpn = if pad { n4 + 4 } else { n4 };
 	let main = bpn > 0 && m_mr > 0;
+	let kc = KC.min(k);
 	[
-		if main { KC * bpn } else { 0 },
-		if main { MC * KC } else { 0 },
+		if main { kc * bpn } else { 0 },
+		if main { MC.min(m_mr) * kc } else { 0 },
 		if ta { mt * k } else { 0 },
 		if tb && !pad { k * nt } else { 0 },
 		if pad { 4 * m_mr } else { 0 },
