@@ -52,3 +52,5 @@ mod cswap;
 mod icamax;
 mod scasum;
 mod scnrm2;
+mod zrot;
+mod crot;

@@ -760,3 +760,167 @@ pub(crate) unsafe fn zaxpy_dotc4(
 		C64::new(acc[3].lane0(), acc[3].lane1()),
 	]
 }
+
+/// Fused symmetric (unconjugated) column pass — `zaxpy_dotc` with the plain `zdotu` product form, for `zsymm`'s left side: one load of `a` per element serves both
+/// halves of the Hermitian update — `y[i]` += t·`a[i]` (elementwise) and
+/// acc += conj(`a[i]`)·`x[i]` (reduction, two register accumulators).
+/// The conjugated product is dup0(a)·x + neg1(dup1(a)·swap(x)):
+/// lane0 = a.re·x.re + a.im·x.im, lane1 = a.re·x.im − a.im·x.re —
+/// bit-exactly `a.conj() * x` in the canonical order. Returns the
+/// accumulated dot part. Fold order (acc0+acc1, then scalar tail)
+/// differs from a sequential loop — zhemv is bounds-tested, not
+/// bit-locked, and determinism holds through the lane emulation as
+/// everywhere else.
+///
+/// # Safety
+/// `a`, `x`, `y` must each be valid for `len` C64s; `y` must not
+/// alias `a` or `x`.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+pub(crate) unsafe fn zaxpy_dotu(
+	a: *const C64,
+	t: C64,
+	x: *const C64,
+	y: *mut C64,
+	len: usize,
+) -> C64 {
+	let vre = F64x2::splat(t.re);
+	let vim = F64x2::pair(-t.im, t.im);
+	let ap = a as *const f64;
+	let xp = x as *const f64;
+	let yp = y as *mut f64;
+	let mut acc0 = F64x2::splat(0.0);
+	let mut acc1 = F64x2::splat(0.0);
+	let mut i = 0usize;
+	while i + 2 <= len {
+		let a0 = F64x2::load(ap.add(2 * i));
+		let a1 = F64x2::load(ap.add(2 * i + 2));
+		F64x2::load(yp.add(2 * i))
+			.add(a0.mul(vre).add(a0.swap().mul(vim)))
+			.store(yp.add(2 * i));
+		F64x2::load(yp.add(2 * i + 2))
+			.add(a1.mul(vre).add(a1.swap().mul(vim)))
+			.store(yp.add(2 * i + 2));
+		let x0 = F64x2::load(xp.add(2 * i));
+		let x1 = F64x2::load(xp.add(2 * i + 2));
+		acc0 = acc0.add(a0.dup0().mul(x0).add(a0.dup1().mul(x0.swap()).neg0()));
+		acc1 = acc1.add(a1.dup0().mul(x1).add(a1.dup1().mul(x1.swap()).neg0()));
+		i += 2;
+	}
+	let f = acc0.add(acc1);
+	let mut s = C64::new(f.lane0(), f.lane1());
+	while i < len {
+		let av = *a.add(i);
+		*y.add(i) = *y.add(i) + t * av;
+		s = s + av * *x.add(i);
+		i += 1;
+	}
+	s
+}
+
+/// Four fused unconjugated column passes (`zaxpy_dotc4` with the `zdotu` product form, for `zsymm`'s left side) sharing one stream over x and y
+/// (raced and shipped): `y[i]` += Σᵤ tᵤ·`aᵤ[i]`
+/// (accumulated in u order into the loaded y value) while each
+/// accᵤ += conj(`aᵤ[i]`)·`x[i]`. One y load/store and one x load per
+/// complex serve four columns — the daxpy_dot4 shape at complex
+/// lane geometry.
+///
+/// # Safety
+/// All six array pointers must be valid for `len` C64s; `y` must not
+/// alias any `aᵤ` or `x`.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+pub(crate) unsafe fn zaxpy_dotu4(
+	a: [*const C64; 4],
+	t: [C64; 4],
+	x: *const C64,
+	y: *mut C64,
+	len: usize,
+) -> [C64; 4] {
+	let vre = [
+		F64x2::splat(t[0].re),
+		F64x2::splat(t[1].re),
+		F64x2::splat(t[2].re),
+		F64x2::splat(t[3].re),
+	];
+	let vim = [
+		F64x2::pair(-t[0].im, t[0].im),
+		F64x2::pair(-t[1].im, t[1].im),
+		F64x2::pair(-t[2].im, t[2].im),
+		F64x2::pair(-t[3].im, t[3].im),
+	];
+	let ap = [a[0] as *const f64, a[1] as *const f64, a[2] as *const f64, a[3] as *const f64];
+	let xp = x as *const f64;
+	let yp = y as *mut f64;
+	let mut acc = [F64x2::splat(0.0); 4];
+	let mut i = 0usize;
+	while i < len {
+		let xv = F64x2::load(xp.add(2 * i));
+		let xsw = xv.swap();
+		let mut yv = F64x2::load(yp.add(2 * i));
+		for u in 0..4 {
+			let av = F64x2::load(ap[u].add(2 * i));
+			yv = yv.add(av.mul(vre[u]).add(av.swap().mul(vim[u])));
+			acc[u] = acc[u].add(av.dup0().mul(xv).add(av.dup1().mul(xsw).neg0()));
+		}
+		yv.store(yp.add(2 * i));
+		i += 1;
+	}
+	[
+		C64::new(acc[0].lane0(), acc[0].lane1()),
+		C64::new(acc[1].lane0(), acc[1].lane1()),
+		C64::new(acc[2].lane0(), acc[2].lane1()),
+		C64::new(acc[3].lane0(), acc[3].lane1()),
+	]
+}
+
+/// Fused unconjugated column pass (`caxpy_dotc` with the `cdotu` product form, for `csymm`'s left side): `y[i]` += t·`a[i]` while acc += conj(`a[i]`)·`x[i]`
+/// — the c32 twin of `zaxpy_dotc` (conjugated product =
+/// dup_even(a)·x + neg_odd(dup_odd(a)·swap_pairs(x)), bit-exactly
+/// `a.conj() * x` per complex). Returns the accumulated dot part;
+/// fold order (two register accumulators, cross-pair add, scalar
+/// tail) is the pass's own — chemv is bounds-tested, not bit-locked.
+///
+/// # Safety
+/// `a`, `x`, `y` must each be valid for `len` C32s; `y` must not
+/// alias `a` or `x`.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+pub(crate) unsafe fn caxpy_dotu(
+	a: *const C32,
+	t: C32,
+	x: *const C32,
+	y: *mut C32,
+	len: usize,
+) -> C32 {
+	let vre = F32x4::splat(t.re);
+	let vim = F32x4::quad(-t.im, t.im, -t.im, t.im);
+	let ap = a as *const f32;
+	let xp = x as *const f32;
+	let yp = y as *mut f32;
+	let mut acc0 = F32x4::splat(0.0);
+	let mut acc1 = F32x4::splat(0.0);
+	let mut i = 0usize;
+	while i + 4 <= len {
+		let a0 = F32x4::load(ap.add(2 * i));
+		let a1 = F32x4::load(ap.add(2 * i + 4));
+		F32x4::load(yp.add(2 * i))
+			.add(a0.mul(vre).add(a0.swap_pairs().mul(vim)))
+			.store(yp.add(2 * i));
+		F32x4::load(yp.add(2 * i + 4))
+			.add(a1.mul(vre).add(a1.swap_pairs().mul(vim)))
+			.store(yp.add(2 * i + 4));
+		let x0 = F32x4::load(xp.add(2 * i));
+		let x1 = F32x4::load(xp.add(2 * i + 4));
+		acc0 = acc0.add(a0.dup_even().mul(x0).add(a0.dup_odd().mul(x0.swap_pairs()).neg_even()));
+		acc1 = acc1.add(a1.dup_even().mul(x1).add(a1.dup_odd().mul(x1.swap_pairs()).neg_even()));
+		i += 4;
+	}
+	let f = acc0.add(acc1);
+	// fold the two packed complexes: pair 0 + pair 1
+	let mut s = C32::new(f.lane0() + f.lane2(), f.lane1() + f.lane3());
+	while i < len {
+		let av = *a.add(i);
+		*y.add(i) = *y.add(i) + t * av;
+		s = s + av * *x.add(i);
+		i += 1;
+	}
+	s
+}

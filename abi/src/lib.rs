@@ -1023,3 +1023,83 @@ pub unsafe extern "C" fn ctrsm_left(are: f32, aim: f32, m: usize, n: usize, a: *
 pub unsafe extern "C" fn ctrsm_right(are: f32, aim: f32, m: usize, n: usize, a: *const C32, acs: usize, upper: u32, unit: u32, b: *mut C32, bcs: usize) {
 	L3::ctrsm(Side::Right, uplo(upper != 0), Trans::NoTrans, diag(unit != 0), m, n, C32::new(are, aim), unsafe { s(a, ml(n, n, acs)) }, acs, unsafe { sm(b, ml(m, n, bcs)) }, bcs, &mut vec![C32::ZERO; L3::ctrsm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 }
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn zsymm_left(are: f64, aim: f64, m: usize, n: usize, a: *const C64, acs: usize, upper: u32, b: *const C64, bcs: usize, bre: f64, bim: f64, c: *mut C64, ccs: usize) {
+	L3::zsymm(Side::Left, uplo(upper != 0), m, n, C64::new(are, aim), unsafe { s(a, ml(m, m, acs)) }, acs, unsafe { s(b, ml(m, n, bcs)) }, bcs, C64::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn zsymm_right(are: f64, aim: f64, m: usize, n: usize, a: *const C64, acs: usize, upper: u32, b: *const C64, bcs: usize, bre: f64, bim: f64, c: *mut C64, ccs: usize) {
+	L3::zsymm(Side::Right, uplo(upper != 0), m, n, C64::new(are, aim), unsafe { s(a, ml(n, n, acs)) }, acs, unsafe { s(b, ml(m, n, bcs)) }, bcs, C64::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn zsyrk(are: f64, aim: f64, n: usize, k: usize, a: *const C64, acs: usize, bre: f64, bim: f64, c: *mut C64, ccs: usize, upper: u32) {
+	L3::zsyrk(uplo(upper != 0), Trans::NoTrans, n, k, C64::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, C64::new(bre, bim), unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zsyrk_work(Trans::NoTrans, n, k)]).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn zsyr2k(are: f64, aim: f64, n: usize, k: usize, a: *const C64, acs: usize, b: *const C64, bcs: usize, bre: f64, bim: f64, c: *mut C64, ccs: usize, upper: u32) {
+	L3::zsyr2k(uplo(upper != 0), Trans::NoTrans, n, k, C64::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, C64::new(bre, bim), unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zsyr2k_work(Trans::NoTrans, n, k)]).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn zrot(x: *mut C64, y: *mut C64, c: f64, sre: f64, sim: f64, n: usize) {
+	L1::zrot(unsafe { sm(x, n) }, unsafe { sm(y, n) }, c, C64::new(sre, sim)).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn csymm_left(are: f32, aim: f32, m: usize, n: usize, a: *const C32, acs: usize, upper: u32, b: *const C32, bcs: usize, bre: f32, bim: f32, c: *mut C32, ccs: usize) {
+	L3::csymm(Side::Left, uplo(upper != 0), m, n, C32::new(are, aim), unsafe { s(a, ml(m, m, acs)) }, acs, unsafe { s(b, ml(m, n, bcs)) }, bcs, C32::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn csymm_right(are: f32, aim: f32, m: usize, n: usize, a: *const C32, acs: usize, upper: u32, b: *const C32, bcs: usize, bre: f32, bim: f32, c: *mut C32, ccs: usize) {
+	L3::csymm(Side::Right, uplo(upper != 0), m, n, C32::new(are, aim), unsafe { s(a, ml(n, n, acs)) }, acs, unsafe { s(b, ml(m, n, bcs)) }, bcs, C32::new(bre, bim), unsafe { sm(c, ml(m, n, ccs)) }, ccs).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn csyrk(are: f32, aim: f32, n: usize, k: usize, a: *const C32, acs: usize, bre: f32, bim: f32, c: *mut C32, ccs: usize, upper: u32) {
+	L3::csyrk(uplo(upper != 0), Trans::NoTrans, n, k, C32::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, C32::new(bre, bim), unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::csyrk_work(Trans::NoTrans, n, k)]).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn csyr2k(are: f32, aim: f32, n: usize, k: usize, a: *const C32, acs: usize, b: *const C32, bcs: usize, bre: f32, bim: f32, c: *mut C32, ccs: usize, upper: u32) {
+	L3::csyr2k(uplo(upper != 0), Trans::NoTrans, n, k, C32::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, C32::new(bre, bim), unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::csyr2k_work(Trans::NoTrans, n, k)]).unwrap();
+}
+
+/// # Safety
+/// Pointers must be valid for the extents given by the module
+/// conventions (matrices: `cs*(cols-1)+rows` elements).
+#[no_mangle]
+pub unsafe extern "C" fn crot(x: *mut C32, y: *mut C32, c: f32, sre: f32, sim: f32, n: usize) {
+	L1::crot(unsafe { sm(x, n) }, unsafe { sm(y, n) }, c, C32::new(sre, sim)).unwrap();
+}

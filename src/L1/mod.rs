@@ -34,6 +34,7 @@ pub mod zcopy;
 pub mod zdotc;
 pub mod zdotu;
 pub mod zdrot;
+pub mod zrot;
 pub mod zdscal;
 pub mod zrotg;
 pub mod zscal;
@@ -45,6 +46,7 @@ pub mod cdotu;
 pub mod crotg;
 pub mod cscal;
 pub mod csrot;
+pub mod crot;
 pub mod csscal;
 pub mod cswap;
 pub mod icamax;
@@ -107,6 +109,7 @@ pub use zdotu::zdotu;
 #[allow(unused_imports)]
 pub(crate) use zdotu::zdotu_k;
 pub use zdrot::zdrot;
+pub use zrot::zrot;
 #[allow(unused_imports)]
 pub(crate) use zdrot::zdrot_k;
 pub use zdscal::zdscal;
@@ -130,6 +133,7 @@ pub(crate) use cdotu::cdotu_k;
 pub use crotg::crotg;
 pub use cscal::cscal;
 pub use csrot::csrot;
+pub use crot::crot;
 #[allow(unused_imports)]
 pub(crate) use csrot::csrot_k;
 pub use csscal::csscal;

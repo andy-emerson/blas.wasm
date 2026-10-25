@@ -34,12 +34,18 @@ pub mod zgemm;
 pub mod zhemm;
 pub mod zher2k;
 pub mod zherk;
+pub mod zsymm;
+pub mod zsyr2k;
+pub mod zsyrk;
 pub mod ztrmm;
 pub mod ztrsm;
 pub mod cgemm;
 pub mod chemm;
 pub mod cher2k;
 pub mod cherk;
+pub mod csymm;
+pub mod csyr2k;
+pub mod csyrk;
 pub mod ctrmm;
 pub mod ctrsm;
 
@@ -124,6 +130,9 @@ pub(crate) use zherk::zherk_k;
 pub use zher2k::{zher2k, zher2k_work};
 #[allow(unused_imports)]
 pub(crate) use zher2k::zher2k_k;
+pub use zsymm::zsymm;
+pub use zsyrk::{zsyrk, zsyrk_work};
+pub use zsyr2k::{zsyr2k, zsyr2k_work};
 pub use ztrmm::{ztrmm, ztrmm_work, ztrmm_copy, ztrmm_copy_work, ztrmm_stream};
 #[allow(unused_imports)]
 pub(crate) use ztrmm::{ztrmm_left_k, ztrmm_right_k};
@@ -142,6 +151,9 @@ pub(crate) use cherk::cherk_k;
 pub use cher2k::{cher2k, cher2k_work};
 #[allow(unused_imports)]
 pub(crate) use cher2k::cher2k_k;
+pub use csymm::csymm;
+pub use csyrk::{csyrk, csyrk_work};
+pub use csyr2k::{csyr2k, csyr2k_work};
 pub use ctrmm::{ctrmm, ctrmm_work, ctrmm_copy, ctrmm_copy_work, ctrmm_stream};
 #[allow(unused_imports)]
 pub(crate) use ctrmm::{ctrmm_left_k, ctrmm_right_k};
@@ -180,6 +192,19 @@ pub(crate) fn ssym_at(a: &[f32], cs: usize, upper: bool, i: usize, j: usize) -> 
 /// diagonal (stored diagonal imaginary parts are ignored, per the
 /// LAPACK Hermitian storage convention).
 #[inline]
+/// The `(i, j)` element of a complex SYMMETRIC matrix with one triangle
+/// stored: the stored element, or its mirror unconjugated.
+pub(crate) fn zsym_at(a: &[crate::c64::C64], cs: usize, upper: bool, i: usize, j: usize) -> crate::c64::C64 {
+	let stored = if upper { i <= j } else { i >= j };
+	if stored { a[j * cs + i] } else { a[i * cs + j] }
+}
+
+/// The c32 twin of [`zsym_at`].
+pub(crate) fn csym_at(a: &[crate::c32::C32], cs: usize, upper: bool, i: usize, j: usize) -> crate::c32::C32 {
+	let stored = if upper { i <= j } else { i >= j };
+	if stored { a[j * cs + i] } else { a[i * cs + j] }
+}
+
 pub(crate) fn zher_at(
 	a: &[crate::c64::C64],
 	cs: usize,
