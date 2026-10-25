@@ -2,8 +2,8 @@
 //!
 //! Implementation: elementwise stream (4 lanes, 2× unrolled). Shape
 //! ported from the raced f64 variant (SIMD beat the auto-vectorized
-//! plain loop 1.15–1.33×, three runner draws, docs/blas-ab-2026-07.md
-//! step 2); f32 measurements: step 10.
+//! plain loop 1.15–1.33×, three runner draws, campaign record
+//! step 2); f32 measurements: campaign record step 10.
 //!
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.
 

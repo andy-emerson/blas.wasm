@@ -2,7 +2,7 @@
 //! C ← αBA + βC (right), A symmetric with one triangle stored.
 //!
 //! Implementation: left side is `ssymv` per column of B/C; right side
-//! is a 4-column fan-out column-saxpy sweep (tuned 2026-07-19: each B
+//! is a 4-column fan-out column-saxpy sweep (each B
 //! column streams once per four C columns — the sgemm `col4` shape —
 //! with the symmetric element looked up across the stored triangle;
 //! per-element rounding sequence identical to the plain sweep,

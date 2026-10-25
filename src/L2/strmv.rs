@@ -1,6 +1,6 @@
 //! `strmv` — triangular matrix × vector, in place: x ← Ax.
 //!
-//! Implementation: 4-column fan-in column-saxpy (tuned 2026-07-19) —
+//! Implementation: 4-column fan-in column-saxpy —
 //! groups of four columns share one pass over x's common segment
 //! (`kernels::saxpy4in`, sources in reference `dtrmv`'s column order:
 //! ascending for upper, descending for lower), so x's

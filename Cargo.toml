@@ -4,17 +4,15 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-# The project's own BLAS layer (the first-built finished product of the
-# 2026-07-18 direction reset): SIMD streaming loops, one file per
-# function, organized by BLAS level. The plan table and implementation
-# taxonomy live in README.md in this folder; evidence per row in
-# ../docs/blas-ab-2026-07.md. The LAPACK-layer kernels re-route onto
-# this crate as it fills in.
+# The BLAS for the browser: SIMD streaming loops, one file per routine,
+# organized by BLAS level. What is built: README.md; why: DESIGN.md;
+# open work: STATUS.md. Not published to crates.io (STATUS.md, D2).
 
-# ZERO runtime dependencies (architect decision 2026-07-21): the four
-# math entry points formerly from libm are vendored in src/math.rs —
-# sqrt via the hardware instruction (IEEE requires it correctly
-# rounded, so bit-identical by definition), hypot ported verbatim.
+# ZERO runtime dependencies (DESIGN.md, "Zero runtime dependencies"):
+# the four math entry points formerly from libm are vendored in
+# src/math.rs — sqrt via the hardware instruction (IEEE requires it
+# correctly rounded, so bit-identical by definition), hypot ported
+# verbatim.
 [dependencies]
 
 [dev-dependencies]

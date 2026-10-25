@@ -1,7 +1,6 @@
 //! `strsv` — triangular solve, one right-hand side, in place: x ← A⁻¹x.
 //!
-//! Implementation: divide-then-column-saxpy, 4-column fan-in (tuned
-//! 2026-07-19) — the four divisions and the ≤3-row in-group
+//! Implementation: divide-then-column-saxpy, 4-column fan-in — the four divisions and the ≤3-row in-group
 //! elimination band run scalar in reference `dtrsv`'s order (the
 //! t-values are sequentially dependent), then the four solved
 //! unknowns eliminate from the common remaining segment in one shared

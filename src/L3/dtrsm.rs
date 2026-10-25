@@ -1,7 +1,7 @@
 //! `dtrsm` — triangular solve, many right-hand sides, in place:
 //! B ← αA⁻¹B (left) or B ← αBA⁻¹ (right).
 //!
-//! Implementation (tuned 2026-07-19): left side is divide-then-
+//! Implementation: left side is divide-then-
 //! column-daxpy — αscal, then four B columns walk the `dtrsv`
 //! elimination in lockstep so each A column streams once per group of
 //! four (A traffic 4× down; the columns are independent, so results
@@ -16,8 +16,8 @@
 //! adds — a deterministic, documented reorder (the tests' scalar
 //! replay mirrors it). The fused-FMA variant is DEFERRED at the f64
 //! campaign close (relaxed-madd rounding is implementation-dependent
-//! — architect decision, recorded in ROADMAP). Transpose forms: not
-//! built — no consumer yet.
+//! — architect decision; DESIGN.md, "Fast mode is a lever"). Transpose forms:
+//! planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;

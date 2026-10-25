@@ -7,7 +7,7 @@
 //!
 //! Every method is `unsafe` and, on wasm, carries
 //! `#[target_feature(enable = "simd128")]`: simd128 is NOT in rustc's
-//! default wasm32 feature set (measured 2026-07-18 — an unannotated
+//! default wasm32 feature set (measured: an unannotated
 //! wrapper compiled every lane op as an out-of-line call and ran the
 //! reductions 6× slower), so the feature must be enabled on the whole
 //! call chain for the intrinsics to inline. Callers keep the chain by

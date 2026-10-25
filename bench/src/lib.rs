@@ -1,19 +1,17 @@
 //! blas-bench — the BLAS layer's own measurement harness: the roofline
 //! rows, the cross-target determinism probes, and the machine-ceiling
 //! probes, for all four number types (f64/f32/c64/c32). Self-contained:
-//! depends only on blas-wasm (no faer), so it builds in seconds
-//! and the blas/ folder is the complete product — code (../src),
-//! correctness (../tests), measurement (here). Scripts:
-//! `l{1,2,3}-roofline.mjs` in this folder; the results scoreboard is
-//! ../bench/README.md (this folder's README); the expected probe bit
-//! patterns are ../tests/README.md.
+//! depends only on blas-wasm, so it builds in seconds and the
+//! repository is the complete product — code (../src), correctness
+//! (../tests), measurement (here). Scripts: `l{1,2,3}-roofline.mjs` in
+//! this folder; the results scoreboard is this folder's README.md; the
+//! expected probe bit patterns are ../tests/README.md.
 //!
 //! State is plain column-major Vecs with cs = n (no padding). The
 //! determinism probes are self-contained (own LCG, own matrices) and
-//! reproduce the bench-harness probe bit patterns exactly — verified
-//! against the step-7/9/10 runner logs at the move. The faer market
-//! races stay in ../../bench (they need faer): `gemm-tune-ab.mjs`
-//! loads both wasm modules side by side.
+//! reproduce the probe bit patterns recorded in ../tests/README.md
+//! exactly. The faer market races were run in the predecessor
+//! repository and are not reproducible from this tree (STATUS.md).
 
 struct State {
     n: usize,
@@ -54,7 +52,8 @@ fn state_mut() -> &'static mut State {
 }
 
 // deterministic fill (splitmix-style LCG), values in [-1, 1] —
-// same recipe and seeds as the bench-harness state
+// same recipe and seeds as the predecessor harness, so the probe bit
+// patterns carry over
 fn fill(n: usize, mut s: u64) -> Vec<f64> {
     let mut v = vec![0.0f64; n * n];
     for j in 0..n {
@@ -68,8 +67,8 @@ fn fill(n: usize, mut s: u64) -> Vec<f64> {
     v
 }
 
-/// Column-major n×n fill from a probe's LCG closure (the order faer's
-/// `Mat::from_fn` filled in — probe bits depend on it).
+/// Column-major n×n fill from a probe's LCG closure, column by column
+/// (the probe bit patterns depend on this fill order).
 fn alloc_mat_f64(n: usize, next: &mut impl FnMut() -> f64) -> Vec<f64> {
     let mut v = vec![0.0f64; n * n];
     for j in 0..n {
@@ -95,7 +94,7 @@ pub extern "C" fn setup(n: usize) {
     let a = fill(n, 0x9E3779B97F4A7C15);
     let b = fill(n, 0xD1B54A32D192ED03);
     // symmetric, diagonally dominant (same construction as the
-    // bench-harness state: a + aᵀ with a boosted diagonal)
+    // predecessor harness: a + aᵀ with a boosted diagonal)
     let mut sym = vec![0.0f64; n * n];
     for j in 0..n {
         for i in 0..n {
@@ -429,42 +428,6 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
     sym[0] + sym[len(scs) - 1]
 }
 
-/// Tuning-campaign candidate row: the 4×4 register-tiled gemm on the
-/// same state/constants as run_l3_layer(0) — bit-identical output,
-/// raced for speed only.
-#[no_mangle]
-pub extern "C" fn run_l3_tuned_gemm() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym.as_mut_ptr(), len(scs)) };
-    l3::dgemm_tiled(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    sym[0] + sym[len(scs) - 1]
-}
-
-/// Same, for the 4-column fused candidate.
-#[no_mangle]
-pub extern "C" fn run_l3_col4_gemm() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym.as_mut_ptr(), len(scs)) };
-    l3::dgemm_col4(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    sym[0] + sym[len(scs) - 1]
-}
-
 /// Level-3 cross-target determinism probes: fixed LCG-filled 65×65
 /// matrices (odd — tails everywhere), one op each, folded column-wise
 /// with the layer's own asum. op order matches run_l3_layer plus
@@ -516,7 +479,7 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
 /// Cross-target determinism probe: fixed LCG data (len 1001 — odd, so the
 /// scalar tail runs too), one reduction per op. Native bin and wasm build
 /// must return identical bits (the lane-emulation construction in
-/// blas/src/lanes.rs). op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
+/// src/lanes.rs). op: 0 dot, 1 asum, 2 nrm2, 3 iamax.
 #[no_mangle]
 pub extern "C" fn run_l1_probe(op: usize) -> f64 {
     use blas_wasm::L1 as l1;
@@ -548,7 +511,7 @@ pub extern "C" fn run_l1_probe(op: usize) -> f64 {
 /// matrices. Bytes moved per call = 3·8·n² (read a, read b, write c).
 #[no_mangle]
 pub extern "C" fn run_ceiling_bw() -> f64 {
-    // v2 (2026-07-18): the original version allocated + copied an n×n
+    // the original version allocated + copied an n×n
     // matrix INSIDE the timed region (to_owned per call) and streamed c
     // twice — depressing the measured ceiling and miscounting traffic.
     // Now a pure single-pass triad sym ← a + 2.5·b over persistent
@@ -807,40 +770,6 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
         }
         _ => return f64::NAN,
     }
-    (sym[0] + sym[len(scs) - 1]) as f64
-}
-
-/// f32 gemm dispatch-check rows (tiled vs col4 on the same state) —
-/// the byte threshold is inherited from f64; these race it directly.
-#[no_mangle]
-pub extern "C" fn run_l3_tuned_gemm_f32() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a32.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b32.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym32.as_mut_ptr(), len(scs)) };
-    l3::sgemm_tiled(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    (sym[0] + sym[len(scs) - 1]) as f64
-}
-
-#[no_mangle]
-pub extern "C" fn run_l3_col4_gemm_f32() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a32.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b32.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym32.as_mut_ptr(), len(scs)) };
-    l3::sgemm_col4(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
     (sym[0] + sym[len(scs) - 1]) as f64
 }
 
@@ -1650,7 +1579,7 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
     (fold + cv[0].re + cv[0].im + cv[len - 1].re) as f64
 }
 
-/// Packed-gemm race rows (tuning campaign 2026-07-20): rectangular
+/// Packed-gemm race rows (tuning campaign): rectangular
 /// m×k×n gemm over the square state's buffers reinterpreted as
 /// contiguous column-major panels (A = first m·k of a, B = first k·n
 /// of b, C = first m·n of sym). Caller must `setup(N)` with

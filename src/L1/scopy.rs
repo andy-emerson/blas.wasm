@@ -1,7 +1,7 @@
 //! `scopy` — vector scopy: y ← x.
 //!
 //! Implementation: elementwise stream (4 lanes, 2× unrolled) — an
-//! architect consistency decision (Andy, 2026-07-18) on top of a
+//! consistency decision on top of a
 //! measured no-harm: scopy runs at the machine's bandwidth ceiling
 //! either way, so no speed claim attaches to the loop over memcpy.
 //!

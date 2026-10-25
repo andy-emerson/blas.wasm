@@ -1,15 +1,13 @@
 //! `dgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched family (tuned 2026-07-18, packed
-//! shape added 2026-07-20): 4×4 register tile below ~1.5 MB of A,
+//! Implementation: size-dispatched family: 4×4 register tile below ~1.5 MB of A,
 //! BLIS-style packed-panel shape above (replaced the 4-column fused
 //! stream after two unanimous runner draws: 1.24× at 512³, 1.44× at
 //! 1024³, 1.10–1.23× deep-K) — all bit-identical to the plain
 //! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
 //! stays as the raced mid-size reference. The pre-packed shapes beat
 //! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; docs/blas-ab-2026-07.md step 6). Transpose forms: not built
-//! — no consumer yet (dsyrk covers A·Aᵀ).
+//! large; campaign record step 6, STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;
@@ -18,7 +16,7 @@ use crate::L2::dgemv;
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
 ///
-/// Dispatches by size (tuning campaign, 2026-07-18, two runner draws
+/// Dispatches by size (raced on the reference runners, two draws
 /// agreeing within 3%): the 4×4 register tile wins while A stays small
 /// enough that its column-strided k-walk rides the caches (best
 /// 128–384, 1.4–1.8× over faer); the 4-column fused stream wins above
@@ -40,7 +38,7 @@ pub fn dgemm(
 ) {
 	// measured crossover between n=384 (A ≈ 1.2 MB: tiled) and n=512
 	// (A = 2 MB) on both reference draws and the container. Above it,
-	// the packed-panel shape replaced col4 (packed-gemm race 2026-07-20,
+	// the packed-panel shape replaced col4 (packed-gemm race,
 	// two runner draws unanimous: 1.24x at 512³, 1.44x at 1024³,
 	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
 	// reference). Packed also edged tiled +3% at 256³ — recorded, not
@@ -77,7 +75,7 @@ pub fn dgemm_colaxpy(
 	}
 }
 
-/// Tuning-campaign candidate (2026-07-18): 4×4 register-tiled dgemm.
+/// Tuning-campaign candidate: 4×4 register-tiled dgemm.
 /// The column-daxpy dgemm re-reads and re-writes each C element once per
 /// k step; this micro-kernel holds a 4-row × 4-column tile of C in 8
 /// SIMD registers across the whole k loop — one C load and one C store
@@ -146,7 +144,7 @@ pub fn dgemm_tiled(
 	}
 }
 
-/// Tuning-campaign candidate 2 (2026-07-18): 4-column fused dgemm.
+/// Tuning-campaign candidate 2: 4-column fused dgemm.
 /// The 4×4 tile's k-loop walks A at column stride (TLB/prefetch-hostile
 /// at large n — measured losing above n≈512); this shape instead
 /// streams each A column SEQUENTIALLY, once per group of four C
@@ -208,7 +206,7 @@ pub fn dgemm_col4(
 	}
 }
 
-/// Tuning-campaign candidate 3 (2026-07-20): packed-panel dgemm —
+/// Tuning-campaign candidate 3: packed-panel dgemm —
 /// BLIS/Goto structure around the same 4×4 microkernel math. The tile's
 /// weakness is its k-walk over A at column stride (TLB/prefetch-hostile
 /// once A outgrows the near caches — why the dispatch abandons it at

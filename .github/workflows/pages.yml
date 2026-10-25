@@ -1,0 +1,53 @@
+# Deploys the book (book/) to GitHub Pages on every push to main. The
+# repository's Pages source must be set to "GitHub Actions" once, by a
+# human, in Settings → Pages. The gate workflow is what tests the book
+# (include check, build, mdbook test); this workflow only builds and
+# publishes it.
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Book tooling (pinned)
+        run: cargo install --locked mdbook@0.5.4 mdbook-katex@0.10.0 mdbook-mermaid@0.17.1
+
+      - name: Build the book
+        run: |
+          node book/check-includes.mjs
+          mdbook-mermaid install book
+          mdbook build book
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/book
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

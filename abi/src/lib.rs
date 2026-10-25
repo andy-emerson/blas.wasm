@@ -17,8 +17,8 @@
 //! - `wasm_alloc`/`wasm_free` are provided so a host without its own
 //!   view of linear memory can create buffers (16-byte aligned).
 //!
-//! Written mechanically from the crate's public signatures at creation
-//! (2026-07-21) and maintained by hand from here - one wrapper per
+//! Written mechanically from the crate's public signatures and
+//! maintained by hand - one wrapper per
 //! routine, strictly uniform shape; keep new wrappers to the same
 //! pattern.
 

@@ -1,14 +1,14 @@
-// Level-3 roofline scoreboard for the shipped BLAS layer (blas/ crate):
+// Level-3 roofline scoreboard for the shipped BLAS layer:
 // the multiply-class ops are scored in GFLOP/s against the machine's
 // measured arithmetic peak (run_ceiling_flops) — the roofline axis that
 // matters once an op does O(n³) work on O(n²) data. Also verifies the
 // Level-3 cross-target determinism probes against native bit patterns
 // (`cargo run --release --bin native l3-bits`).
 //
-// Lives beside the layer it measures (blas/bench). Build + run:
+// Lives in bench/, beside the layer it measures. Build + run:
 //   cargo build --release --target wasm32-unknown-unknown --lib
-//   cargo run --release --bin native l3-bits[-f32|-z] > bits.txt
-//   node l3-roofline.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm bits.txt [--f32|--c64]
+//   cargo run --release --bin native l3-bits[-f32|-z|-c] > bits.txt
+//   node l3-roofline.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm bits.txt [--f32|--c64|--c32]
 import { readFileSync } from 'node:fs';
 
 const wasmPath = process.argv[2];

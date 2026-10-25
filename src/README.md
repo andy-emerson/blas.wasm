@@ -9,6 +9,7 @@ are NOT extra nodes — they produce bit-identical results. This graph
 covers the f64 and f32 layers, which have identical structure; the
 c64 layer's differences are listed below it.
 
+<!-- ANCHOR: graph -->
 ```mermaid
 graph TD
   subgraph L3
@@ -69,6 +70,7 @@ graph TD
   syr --> axpy
   syr2 --> axpy
 ```
+<!-- ANCHOR_END: graph -->
 
 Notes:
 
@@ -76,9 +78,10 @@ Notes:
   graph: the private SIMD kernels (`kernels.rs` — blocked hot loops
   several operations share), the lane types (`lanes.rs`), gemm's
   internal shapes and dispatcher (inside the gemm files), and the
-  small helpers (`check_mat`, `{d,s}scale_y`, `{d,s}sym_at`).
-- `symv` has no outgoing arrows: its fused kernel replaced the
-  axpy+dot composition it used to be.
+  small helpers (`check_mat`; `{d,s,z,c}scale_y` and the real-α
+  `{zd,cs}scale_y`; `{d,s}sym_at` and `{z,c}her_at`).
+- `symv` has no outgoing arrows: its fused kernel does the work the
+  axpy+dot composition would otherwise do.
 - `rotg` and copy/swap/rot/nrm2/asum/iamax are leaves — nothing in
   the crate calls them; consumers do.
 
@@ -122,8 +125,8 @@ tables in the crate README:
 |---|---|---|
 | `d` | f64 (double) | `daxpy`, `dgemm` |
 | `s` | f32 (single) | `saxpy`, `sgemm` |
-| `z` | c64 (double complex) | `zaxpy`, `zgemm` — built 2026-07-19 |
-| `c` | c32 (single complex) | `caxpy`, `cgemm` — built 2026-07-19 |
+| `z` | c64 (double complex) | `zaxpy`, `zgemm` |
+| `c` | c32 (single complex) | `caxpy`, `cgemm` |
 
 The index routines put `i` first and the type second: `idamax` /
 `isamax` / `izamax` / `icamax` (index of the largest element — |x|
@@ -145,17 +148,18 @@ The names are netlib's; the signatures are ours (documented per file):
   unit-diagonal selection stay as `bool` parameters where the loop
   structure is shared (`upper`, `unit`).
 - **Unit stride only.** Callers pass contiguous column slices with a
-  column stride per matrix — no `incx`/`incy` (strided access defeats
-  streaming and no consumer wants it).
+  column stride per matrix — no `incx`/`incy` today. Strides are
+  planned (`../STATUS.md`, todo S3; the API shape is decision D7).
 - **`drotg`/`srotg` return a `Givens` struct** (c, s, r) instead of
   writing through pointers, and omit the classic `z` reconstruction
   output — no consumer wants it. `zrotg` likewise returns a `ZGivens`
   (real c, complex s, complex r).
 - **Tuned-variant exports.** Where a routine ships raced alternates,
   they carry a suffix: `dgemm_colaxpy` (the plain reference shape),
-  `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` — `dgemm` itself is the
-  size dispatcher. Every type carries a `*gemm_packed` shape since the
-  2026-07-20 race; in z/c it is the packed complex register tile.
+  `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` (and the s twins) —
+  `dgemm` itself is the size dispatcher. z/c export `*gemm_colaxpy`
+  and `*gemm_packed` only; their packed shape is the complex register
+  tile.
 
 Everything else about a routine — what it computes, its rounding
 contract, which tuned loop shape it ships and why — lives in its own

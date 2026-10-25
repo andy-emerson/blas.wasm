@@ -3,7 +3,7 @@
 //! Implementation: reduction stream (4 accumulator registers = 8 lanes,
 //! `abs` in-lane, folded in a fixed order at the end). Ported from the
 //! raced variant — 3.5–4× faster than the plain loop on all three
-//! runner draws (docs/blas-ab-2026-07.md, step 2): the plain loop's
+//! runner draws (campaign record, step 2): the plain loop's
 //! serial dependent-add chain is latency-bound, not bandwidth-bound.
 //!
 //! Rounding contract: lane-parallel accumulation reorders the additions
@@ -24,7 +24,7 @@ unsafe fn imp(xp: *const f64, len: usize) -> f64 {
 	let mut a2 = F64x2::splat(0.0);
 	let mut a3 = F64x2::splat(0.0);
 	let mut i = 0usize;
-	// 4 accumulator registers (tuning lever, 2026-07-19): the 2-register
+	// 4 accumulator registers (tuning lever): the 2-register
 	// version left the reductions latency-bound at 60-80%% of triad
 	while i + 8 <= len {
 		a0 = a0.add(F64x2::load(xp.add(i)).abs());

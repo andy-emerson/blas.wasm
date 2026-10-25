@@ -1,6 +1,6 @@
 //! `cgemm` — complex matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched (packed shape added 2026-07-20):
+//! Implementation: size-dispatched:
 //! 4-column fused column-caxpy (`kernels::caxpy4`) below 8 MB of A,
 //! BLIS-style packed-panel 4×4 complex register tile at and above —
 //! the only zone where the packed shape measured a win (+12% at
@@ -35,7 +35,7 @@ pub fn cgemm(
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
-	// packed-gemm race 2026-07-20 (two runner draws): packed wins only
+	// packed-gemm race (two runner draws): packed wins only
 	// at 1024³ (+12%, A = 8 MB, unanimous); 256³/512³/deep-K measured
 	// noise. Routed at the measured win only — the (2 MB, 8 MB) gap is
 	// unmeasured and col4 keeps it.
@@ -104,7 +104,7 @@ pub fn cgemm_colaxpy(
 	}
 }
 
-/// Tuning-campaign candidate (2026-07-20): packed-panel cgemm — the
+/// Tuning-campaign candidate: packed-panel cgemm — the
 /// `zgemm_packed` structure at c32 pair geometry: 4 complexes (2 F32x4
 /// accumulator rows) × 4 columns of C, fed from packed panels. α folds
 /// into the B panel at pack time (same single α·b rounding as col4's

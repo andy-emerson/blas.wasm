@@ -1,17 +1,17 @@
 //! Level 2: matrix–vector operations, one file per BLAS routine
 //! (netlib naming — src/README.md), every one a composition of the
-//! Level 1 streams over column slices. Since the 2026-07-19 tuning
-//! campaign the multiply-vector family runs its columns four at a
-//! time through the shared blocked kernels (`crate::kernels`); tails
-//! and the rank-1/2 updates stay one Level 1 call per column. The
-//! SIMD hot loops live in L1/kernels under their `target_feature`
+//! Level 1 streams over column slices. The multiply-vector family
+//! runs its columns four at a time through the shared blocked kernels
+//! (`crate::kernels`); tails and the rank-1/2 updates stay one Level 1
+//! call per column. The
+//! SIMD hot loops live in `L1/` and `kernels.rs` under their `target_feature`
 //! annotations. All four number types follow the same structure
 //! (naming: src/README.md).
 //!
 //! Matrix convention (the whole crate): column-major slice with a
 //! column stride — column `j` of an `nrows × ncols` matrix `a` with
 //! stride `cs ≥ nrows` is `a[j*cs .. j*cs + nrows]`. Unit row stride
-//! only; callers with padded faer matrices pass `col_stride()` as
+//! only; callers with padded matrices pass the padded column stride as
 //! `cs`.
 
 pub mod dgemv;

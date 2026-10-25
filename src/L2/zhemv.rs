@@ -2,8 +2,8 @@
 //! with only one triangle stored (A[j,i] = conj(A[i,j]); diagonal
 //! imaginary parts are ignored, per the LAPACK storage convention).
 //!
-//! Implementation: 4-column grouped fused pass (close-out race,
-//! 2026-07-19) — four stored columns share ONE stream over x and y
+//! Implementation: 4-column grouped fused pass (close-out race)
+//! — four stored columns share ONE stream over x and y
 //! (`kernels::zaxpy_dotc4`: y[i] += Σᵤ tᵤ·aᵤ[i] while each
 //! accᵤ += conj(aᵤ[i])·x[i]), the dsymv grouping at complex lane
 //! geometry; tail columns use the single-column fused pass

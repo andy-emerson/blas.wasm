@@ -9,12 +9,15 @@
 
 use crate::lanes::F64x2;
 
+// ANCHOR: daxpy
 /// y ← αx + y. Panics on length mismatch.
 pub fn daxpy(alpha: f64, x: &[f64], y: &mut [f64]) {
 	assert_eq!(x.len(), y.len(), "daxpy: length mismatch");
 	unsafe { imp(alpha, x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }
+// ANCHOR_END: daxpy
 
+// ANCHOR: daxpy_imp
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 unsafe fn imp(alpha: f64, xp: *const f64, yp: *mut f64, len: usize) {
 	let va = F64x2::splat(alpha);
@@ -33,3 +36,4 @@ unsafe fn imp(alpha: f64, xp: *const f64, yp: *mut f64, len: usize) {
 		i += 1;
 	}
 }
+// ANCHOR_END: daxpy_imp

@@ -1,7 +1,6 @@
 # On-demand performance measurement on the reference runners — the
 # repo's own tuning-verdict machinery (the two-draw discipline: dispatch
-# this twice, compare). STAGED at ci/bench.yml — paste as
-# .github/workflows/bench.yml, then delete the staged copy.
+# this twice, compare).
 name: bench
 on:
   workflow_dispatch:

@@ -1,8 +1,7 @@
 //! `dsyr2k` — symmetric rank-2k update: C ← α(ABᵀ + BAᵀ) + βC, one
 //! triangle of C stored.
 //!
-//! Implementation: truncated column-daxpy, 4-column fan-out (tuned
-//! 2026-07-19, same shape as dsyrk) — four stored columns grouped so
+//! Implementation: truncated column-daxpy, 4-column fan-out (same shape as dsyrk) — four stored columns grouped so
 //! each inner A and B column streams once per group over the common
 //! triangle segment; ragged edges scalar in the same per-element
 //! order (bit-for-bit tested). Within each inner index the A-sourced

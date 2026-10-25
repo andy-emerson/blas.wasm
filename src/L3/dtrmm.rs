@@ -1,7 +1,7 @@
 //! `dtrmm` — triangular matrix multiply, in place:
 //! B ← αAB (left) or B ← αBA (right), A triangular.
 //!
-//! Implementation (tuned 2026-07-19): left side walks four B columns
+//! Implementation: left side walks four B columns
 //! in lockstep through the `dtrmv` column sweep, so each A column
 //! streams once per group of four instead of once per column (A
 //! traffic 4× down; per-column rounding sequence unchanged — the
@@ -15,11 +15,11 @@
 //! plain sweep (ascending k throughout); for UPPER the in-group adds
 //! now precede the out-of-group adds — a deterministic, documented
 //! reorder (the tests' scalar replay mirrors it). A fused-FMA variant
-//! measured better in the step-1 race but is DEFERRED at the f64
+//! measured better in the campaign record step-1 race but is DEFERRED at the f64
 //! campaign close: wasm relaxed-madd rounding is implementation-
 //! dependent, so it trades away cross-target bit-identity — an
-//! architect decision, recorded in ROADMAP. Transpose forms: not
-//! built — no consumer yet.
+//! architect decision; DESIGN.md, "Fast mode is a lever". Transpose forms:
+//! planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;

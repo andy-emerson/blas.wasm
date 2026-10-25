@@ -1,14 +1,13 @@
 //! `dsyrk` — symmetric rank-k (Gram-matrix) update:
 //! C ← αAAᵀ + βC, one triangle of C stored.
 //!
-//! Implementation: truncated column-daxpy, 4-column fan-out (tuned
-//! 2026-07-19) — four stored columns of C are grouped so each inner
+//! Implementation: truncated column-daxpy, 4-column fan-out — four stored columns of C are grouped so each inner
 //! A column streams once per group over the common triangle segment
 //! (source traffic 4× down); the ≤3-row ragged edge per column is
 //! handled scalar in the same per-element order, so results stay
 //! bit-for-bit identical to the plain sweep (tested). The plain
 //! (non-FMA) variant is the measured choice: fusing HARMED dsyrk on
-//! all three step-1 draws.
+//! all three campaign record step-1 draws.
 
 use super::check_mat;
 use crate::kernels::daxpy4;

@@ -1,4 +1,4 @@
-// Packed-gemm race (tuning campaign 2026-07-20): the BLIS-style
+// Packed-gemm race (tuning campaign): the BLIS-style
 // packed-panel candidates (`*gemm_packed`) vs the shipped gemm dispatch,
 // all four number types, square sizes plus the deep-K rectangular shapes
 // that motivated the candidate (prefill-style k >> m). Interleaved

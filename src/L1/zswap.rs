@@ -2,7 +2,7 @@
 //!
 //! Implementation: pure delegation — swapping interleaved complex IS
 //! `dswap` on the 2n-real view. The tuned d-stream (SIMD swap raced
-//! 1.2–1.3× over plain, step 2) carries over for free.
+//! 1.2–1.3× over plain, campaign record step 2) carries over for free.
 
 use crate::c64::{as_re_mut, C64};
 use crate::L1::dswap;
