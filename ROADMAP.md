@@ -1,9 +1,9 @@
 # ROADMAP — blas.wasm, the BLAS for the browser
 
-Plan of record as of 2026-10-24 (Andy, architect; drafted from the
-2026-10-17 and 2026-10-24 design conversations; revised the same day
-after the consumer and fast-mode discussion). Supersedes the
-2026-10-17 roadmap. `README.md` is the record of what is BUILT; this
+Plan of record as of 2026-10-25 (Andy, architect; drafted from the
+2026-10-17 and 2026-10-24 design conversations; revised 2026-10-24
+after the consumer and fast-mode discussion and 2026-10-25 after the
+deployment-shape discussion). Supersedes the 2026-10-17 roadmap. `README.md` is the record of what is BUILT; this
 file is the record of what comes next and of what was considered,
 deferred, or rejected. Dates and decisions go here first; README rows
 move as work lands.
@@ -44,6 +44,20 @@ move as work lands.
   test, faster than everything else that is reproducible, and within
   2× of the fastest thing that is not.** It is NOT "the fastest gemm
   on the web" (see XNNPACK, Step B).
+- **Two products, nothing else (2026-10-25).** A Rust crate on
+  crates.io and a JavaScript package on npm. The Emscripten
+  distribution (static library, header, threading shim, Pyodide
+  integration) is dropped from the plan entirely: highest risk, most
+  time, and its consumer was demoted. C programmers get a page in the
+  book, not an artifact. The Fortran-style symbols and the current
+  hand-written flat ABI are dropped too; the wasm module exports CBLAS
+  names. See "Products and surfaces".
+- **The documentation becomes a book (2026-10-25).** An mdBook site
+  with LaTeX and live code includes, replacing the three READMEs as
+  the place the mathematics and the rounding-order arguments are
+  explained. Chosen over literal literate programming (tangling
+  Markdown into Rust) because it keeps every Rust tool working on
+  real source; see Step D and "considered and rejected".
 
 ## Where we are
 
@@ -57,16 +71,98 @@ inside packed gemm (two panel buffers).
 Gaps relative to a complete BLAS, recorded in README: transpose and
 conjugate-transpose forms of gemm/trmv/trsv/trmm/trsm are not built;
 syrk/syr2k/herk/her2k have the N form only; vectors are unit stride
-(no `incx`/`incy`); no row-major entry; no CBLAS or Fortran-style
-symbols; argument errors trap rather than report. Competing with
-OpenBLAS means closing all of these.
+(no `incx`/`incy`); no row-major entry; the module's exports use an
+invented argument order rather than CBLAS's; argument errors trap
+rather than report. Competing with OpenBLAS means closing all of
+these.
+
+## Products and surfaces
+
+**Two products.**
+
+- **The Rust crate** (`blas-wasm`, crates.io). Source, not binary. A
+  Rust project adds it as a dependency and its own `cargo build`
+  compiles it for whatever target that project uses, native or wasm.
+  No C bindings, no wasm inside it, nothing pre-compiled. Idiomatic
+  API: enums for transpose/side/triangle/diagonal, slices, explicit
+  strides.
+- **The npm package** (scoped name, decided before first publish).
+  Ready to run. One package containing the JavaScript loader, the
+  TypeScript type definitions, and the two pre-built wasm files as
+  assets inside the package. Works in Node and in browsers. A
+  JavaScript project installs it as one dependency and calls
+  functions; it never sees a wasm file. The wasm bytes are NOT
+  inlined into the JavaScript as text (that inflates them by a third
+  and defeats streaming compilation); they are separate files inside
+  the package, and the loader fetches the one the page can use.
+
+Plus the book (Step D) on GitHub Pages and the crate's API reference
+on docs.rs, which renders itself.
+
+**One semantic surface, three projections.** The semantics are
+netlib BLAS: names, argument meanings, flag meanings, quick-return
+rules. Nothing is invented.
+
+- *Rust projection*: the crate's API above. Primary, because the code
+  is Rust.
+- *CBLAS projection*: the wasm module's export list. `cblas_dgemm(
+  order, transA, transB, m, n, k, alpha, A, lda, B, ldb, beta, C,
+  ldc)` and the rest of the standard, 32-bit `int`, `CblasRowMajor`
+  by the standard operand swap. Produced by the `abi/` crate in this
+  repo, which is a BUILD STEP for the npm package and is never
+  published on its own. These are export NAMES, chosen because the
+  module has to export something and the standard names are known to
+  everyone; they are not a channel anyone maintains for C users.
+- *JavaScript projection*: CBLAS names and argument order on typed
+  arrays, memory management hidden, promises on threaded calls. The
+  model is stdlib's `@stdlib/blas`, the one existing package serving
+  numerical users in JavaScript: its users already know these
+  conventions.
+
+**What is not shipped, and why.** No static library, no `cblas.h`,
+no Fortran-style `dgemm_` symbols, no Emscripten anything. A C
+programmer who wants this code inside their own wasm program depends
+on the crate, writes a handful of `extern "C"` wrapper lines (the
+`abi/` source is a worked example), and builds as a library; the book
+has a page for it. Anyone who is considering a C dependency already
+knows how to do that. Pyodide-style consumers get the same page plus
+a note that reference LAPACK links against any BLAS, so they do not
+wait on the LAPACK project; their integration is their work, recorded
+here as such.
+
+**Why two wasm files, stated once.** A wasm file declares in its
+header whether its memory is ordinary or shareable between workers,
+and the browser enforces the declaration. A file declaring shared
+memory cannot be loaded on a page without the isolation headers, not
+even to run on one thread, because the page is forbidden to create
+the shared memory object the file demands. A file declaring ordinary
+memory cannot be opened by several workers at once. No single file
+does both. So the decision "threads when the headers are present,
+single-threaded otherwise" forces two files from the same source,
+differing in one linker setting. The user never sees this: the npm
+loader picks one at startup and the browser downloads only that one.
+The cost is a doubled gate (both files built, probed, smoke-tested).
+
+**What this shape is and is not.** It is the minimum for a Rust core
+whose primary audience writes JavaScript, with precedent in
+tree-sitter and Automerge (Rust or C core, crate, npm with wasm
+inside). It is NOT how numerical libraries usually ship: OpenBLAS and
+BLIS ship C, faer ships a crate, stdlib ships npm, and bindings are
+left to the community. A numerical analyst will not be confused by
+either channel, because inside each one the calls look exactly like
+BLAS, but they would not expect a BLAS to ship this way, and the
+README should not pretend otherwise. The user this serves is the one
+stdlib already serves: a numerical analyst working in JavaScript. For
+that person the deployment is JavaScript-shaped and the API is
+BLAS-shaped, and that satisfies both halves.
 
 ## Constraints (standing, architect decisions, revised 2026-10-24)
 
 1. **Our build stays pure.** No Emscripten, no wasm-bindgen, no libc
-   layer in the artifacts we build. (Producing an object that an
-   Emscripten CONSUMER can link is a distribution format, not a
-   change to our build — Step E.)
+   layer in the artifacts we build. Nothing is built FOR Emscripten
+   either; a consumer who wants to link our code into their own
+   program does so from the crate (book page), not from an artifact
+   we ship.
 2. **Shared memory is a feature, never a requirement.** The host
    detects `crossOriginIsolated`; with it, the threaded artifact runs
    on one shared memory; without it, today's single-threaded artifact
@@ -82,8 +178,7 @@ OpenBLAS means closing all of these.
 4. **Threads are a host concern; kernels never synchronize.** The
    module contains no atomics, no locks, no thread-local state. The
    host partitions disjoint output regions and joins. Parallelism is
-   a property of the JS package and of the Emscripten shim, never of
-   the Rust code.
+   a property of the JS package, never of the Rust code.
 5. **Numbers before routing, measured where they apply.** Kernel
    dispatch thresholds (tile/packed) are properties of the code and
    are raced on the reference runners with two draws, as before.
@@ -136,6 +231,10 @@ at most 2× there.
   must be able to read it end to end.
 - Publish `blas-wasm` on crates.io (drop `publish = false`); Rust
   consumers are told to depend on the crate, so it must exist.
+- README's first paragraph states that the decompositions (solve,
+  inverse, eigen, SVD) are a separate project, so nobody installs
+  this looking for `solve`. It also states the deployment shape
+  plainly: a crate and an npm package, and why.
 - Gate: assert the export count and the import count (zero) of the
   built module, so Step S cannot silently change either.
 - Gate: scan every shipped artifact for relaxed-SIMD opcodes
@@ -147,6 +246,13 @@ at most 2× there.
 
 The largest step and the precondition for every claim. Done through
 the packing layer wherever possible so the microkernels do not change.
+
+**S0 — Rust-side flags as enums.** The crate API gains `Trans`,
+`Side`, `Uplo`, `Diag` enums (netlib meanings) in place of the
+current booleans and separate-function pairs, so the forms added
+below have one idiomatic home and the CBLAS projection is a mechanical
+mapping. Existing entry points stay as thin aliases until the next
+major version.
 
 **S1 — Level 3 op flags via packing.** gemm gains `transa`/`transb`
 in {N, T, C}; syrk/syr2k/herk/her2k gain `trans`; trmm/trsm gain
@@ -174,7 +280,7 @@ reference semantics. This also unblocks LU row swaps downstream.
 become a caller-provided workspace (`work`, `lwork`), LAPACK style,
 with a query form that returns the size. After S4 the crate never
 allocates: `alloc` is dropped. Required by Step T (no allocator
-inside a shared memory) and good for the Emscripten shim (Step E).
+inside a shared memory).
 
 **S5 — reference semantics.** Quick returns, `beta == 0` not reading
 C, zero dimensions, NaN propagation as reference BLAS; the complex
@@ -185,11 +291,11 @@ BLAS and are the one family missing outright; `zrot`/`crot`
 **S6 — argument errors are reportable.** The crate keeps trapping on
 memory-bounds violations (a trap is the right answer to an invalid
 pointer). Argument errors (negative n, bad flag, lda < m) are
-reported, not trapped: the C ABI gets an exported error slot and
+reported, not trapped: the module gets an exported error slot and
 returns without computing, mirroring reference BLAS's
-xerbla-then-return; the CBLAS layer (Step C) reads it. Decision
-recorded: a zero-import module cannot call a host error handler, so
-the slot replaces the callback.
+xerbla-then-return; the JavaScript layer reads it and throws.
+Decision recorded: a zero-import module cannot call a host error
+handler, so the slot replaces the callback.
 
 Testing contract carries over unchanged for every new form: bitwise
 replay against the same-order scalar definition, bounds against
@@ -197,24 +303,25 @@ higher-precision references, residuals for solves, native ↔ wasm
 probes extended to the new forms. Export count grows well past 116;
 the gate assertion in Step 0 moves with it, deliberately.
 
-## Step C — the ABIs OpenBLAS users already call
+## Step C — the module's export surface becomes CBLAS
 
-"Integrated like OpenBLAS" means callers link against the same
-symbols and change nothing.
+The `abi/` crate is rewritten so the wasm module exports the CBLAS
+names and argument order (`cblas_dgemm(order, transA, transB, m, n,
+k, alpha, A, lda, B, ldb, beta, C, ldc)`, 32-bit `int`, the full
+standard), replacing today's invented flat signatures. `CblasRowMajor`
+is the standard operand swap into the column-major kernels; no
+row-major kernels. Argument validation writes the error slot (S6) and
+returns. Each wrapper is a few lines generated mechanically from the
+Rust signatures, the same way the current ABI was written; the
+uniform shape is kept. `wasm_alloc`/`wasm_free` stay as the two
+non-BLAS exports.
 
-- **CBLAS**: `cblas_dgemm(order, transA, transB, m, n, k, alpha, A,
-  lda, B, ldb, beta, C, ldc)` and the full `cblas.h` surface, 32-bit
-  `int`. `CblasRowMajor` handled by the standard operand swap into
-  the column-major kernels; no row-major kernels.
-- **Fortran-style symbols**: `dgemm_` and friends, every argument by
-  pointer, flags as characters, trailing underscore. This is what
-  NumPy, SciPy, R, and Eigen's BLAS backend actually bind to.
-- **Error path**: CBLAS-level argument validation writes the error
-  slot (S6) and returns; a host that wants `xerbla` semantics reads
-  the slot after the call.
-- The current flat ABI (`abi/`) stays as the inner layer; CBLAS and
-  the Fortran symbols are thin wrappers over it, generated
-  mechanically from the signatures, same uniform shape.
+This is a naming change to a build step, not a new channel: the
+`abi/` crate remains unpublished and exists only to produce the two
+wasm files for the npm package. No header is shipped; the standard
+`cblas.h` already describes these exports for anyone who wants one.
+Fortran-style symbols are not built (no consumer in scope; a day of
+mechanical work from this surface if one appears).
 
 ## Step T — threading by shared memory
 
@@ -276,35 +383,50 @@ bandwidth-bound rows (syrk/syr2k sit at ~40% of peak in f64 because
 they are memory-limited and will scale worst). Levels 1–2 unchanged.
 Users without the headers: unchanged.
 
-## Step E — the Emscripten-linkable distribution
+## Step D — the book
 
-The largest potential consumers of a browser BLAS (Pyodide,
-JupyterLite, webR, and anything built on NumPy/SciPy/R in wasm) link
-with `emcc`. Rejecting Emscripten for OUR build (constraint 1) is
-fine; refusing to give them an object they can link is leaving the
-market on the table.
+An mdBook site (the tool behind the Rust Book, Rust by Example, the
+Cargo book): a folder of Markdown chapters plus a `SUMMARY.md` table
+of contents, built by one command into a static site with a sidebar,
+search, light/dark themes, and next/previous navigation; deployed to
+GitHub Pages by a workflow on every push to main; previewed locally
+with `mdbook serve`.
 
-They do not need to wait for the LAPACK project. Reference LAPACK is
-itself a BLAS consumer: nearly all of its floating-point work is
-gemm, trsm, syrk and friends. Pyodide can link the reference LAPACK
-it already builds against this BLAS and take most of the speedup at
-once; the LAPACK subset improves it later.
+Why this and not literate programming in the literal sense (Markdown
+source tangled into Rust): Rust has no line directive, so every
+compiler error, clippy warning, test failure and panic would cite the
+generated file and be mapped back by hand; rust-analyzer, rustfmt and
+go-to-definition would work on generated code; diffs would show prose
+churn or generated code; and literate layouts are a known barrier to
+outside contributors, which a crate and an npm package are asking
+for. Knuth's reason for tangling, ordering code for the reader rather
+than the compiler, does not apply in Rust, where item order is free
+and one file per routine already groups by concept. The book is the
+inverse: prose includes code, code stays canonical.
 
-- **E1 — static library.** Build the crate + CBLAS layer as a
-  `staticlib` for `wasm32-unknown-emscripten` (or verify that the
-  `wasm32-unknown-unknown` object links under Emscripten's `wasm-ld`;
-  the C ABI for scalar and pointer arguments is the same — verify
-  before relying on it). Ship with a `cblas.h`-compatible header.
-- **E2 — the threading shim.** OpenBLAS parallelizes INSIDE a
-  `dgemm` call; NumPy expects that. A small C shim, compiled by the
-  consumer's Emscripten with its pthreads, partitions exactly as T2
-  does and calls the kernels on slabs. The shim lives in the
-  consumer's toolchain, our module stays pure, and constraint 4
-  holds: the partitioning is still the host's.
-- **E3 — the integration proof.** Link into Pyodide's NumPy in place
-  of its OpenBLAS; run NumPy's `linalg` test suite; record the
-  result. This is the adoption milestone, and it is a hypothesis
-  until it has been done once.
+- **D1 — structure.** One chapter per routine family (per level),
+  each giving the mathematics in LaTeX (`mdbook-katex`, rendered at
+  build time, no client script), the rounding-order argument that
+  makes the bit-identity claim true for that family, the lane
+  geometry, the dispatch thresholds and the measured results. A
+  chapter on the testing contract, one on the measurement method, one
+  on the deployment shape, and one page for C programmers (how to
+  wrap the crate in `extern "C"` and build a library, using `abi/` as
+  the worked example).
+- **D2 — live code.** Source regions are marked with `// ANCHOR:
+  name` / `// ANCHOR_END: name` comments and pulled into chapters by
+  mdBook's include directive. The code in the book is the code that
+  ships; a removed or renamed anchor fails the build.
+- **D3 — verification.** `mdbook test` compiles and runs the Rust
+  code blocks written directly in chapters, so standalone examples
+  cannot rot. The gate builds the book; the Pages workflow deploys
+  it. `mdbook-mermaid` renders the call-graph diagrams now in
+  `src/README.md`.
+- **D4 — migration.** The content of `README.md`, `src/README.md`,
+  `tests/README.md` and `bench/README.md` moves into chapters; the
+  READMEs shrink to a paragraph and a link. The API reference stays
+  in rustdoc on docs.rs, with the KaTeX header so module docs render
+  the same mathematics; book and reference link to each other.
 
 ## Step B — benchmarks owed
 
@@ -323,8 +445,13 @@ syrk. Rows:
   The row we expect to lose, by ~2×, for the fused-multiply-add
   reason above. Published so the "within 2× of the fastest thing that
   is not reproducible" claim is a measurement, not a slogan.
-- **A pure-JS baseline** (e.g. ml-matrix), because that is what the
-  web audience currently uses and understands.
+- **stdlib's `@stdlib/blas`**, the one existing BLAS for JavaScript:
+  faithful, reference semantics, well tested, pure JavaScript with a
+  few wasm variants, no SIMD, no threads. This row scopes the
+  JavaScript claim: not "no BLAS exists for JavaScript" but "no FAST
+  one does".
+- **A pure-JS matrix library** (e.g. ml-matrix), because that is what
+  much of the web audience currently uses.
 - **faer** stays as the historical row (`bench/README.md`); no
   transitive inference from any native comparison is valid.
 
@@ -335,55 +462,89 @@ Why we win where we win: hand-written simd128 kernels on every path,
 not the absence of Emscripten — Emscripten does not slow a hot loop,
 and the claim must not be phrased as if it did.
 
-## Step J — the JS package (thin)
+## Step J — the npm package (thin)
 
 - Scoped npm name (decided before first publish; `linalg.js` and
   `linalg` are taken; a scoped name is the safe default).
+- Contents: the loader, TypeScript type definitions, `package.json`,
+  and the two wasm files as assets. ESM, works in Node and browsers.
+  The wasm is never inlined into the JavaScript.
 - Loads `blas.wasm` or `blas.threads.wasm` by feature detection
-  (T3); exposes the netlib/CBLAS-named functions on typed arrays with
-  explicit dtype, dimensions, strides, and flags; validates arguments
-  in JS before calling (a trap kills the instance; after a trap the
-  package re-instantiates). Views over `memory.buffer` are never
-  cached across a call that may grow memory.
+  (T3); exposes the CBLAS-named functions on typed arrays with
+  explicit dtype, dimensions, strides and flags, following stdlib's
+  argument conventions; validates arguments in JS before calling (a
+  trap kills the instance; after a trap the package re-instantiates);
+  reads the error slot (S6) and throws. Views over `memory.buffer`
+  are never cached across a call that may grow memory.
 - Opt-in resident buffer handle for callers who chain operations
   (copy in once, compute many, copy out once). This is the ONLY
   product-layer construct in scope; the full residency/handle API
   belongs to the deferred product layer.
+- Publishing: a job on the release workflow publishes to npm on tag,
+  alongside the crates.io publish, so one tag is one version in both
+  places. The release page keeps the tag's build outputs attached
+  because the existing workflow does that; nothing on it is a
+  product.
 
-## Milestone 1 — "the drop-in BLAS for the web"
+## Milestone 1 — "the reproducible BLAS for the web"
 
 Done when all of the following hold:
 
-1. Full netlib surface, all flags and strides, four types, CBLAS and
-   Fortran-style symbols (S, C).
+1. Full netlib surface, all flags and strides, four types, in the
+   Rust API and as CBLAS-named module exports (S, C).
 2. `blas.wasm` and `blas.threads.wasm` both built, both tested, both
-   bit-identical to native and to each other at every thread count
-   (T1, T5).
-3. The Pyodide integration has been run once and its result recorded
-   (E3), pass or fail.
-4. The Step B table is published with both competitors, both thread
-   modes, two draws.
-5. The crate is on crates.io and the package is on npm (0, J).
+   bit-identical to native and to each other at every thread count,
+   both free of relaxed opcodes (0, T1, T5).
+3. The Step B table is published with OpenBLAS, BLIS, XNNPACK and
+   stdlib rows, both thread modes, two draws.
+4. The crate is on crates.io and the package is on npm, one tag, one
+   version (0, J).
+5. The book is live on GitHub Pages with every routine family
+   covered and the READMEs reduced to pointers (D).
 
-Sizing, honestly: S is the bulk (the flag matrix across four types,
-with the full testing contract per form) and T1 has fiddly linker
-work; months of focused work, not weeks. Nothing in it is research;
-all of it is known engineering with a clear finish line.
+Sizing, honestly (engineer-days of focused work; calendar time with
+the agent-assisted workflow this repo has used runs far shorter):
+
+| step | days | risk |
+|---|---|---|
+| 0 housekeeping, crates.io, gate assertions, opcode scan | 1–2 | low |
+| S0 enums | 1–2 | low |
+| S4 workspace | 1 | low |
+| S1 Level 3 flags via packing, four types, full contract | 15–25 | medium |
+| S2 Level 2 flags | 3–5 | low |
+| S3 strides | 5–8 | low |
+| S5 reference semantics, complex symmetric family, zrot/crot | 4–6 | low |
+| S6 error slot | 1–2 | low |
+| C CBLAS exports | 2–4 | low |
+| T threading: build, partitioner, API, calibration, p=1 vs p=N | 10–15 | medium |
+| B benchmarks: build OpenBLAS and BLIS for wasm, stdlib, XNNPACK via TF.js, two draws | 5–8 | medium |
+| J npm package | 3–5 | low |
+| D book: tooling, chapters, anchors, migration | 6–10 | low |
+
+Roughly 60–95 days. S is the bulk and the critical path, and also the
+lowest risk because every form inherits an existing pattern and
+contract. T1 has fiddly linker work (per-instance stacks, shared data
+segments). B depends on OpenBLAS and BLIS building under Emscripten
+at all, which neither officially supports. Nothing is research; all
+of it is known engineering with a clear finish line.
 
 ## Order of work
 
 1. **Step 0** (housekeeping, crates.io).
-2. **S4** (workspace, no allocation) — small, and it unblocks T.
-3. **S1–S3, S5, S6** (surface completion), racing each new L3 form
+2. **D1–D3 scaffolding** (the book exists and builds in CI, even if
+   thin) so every later step writes its chapter as it lands rather
+   than migrating prose afterwards.
+3. **S0, S4** (enums; workspace, no allocation) — small, and S4
+   unblocks T.
+4. **S1–S3, S5, S6** (surface completion), racing each new L3 form
    against the existing one so no regression hides in the packing.
-4. **C** (CBLAS + Fortran symbols), mechanical once S is done.
-5. **T1–T5** (threaded artifact, partitioner, calibration, the
+5. **C** (CBLAS exports), mechanical once S is done.
+6. **T1–T5** (threaded artifact, partitioner, calibration, the
    reproducibility test).
-6. **E1–E3** (linkable build, shim, Pyodide proof).
 7. **B** (the full table) — last, because it measures the finished
    thing; the OpenBLAS/BLIS single-threaded rows may be taken early
    as a cheap sanity check, but the claim is made from the final run.
-8. **J** publishes alongside 5–7.
+8. **J** publishes alongside 6–7; **D4** migration completes with it.
 
 ## Deferred (not rejected; scope fixed here for when they restart)
 
@@ -437,13 +598,47 @@ all of it is known engineering with a clear finish line.
   (constraint 2).
 - **Emscripten / pthreads emulation for OUR build.** A libc port
   plus JS shims; nothing it provides is needed by the kernels.
-  Constraint 1. (Consumers' Emscripten is their business: Step E.)
+  Constraint 1.
+- **An Emscripten-linkable distribution (static library, `cblas.h`,
+  pthreads threading shim, Pyodide integration proof).** Rejected
+  2026-10-25. It was the highest-risk and among the most
+  time-consuming steps (external toolchains: Emscripten's linker
+  against a Rust object, Pyodide's build system, NumPy's test suite),
+  and its consumer had already been demoted. A C programmer who
+  wants this code in their program depends on the crate and writes
+  the wrapper lines (book page). Pyodide-style projects can do the
+  same, and reference LAPACK links against any BLAS so they need not
+  wait on the LAPACK project; that integration is their work. If a
+  named consumer asks, a `staticlib` is a one-line Cargo change and
+  the header is the standard one.
+- **Fortran-style symbols (`dgemm_` by reference).** No consumer in
+  scope after the above; a day of mechanical work from the CBLAS
+  surface if one appears.
+- **Literate programming by tangling Markdown into Rust.** No line
+  directive in Rust, so every diagnostic cites generated code;
+  rust-analyzer, rustfmt and go-to-definition work on the wrong file;
+  diffs and review degrade; outside contributors are deterred. The
+  book with live includes (Step D) gives the reader the same
+  experience while the code stays canonical. Tangling earns its place
+  only when the exposition is the primary artifact and the code
+  secondary, as in a textbook or thesis; here the code is primary.
+- **Inlining the wasm into the JavaScript as text.** Inflates the
+  bytes by a third and prevents the browser from compiling while
+  downloading. Separate files inside the npm package is the standard.
 - **Rayon on wasm.** Only via wasm-bindgen-rayon: bindgen glue plus a
   thread-safe allocator in the module. Constraint 1 and 4; after S4
   there is no allocator to make thread-safe.
 - **Threading inside the Rust code (atomics, work queues).**
   Constraint 4: the kernels never synchronize. All partitioning is
-  the host's or the shim's.
+  the host's.
+- **One wasm file for both threaded and single-threaded use.** Not
+  possible under browser policy: a file declaring shared memory
+  cannot load on a page without the isolation headers, even to run
+  on one thread, and a file declaring ordinary memory cannot be
+  shared by workers. Loading a shared-memory file against ordinary
+  memory is rejected as a type mismatch; defining the memory inside
+  the module instead of importing it changes nothing. Two files from
+  one source, chosen by the loader, invisible to the user.
 - **Row-major kernels.** CBLAS row-major is the standard operand swap
   into column-major kernels, as OpenBLAS does it.
 - **WASI or memory64.** No syscalls needed; 4 GB exceeds any page's
