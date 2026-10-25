@@ -95,7 +95,7 @@ review (`AGENTS.md`) judges it against that reader.
 Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
 and sequenced in `STATUS.md`: vector strides (`incx`/`incy`); the
 module's exports use an invented argument order rather
-than CBLAS's and trap on an argument error instead of reporting it.
+than CBLAS's.
 Fused multiply-add variants
 measured faster for some routines and are deliberately not shipped:
 relaxed-SIMD rounding is implementation-dependent and would forfeit
@@ -163,11 +163,17 @@ e.daxpy(2, px, py, 3);                   // y ← 2x + y, in place at py
 
 This argument order is the interim flat ABI; the module's exports
 become the CBLAS names and order when todo C lands (`STATUS.md`), and
-the npm package will hide the memory management entirely. Argument
-errors trap today (the instance is lost; re-instantiate), and
-memory-bounds violations always will. The crate's checks are netlib's,
-so a leading dimension of zero traps even for an empty matrix; pass
-at least 1.
+the npm package will hide the memory management entirely. An
+argument error is reported, never trapped: the wrapper writes a
+per-instance error slot and returns without computing (a
+value-returning wrapper returns NaN, an index-returning one 0). Read
+it with `error_arg()` (the 1-based argument position, 0 when clear),
+`error_kind()` (1 invalid value, 2 slice shorter than its extent, 3
+workspace shorter than its query) and `error_routine(buf, cap)` (the
+netlib name); `error_clear()` resets it. Memory-bounds violations
+still trap, as they must. The crate's checks are netlib's, so a
+leading dimension of zero is an argument error even for an empty
+matrix; pass at least 1.
 
 ## Testing contract — two axes, both required to land
 
