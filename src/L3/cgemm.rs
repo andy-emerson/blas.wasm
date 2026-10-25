@@ -365,3 +365,224 @@ unsafe fn ctile_4x4_packed(
 		au[1].store(cpf.add(u * ccs * 2 + 4));
 	}
 }
+
+/// Candidate for the transposed forms (`STATUS.md`, decision D3; the
+/// netlib wrapper routes the other candidate, a whole-operand copy, or
+/// this one per the race): the packed-panel shape with `op(A)` and
+/// `op(B)` packed straight from a transposed (and conjugated) read —
+/// op(A)'s row is a stored column of A and op(B)'s packed quad is four
+/// consecutive stored elements — so no whole-operand copy is made and
+/// the microkernel is unchanged. The tails that read the operands
+/// directly are kept bit-identical by small gathers into the workspace:
+/// op(A)'s row tail (`m % MR` rows × k), op(B)'s column tail (k × `n %
+/// 4`), and, for a transposed A, the column tail's first `m − m % MR`
+/// rows ride a fourth packed column group padded with zeros into a `4 ×
+/// (m − m % MR)` scratch block of C. `work` needs
+/// [`cgemm_packed_op_work`] elements. Bit-identical to [`cgemm_packed`]
+/// on an explicit transpose (tested); with both flags `NoTrans` it is
+/// [`cgemm_packed`] exactly.
+#[allow(clippy::too_many_arguments)]
+pub fn cgemm_packed_op(
+	transa: Trans,
+	transb: Trans,
+	alpha: C32,
+	m: usize,
+	n: usize,
+	k: usize,
+	a: &[C32],
+	acs: usize,
+	b: &[C32],
+	bcs: usize,
+	beta: C32,
+	c: &mut [C32],
+	ccs: usize,
+	work: &mut [C32],
+) {
+	let ta = transa != Trans::NoTrans;
+	let tb = transb != Trans::NoTrans;
+	let (ar, ac) = if ta { (k, m) } else { (m, k) };
+	let (br, bc) = if tb { (n, k) } else { (k, n) };
+	check_mat(a.len(), ar, ac, acs);
+	check_mat(b.len(), br, bc, bcs);
+	check_mat(c.len(), m, n, ccs);
+	let lay = packed_op_layout(transa, transb, m, n, k);
+	let need: usize = lay.iter().sum();
+	assert!(work.len() >= need, "cgemm_packed_op: workspace shorter than cgemm_packed_op_work");
+	if k == 0 {
+		for j in 0..n {
+			crate::L2::cscale_y(beta, &mut c[j * ccs..j * ccs + m]);
+		}
+		return;
+	}
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	let mt = m - m_mr;
+	let nt = n - n4;
+	let pad = ta && nt > 0 && m_mr > 0;
+	let bpn = if pad { n4 + 4 } else { n4 };
+	// workspace: B panel | A panel | op(A) row tail | op(B) column tail | padded C block
+	let (bp, rest) = work[..need].split_at_mut(lay[0]);
+	let (ap, rest) = rest.split_at_mut(lay[1]);
+	let (wa, rest) = rest.split_at_mut(lay[2]);
+	let (wb, ct) = rest.split_at_mut(lay[3]);
+	let cja = |v: C32| if transa == Trans::ConjTrans { v.conj() } else { v };
+	let cjb = |v: C32| if transb == Trans::ConjTrans { v.conj() } else { v };
+	// op(A)[i, l] and op(B)[l, j] as stored
+	let ao = |i: usize, l: usize| if ta { cja(a[i * acs + l]) } else { a[l * acs + i] };
+	let bo = |l: usize, j: usize| if tb { cjb(b[l * bcs + j]) } else { b[j * bcs + l] };
+	if ta {
+		for r in 0..mt {
+			for l in 0..k {
+				wa[l * mt + r] = ao(m_mr + r, l);
+			}
+		}
+	}
+	if tb && !pad {
+		for jj in 0..nt {
+			for l in 0..k {
+				wb[jj * k + l] = bo(l, n4 + jj);
+			}
+		}
+	}
+	// β once per element, before any accumulation — same order as the
+	// per-column passes; the padded block carries the scaled tail columns
+	for j in 0..n4 {
+		crate::L2::cscale_y(beta, &mut c[j * ccs..j * ccs + m]);
+	}
+	if pad {
+		for jj in 0..nt {
+			let col = &mut c[(n4 + jj) * ccs..(n4 + jj) * ccs + m];
+			crate::L2::cscale_y(beta, col);
+			ct[jj * m_mr..jj * m_mr + m_mr].copy_from_slice(&col[..m_mr]);
+		}
+	}
+	if bpn > 0 && m_mr > 0 {
+		let mut pc = 0usize;
+		while pc < k {
+			let kc = KC.min(k - pc);
+			for jg in 0..bpn / 4 {
+				for l in 0..kc {
+					for u in 0..4 {
+						let j = jg * 4 + u;
+						let t = if j < n { alpha * bo(pc + l, j) } else { C32::ZERO };
+						let o = jg * kc * 16 + l * 16 + u * 4;
+						bp[o] = C32::new(t.re, t.re);
+						bp[o + 1] = C32::new(t.re, t.re);
+						bp[o + 2] = C32::new(-t.im, t.im);
+						bp[o + 3] = C32::new(-t.im, t.im);
+					}
+				}
+			}
+			let mut ic = 0usize;
+			while ic < m_mr {
+				let mc = MC.min(m_mr - ic);
+				for g in 0..mc / MR {
+					let base = g * kc * MR;
+					if ta {
+						for r in 0..MR {
+							for l in 0..kc {
+								ap[base + l * MR + r] = ao(ic + g * MR + r, pc + l);
+							}
+						}
+					} else {
+						for l in 0..kc {
+							let src = (pc + l) * acs + ic + g * MR;
+							ap[base + l * MR..base + l * MR + MR].copy_from_slice(&a[src..src + MR]);
+						}
+					}
+				}
+				for jg in 0..n4 / 4 {
+					for g in 0..mc / MR {
+						unsafe {
+							ctile_4x4_packed(
+								kc,
+								ap.as_ptr().add(g * kc * MR) as *const f32,
+								bp.as_ptr().add(jg * kc * 16) as *const f32,
+								c.as_mut_ptr().add(jg * 4 * ccs + ic + g * MR),
+								ccs,
+							);
+						}
+					}
+				}
+				if pad {
+					for g in 0..mc / MR {
+						unsafe {
+							ctile_4x4_packed(
+								kc,
+								ap.as_ptr().add(g * kc * MR) as *const f32,
+								bp.as_ptr().add((n4 / 4) * kc * 16) as *const f32,
+								ct.as_mut_ptr().add(ic + g * MR),
+								m_mr,
+							);
+						}
+					}
+				}
+				ic += mc;
+			}
+			pc += kc;
+		}
+	}
+	if pad {
+		for jj in 0..nt {
+			c[(n4 + jj) * ccs..(n4 + jj) * ccs + m_mr].copy_from_slice(&ct[jj * m_mr..jj * m_mr + m_mr]);
+		}
+	}
+	// row tail × packed columns (β already applied): axpy per k step
+	if mt > 0 {
+		for j in 0..n4 {
+			for l in 0..k {
+				let col = if ta { &wa[l * mt..l * mt + mt] } else { &a[l * acs + m_mr..l * acs + m] };
+				crate::L1::caxpy_k(alpha * bo(l, j), col, &mut c[j * ccs + m_mr..j * ccs + m]);
+			}
+		}
+	}
+	// column tail
+	for jj in 0..nt {
+		let j = n4 + jj;
+		if ta {
+			// β was applied with the padded block; the row tail's rows
+			// take the same per-column axpy sequence
+			if !pad {
+				crate::L2::cscale_y(beta, &mut c[j * ccs..j * ccs + m]);
+			}
+			for l in 0..k {
+				crate::L1::caxpy_k(alpha * bo(l, j), &wa[l * mt..l * mt + mt], &mut c[j * ccs + m_mr..j * ccs + m]);
+			}
+		} else {
+			let bcol: &[C32] = if tb { &wb[jj * k..jj * k + k] } else { &b[j * bcs..j * bcs + k] };
+			cgemv_k(alpha, m, k, a, acs, bcol, beta, &mut c[j * ccs..j * ccs + m]);
+		}
+	}
+}
+
+/// The workspace layout of [`cgemm_packed_op`]: B panel, A panel,
+/// op(A)'s gathered row tail, op(B)'s gathered column tail, the padded
+/// C block.
+fn packed_op_layout(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> [usize; 5] {
+	if k == 0 {
+		return [0; 5];
+	}
+	let ta = transa != Trans::NoTrans;
+	let tb = transb != Trans::NoTrans;
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	let mt = m - m_mr;
+	let nt = n - n4;
+	let pad = ta && nt > 0 && m_mr > 0;
+	let bpn = if pad { n4 + 4 } else { n4 };
+	let main = bpn > 0 && m_mr > 0;
+	[
+		if main { KC * bpn * 4 } else { 0 },
+		if main { MC * KC } else { 0 },
+		if ta { mt * k } else { 0 },
+		if tb && !pad { k * nt } else { 0 },
+		if pad { 4 * m_mr } else { 0 },
+	]
+}
+
+/// Elements of scratch [`cgemm_packed_op`] needs for these flags and
+/// dimensions; equal to [`cgemm_packed_work`] when both flags are
+/// `NoTrans`.
+pub fn cgemm_packed_op_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
+	packed_op_layout(transa, transb, m, n, k).iter().sum()
+}

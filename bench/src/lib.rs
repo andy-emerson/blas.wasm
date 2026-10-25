@@ -1729,3 +1729,72 @@ pub extern "C" fn run_tri_t_copy(ty: usize, routine: usize, side: usize, upper: 
 pub extern "C" fn run_tri_t_stream(ty: usize, routine: usize, side: usize, upper: usize, m: usize, n: usize) -> f64 {
     tri_t(ty, routine, side, upper != 0, m, n, 1)
 }
+
+/// Transposed gemm race (STATUS.md, decision D3 applied to gemm): the
+/// two candidates for op(A)/op(B), `copy` (the netlib wrapper: the
+/// transposed operand copied into the workspace, then the routed shape)
+/// and `pack` (`*gemm_packed_op`: the packed shape packing from a
+/// transposed read). `transa`/`transb` 0 = N, 1 = T, 2 = C. A and B are
+/// the setup buffers read at the stored shape's leading dimension; C is
+/// the sacrificial buffer with β = 0, so the fold does not depend on the
+/// previous call. Returns a fold of C; above the
+/// packed threshold both candidates run the packed shape and are
+/// bit-identical by construction, so the race script asserts the folds
+/// match before timing.
+fn gemm_t(ty: usize, transa: usize, transb: usize, m: usize, k: usize, n: usize, pack: bool) -> f64 {
+    use blas_wasm::L3 as l3;
+    let s = state_mut();
+    let cap = s.n * s.n;
+    assert!(m * k <= cap && k * n <= cap && m * n <= cap, "gemm_t: setup too small");
+    let tr = |v: usize| match v {
+        0 => Trans::NoTrans,
+        1 => Trans::Trans,
+        _ => Trans::ConjTrans,
+    };
+    let (ta, tb) = (tr(transa), tr(transb));
+    let (ar, ac) = if transa == 0 { (m, k) } else { (k, m) };
+    let (br, bc) = if transb == 0 { (k, n) } else { (n, k) };
+    macro_rules! run {
+        ($a:expr, $b:expr, $c:expr, $al:expr, $be:expr, $zero:expr, $gemm:ident, $gemm_work:ident, $packed_op:ident, $packed_op_work:ident) => {{
+            let a = &$a[..ar * ac];
+            let b = &$b[..br * bc];
+            let c = &mut $c[..m * n];
+            if pack {
+                let mut w = vec![$zero; l3::$packed_op_work(ta, tb, m, n, k)];
+                l3::$packed_op(ta, tb, $al, m, n, k, a, ar, b, br, $be, c, m, &mut w);
+            } else {
+                let mut w = vec![$zero; l3::$gemm_work(ta, tb, m, n, k)];
+                l3::$gemm(ta, tb, m, n, k, $al, a, ar, b, br, $be, c, m, &mut w).unwrap();
+            }
+            c
+        }};
+    }
+    match ty {
+        0 => {
+            let c = run!(s.a, s.b, s.sym, 0.001f64, 0.0f64, 0.0f64, dgemm, dgemm_work, dgemm_packed_op, dgemm_packed_op_work);
+            c[0] + c[m * n - 1]
+        }
+        1 => {
+            let c = run!(s.a32, s.b32, s.sym32, 0.001f32, 0.0f32, 0.0f32, sgemm, sgemm_work, sgemm_packed_op, sgemm_packed_op_work);
+            (c[0] + c[m * n - 1]) as f64
+        }
+        2 => {
+            let c = run!(s.az, s.bz, s.symz, C64::new(0.001, 0.0), C64::ZERO, C64::ZERO, zgemm, zgemm_work, zgemm_packed_op, zgemm_packed_op_work);
+            c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im
+        }
+        _ => {
+            let c = run!(s.ac, s.bc, s.symc, C32::new(0.001, 0.0), C32::ZERO, C32::ZERO, cgemm, cgemm_work, cgemm_packed_op, cgemm_packed_op_work);
+            (c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im) as f64
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn run_gemm_t_copy(ty: usize, transa: usize, transb: usize, m: usize, k: usize, n: usize) -> f64 {
+    gemm_t(ty, transa, transb, m, k, n, false)
+}
+
+#[no_mangle]
+pub extern "C" fn run_gemm_t_pack(ty: usize, transa: usize, transb: usize, m: usize, k: usize, n: usize) -> f64 {
+    gemm_t(ty, transa, transb, m, k, n, true)
+}

@@ -224,3 +224,45 @@ fn zgemm_flags_equal_the_explicit_transpose_bitwise() {
 		}
 	}
 }
+
+#[test]
+fn zgemm_packed_op_equals_the_copy_candidate_bitwise() {
+	// the second D3 candidate: packing from a transposed read, with the
+	// gathered tails and the padded column group, is bit-identical to the
+	// routed wrapper (the whole-operand copy) for every flag pair on
+	// shapes that exercise every tail: rows off MR, columns off 4, k over
+	// KC, m below MR, n below 4; workspace NaN-filled at the queried size
+	let mut rng = Lcg(0xBEEF + 1);
+	let flags = [Trans::NoTrans, Trans::Trans, Trans::ConjTrans];
+	for (m, n, k) in [(1, 1, 1), (3, 3, 5), (5, 7, 3), (7, 2, 300), (9, 5, 257), (13, 11, 16), (130, 9, 300), (33, 4, 70), (2, 9, 20), (16, 16, 16)] {
+		for ta in flags {
+			for tb in flags {
+				let (ar, ac) = if ta == Trans::NoTrans { (m, k) } else { (k, m) };
+				let (br, bc) = if tb == Trans::NoTrans { (k, n) } else { (n, k) };
+				let (lda, ldb, ccs) = (ar + 1, br + 2, m + 1);
+				let a = rng.mat_c64(ar, ac, lda);
+				let b = rng.mat_c64(br, bc, ldb);
+				let c0 = rng.mat_c64(m, n, ccs);
+				for (alpha, beta) in [(C64::ONE, C64::ZERO), (C64::new(-0.7, 0.2), C64::new(0.4, 0.1)), (C64::ONE, C64::ONE)] {
+					let mut c1 = c0.clone();
+					let mut w1 = vec![C64::new(f64::NAN, f64::NAN); zgemm_work(ta, tb, m, n, k)];
+					zgemm(ta, tb, m, n, k, alpha, &a, lda, &b, ldb, beta, &mut c1, ccs, &mut w1).unwrap();
+					// the routed wrapper may take the tiled shape below the threshold; the
+					// packed shape is bit-identical to it, so the comparison still holds
+					let mut c2 = c0.clone();
+					let mut w2 = vec![C64::new(f64::NAN, f64::NAN); zgemm_packed_op_work(ta, tb, m, n, k)];
+					zgemm_packed_op(ta, tb, alpha, m, n, k, &a, lda, &b, ldb, beta, &mut c2, ccs, &mut w2);
+					for j in 0..n {
+						for i in 0..m {
+							assert!(
+								bits_eq_c(c1[j * ccs + i], c2[j * ccs + i]),
+								"zgemm_packed_op({ta:?},{tb:?}) vs copy {m}x{k}x{n} ({i},{j})"
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+	assert_eq!(zgemm_packed_op_work(Trans::NoTrans, Trans::NoTrans, 300, 40, 300), zgemm_packed_work(300, 40, 300));
+}
