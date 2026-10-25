@@ -67,9 +67,14 @@ pub fn ctrmm_work(side: Side, transa: Trans, m: usize, n: usize) -> usize {
 	if stream { 0 } else { ctrmm_copy_work(side, m, n) }
 }
 
-// Which candidate the transposed forms route to, per side (the race:
-// `STATUS.md`, decision D3). Both candidates stay exported and tested.
-const LEFT_T_STREAM: bool = true;
+// Which candidate the transposed forms route to, per side — the race's
+// verdict (two runner draws, `bench/README.md`): on the right the stream
+// (transposed accessor) won 1.02–1.6× in every type; on the left the
+// scalar complex reduction kernel lost to the copy 0.3–0.75× at every
+// size but the skinniest, so the copy is routed here and the lane
+// version of that kernel is a recorded lever. Both candidates stay
+// exported and tested.
+const LEFT_T_STREAM: bool = false;
 const RIGHT_T_STREAM: bool = true;
 
 /// B ← αAB. A is m×m triangular, B is m×n.

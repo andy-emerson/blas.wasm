@@ -73,8 +73,12 @@ pub fn strsm_work(side: Side, transa: Trans, m: usize, n: usize) -> usize {
 	if stream { 0 } else { strsm_copy_work(side, m, n) }
 }
 
-// Which candidate the transposed forms route to, per side (the race:
-// `STATUS.md`, decision D3). Both candidates stay exported and tested.
+// Which candidate the transposed forms route to, per side — the race's
+// verdict (two runner draws, `bench/README.md`): the stream won both
+// sides in the real types (left 1.3–2.8× for f64 at every size from 256,
+// f32 1.0–2.4× with the ascending-walk cases at 0.85–1.0 on the largest
+// square shapes; right 1.02–1.6×), needing no workspace. Both candidates
+// stay exported and tested.
 const LEFT_T_STREAM: bool = true;
 const RIGHT_T_STREAM: bool = true;
 
