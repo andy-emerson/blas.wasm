@@ -65,7 +65,7 @@ jobs:
         run: |
           cd abi
           node audit.mjs --self-test
-          node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --imports 0 --exports 133
+          node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --surface surface.json
 
       - name: Crate documentation (the book; broken links and bad doc markup fail)
         run: RUSTDOCFLAGS="--html-in-header rustdoc/header.html -D warnings" cargo doc --no-deps

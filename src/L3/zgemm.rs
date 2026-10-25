@@ -130,16 +130,38 @@ pub(crate) fn zgemm_k(
 	ccs: usize,
 	work: &mut [C64],
 ) {
-	check_mat(a.len(), m, k, acs);
-	check_mat(b.len(), k, n, bcs);
-	check_mat(c.len(), m, n, ccs);
 	// packed-gemm race (two runner draws, unanimous at every
 	// measured size): packed wins 1.08–1.15x at 256³ (A = 1 MB, the
 	// smallest measured point) up to 1.33x at 1024³. Below 1 MB of A is
 	// unmeasured — col4 keeps it.
-	if m * k * 16 >= PACKED_MIN_A_BYTES {
+	if packed_route(m, k) {
 		return zgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 	}
+	zgemm_col4(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs)
+}
+
+/// The 4-column fused column-zaxpy shape (`kernels::zaxpy4`): each A
+/// column streams once per group of four C columns, the product form
+/// `av·vre + swap(av)·vim` per element, βC first then ascending k —
+/// bit-identical to `zgemm_colaxpy`. Exported so the packed race can
+/// call the shape it replaced above the threshold directly.
+#[allow(clippy::too_many_arguments)]
+pub fn zgemm_col4(
+	alpha: C64,
+	m: usize,
+	n: usize,
+	k: usize,
+	a: &[C64],
+	acs: usize,
+	b: &[C64],
+	bcs: usize,
+	beta: C64,
+	c: &mut [C64],
+	ccs: usize,
+) {
+	check_mat(a.len(), m, k, acs);
+	check_mat(b.len(), k, n, bcs);
+	check_mat(c.len(), m, n, ccs);
 	let mut j = 0usize;
 	while j + 4 <= n {
 		{

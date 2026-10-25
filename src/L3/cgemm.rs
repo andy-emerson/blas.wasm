@@ -130,16 +130,38 @@ pub(crate) fn cgemm_k(
 	ccs: usize,
 	work: &mut [C32],
 ) {
-	check_mat(a.len(), m, k, acs);
-	check_mat(b.len(), k, n, bcs);
-	check_mat(c.len(), m, n, ccs);
 	// packed-gemm race (two runner draws): packed wins only
 	// at 1024³ (+12%, A = 8 MB, unanimous); 256³/512³/deep-K measured
 	// noise. Routed at the measured win only — the (2 MB, 8 MB) gap is
 	// unmeasured and col4 keeps it.
-	if m * k * 8 >= PACKED_MIN_A_BYTES {
+	if packed_route(m, k) {
 		return cgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 	}
+	cgemm_col4(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs)
+}
+
+/// The 4-column fused column-caxpy shape (`kernels::caxpy4`): each A
+/// column streams once per group of four C columns, the product form
+/// `av·vre + swap(av)·vim` per element, βC first then ascending k —
+/// bit-identical to `cgemm_colaxpy`. Exported so the packed race can
+/// call the shape it replaced above the threshold directly.
+#[allow(clippy::too_many_arguments)]
+pub fn cgemm_col4(
+	alpha: C32,
+	m: usize,
+	n: usize,
+	k: usize,
+	a: &[C32],
+	acs: usize,
+	b: &[C32],
+	bcs: usize,
+	beta: C32,
+	c: &mut [C32],
+	ccs: usize,
+) {
+	check_mat(a.len(), m, k, acs);
+	check_mat(b.len(), k, n, bcs);
+	check_mat(c.len(), m, n, ccs);
 	let mut j = 0usize;
 	while j + 4 <= n {
 		{

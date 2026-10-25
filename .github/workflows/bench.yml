@@ -48,7 +48,7 @@ jobs:
             done
           done | tee ../bench-results.log
 
-      - name: Packed-gemm race (incumbent vs packed, all types)
+      - name: Packed-gemm race (col4 vs packed, all types, both called directly)
         if: ${{ inputs.suite == 'packed-race' || inputs.suite == 'both' }}
         run: |
           cd bench

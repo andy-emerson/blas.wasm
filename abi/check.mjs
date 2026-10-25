@@ -94,6 +94,26 @@ function alloc32(values) {
 	check('dtrsv', JSON.stringify(Array.from(f64(x, 2))), JSON.stringify([2, 3]));
 }
 
+// ---- the flag forms that are separate exports: dgemv_t y = Aᵀx -> [4,6];
+// zgemv_c y = Aᴴx with A=[[1+i,2],[3,4-i]], x=[1,1] -> [4-i, 6+i];
+// dtrmm_right upper: B ← B·A, A=[[2,1],[0,3]], B=[[1,2],[3,4]] -> [[2,7],[6,15]]
+{
+	const a = alloc64([1, 3, 2, 4]);
+	const x = alloc64([1, 1]);
+	const y = alloc64([0, 0]);
+	e.dgemv_t(1, 2, 2, a, 2, x, 0, y);
+	check('dgemv_t', JSON.stringify(Array.from(f64(y, 2))), JSON.stringify([4, 6]));
+	const az = alloc64([1, 1, 3, 0, 2, 0, 4, -1]);
+	const xz = alloc64([1, 0, 1, 0]);
+	const yz = alloc64([0, 0, 0, 0]);
+	e.zgemv_c(1, 0, 2, 2, az, 2, xz, 0, 0, yz);
+	check('zgemv_c', JSON.stringify(Array.from(f64(yz, 4))), JSON.stringify([4, -1, 6, 1]));
+	const t = alloc64([2, 0, 1, 3]);
+	const b = alloc64([1, 3, 2, 4]);
+	e.dtrmm_right(1, 2, 2, t, 2, 1, 0, b, 2);
+	check('dtrmm_right upper', JSON.stringify(Array.from(f64(b, 4))), JSON.stringify([2, 6, 7, 15]));
+}
+
 // ---- the error slot: an argument error is reported, not trapped, and
 // the output is untouched; a valid call afterwards leaves the slot clear
 {

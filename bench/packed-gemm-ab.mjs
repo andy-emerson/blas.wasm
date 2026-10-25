@@ -1,10 +1,13 @@
 // Packed-gemm race (tuning campaign): the BLIS-style
-// packed-panel candidates (`*gemm_packed`) vs the shipped gemm dispatch,
-// all four number types, square sizes plus the deep-K rectangular shapes
+// packed-panel shape (`*gemm_packed`) vs the 4-column fused shape it
+// replaced above the threshold (`*gemm_col4`), both called directly so
+// the wrapper's routing cannot put the same shape on both sides; all
+// four number types, square sizes plus the deep-K rectangular shapes
 // that motivated the candidate (prefill-style k >> m). Interleaved
-// timing (incumbent, packed, incumbent, ...), min-of-iters reported.
-// Before timing, each (type, shape) asserts the two folds are EXACTLY
-// equal — the candidates are bit-identical to the shipped paths by
+// timing (col4, packed, col4, ...), min-of-iters reported; the
+// workspace comes from the bench's setup state, so no allocation lands
+// inside a timed call. Before timing, each (type, shape) asserts the
+// two folds are EXACTLY equal — the shapes are bit-identical by
 // construction, so any drift is a bug, not noise.
 //
 // Build + run:
@@ -54,7 +57,7 @@ let failed = 0;
 for (const [tname, ty] of TYPES) {
 	const shapes = [...SQUARE, ...(ty <= 1 ? DEEPK_REAL : DEEPK_CPLX)];
 	for (const [m, k, n] of shapes) {
-		const inc = () => e.run_gemm_rect_incumbent(ty, m, k, n);
+		const inc = () => e.run_gemm_rect_col4(ty, m, k, n);
 		const pk = () => e.run_gemm_rect_packed(ty, m, k, n);
 		// warmup both paths (bit-identity is checked on fresh state below)
 		const f1 = inc();
@@ -75,7 +78,7 @@ for (const [tname, ty] of TYPES) {
 		}
 		const ratio = ti / tp;
 		console.log(
-			`[${tname} ${m}x${k}x${n}] incumbent=${ti.toFixed(2)}ms packed=${tp.toFixed(2)}ms ` +
+			`[${tname} ${m}x${k}x${n}] col4=${ti.toFixed(2)}ms packed=${tp.toFixed(2)}ms ` +
 			`packed_speedup=${ratio.toFixed(3)}x (${(flop / tp / 1e6).toFixed(2)} vs ${(flop / ti / 1e6).toFixed(2)} GFLOP/s) iters=${iters}`,
 		);
 	}
@@ -88,7 +91,7 @@ for (const [tname, ty] of TYPES) {
 	const shapes = [...SQUARE.slice(0, 2), ...(ty <= 1 ? DEEPK_REAL.slice(0, 1) : DEEPK_CPLX)];
 	for (const [m, k, n] of shapes) {
 		e.setup(N_SETUP);
-		const fi = e.run_gemm_rect_incumbent(ty, m, k, n);
+		const fi = e.run_gemm_rect_col4(ty, m, k, n);
 		e.setup(N_SETUP);
 		const fp = e.run_gemm_rect_packed(ty, m, k, n);
 		const ok = Object.is(fi, fp);

@@ -2,13 +2,17 @@
 // and the "Dependency-free" claim). No dependencies: a small reader
 // over the module's own sections.
 //
-//   node audit.mjs <module.wasm> [--imports N] [--exports N]
+//   node audit.mjs <module.wasm> [--surface surface.json] [--imports N] [--exports N]
 //   node audit.mjs --self-test
+//
+// `surface.json` (`{ "imports": 0, "exports": 133 }`) is the one owner
+// of the expected counts; both workflows pass it, so the number lives
+// nowhere else. A `--imports`/`--exports` flag overrides the file.
 //
 // The audit FAILS (exit 1) when
 //   - the module does not validate in this engine;
 //   - the import count or the export count differs from the expected
-//     value given on the command line;
+//     value (the surface file or the command line);
 //   - any function body contains a relaxed-SIMD instruction (the 0xFD
 //     prefix with sub-opcode >= 0x100: relaxed_madd/nmadd, relaxed
 //     swizzle, relaxed truncations, relaxed min/max, relaxed q15mulr,
@@ -225,11 +229,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
 		console.log(failed ? `\naudit self-test: ${failed} FAILED` : '\naudit self-test passed');
 		process.exit(failed ? 1 : 0);
 	}
-	const usage = () => { console.error('usage: node audit.mjs <module.wasm> [--imports N] [--exports N] | --self-test'); process.exit(2); };
+	const usage = () => { console.error('usage: node audit.mjs <module.wasm> [--surface surface.json] [--imports N] [--exports N] | --self-test'); process.exit(2); };
 	let file; const expect = {};
 	for (let i = 0; i < args.length; i++) {
 		const a = args[i];
-		if (a === '--imports' || a === '--exports') {
+		if (a === '--surface') {
+			const v = args[++i];
+			if (v === undefined) usage();
+			const surface = JSON.parse(readFileSync(v, 'utf8'));
+			for (const k of ['imports', 'exports']) {
+				if (!Number.isInteger(surface[k]) || surface[k] < 0) { console.error(`${v}: "${k}" must be a non-negative integer`); process.exit(2); }
+				if (expect[k] === undefined) expect[k] = surface[k];
+			}
+		} else if (a === '--imports' || a === '--exports') {
 			const v = args[++i];
 			if (v === undefined || !/^\d+$/.test(v)) usage();
 			expect[a.slice(2)] = Number(v);

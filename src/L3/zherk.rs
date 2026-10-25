@@ -44,7 +44,11 @@ pub fn zherk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[C64]
 		return Ok(());
 	}
 	if alpha == 0.0 || k == 0 {
-		// reference: the stored triangle of C ← βC without reading A
+		// reference: C is untouched when beta == 1, its stored
+		// triangle scaled otherwise (the diagonal from its real part); A is not read
+		if beta == 1.0 {
+			return Ok(());
+		}
 		for j in 0..n {
 			let (lo, hi) = if uplo.is_upper() { (0, j + 1) } else { (j, n) };
 			crate::L2::zdscale_y(beta, &mut c[j * ldc + lo..j * ldc + hi]);
@@ -57,14 +61,13 @@ pub fn zherk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[C64]
 	// op(A) is materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
 	// the unflagged call on an explicit copy (tested); conjugation is an exact sign flip
-	let (work, a, lda) = if trans == Trans::NoTrans {
-		(work, a, lda)
+	let (a, lda) = if trans == Trans::NoTrans {
+		(a, lda)
 	} else {
-		let (ta, rest) = work.split_at_mut(n * k);
+		let ta = &mut work[..n * k];
 		super::transpose_into(a, lda, k, n, ta, |x| x.conj());
-		(rest, &*ta, n)
+		(&*ta, n)
 	};
-	let _ = work;
 	zherk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }

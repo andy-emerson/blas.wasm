@@ -88,6 +88,24 @@ fn complex_alpha_zero_rules_and_the_hermitian_diagonal() {
 			assert_eq!(c2[j * nn + i], want_l, "zher2k ({i},{j})");
 		}
 	}
+	// with beta == 1 the reference returns before touching C, so even a
+	// diagonal with an imaginary part survives, bit for bit
+	let ch1: Vec<C64> = (0..nn * nn).map(|i| C64::new(i as f64 + 1.0, 0.25)).collect();
+	let mut c = ch1.clone();
+	zherk(Uplo::Upper, Trans::NoTrans, nn, 0, 1.0, &az, 8, 1.0, &mut c, nn, &mut wz).unwrap();
+	assert_eq!(c, ch1, "zherk k = 0, beta = 1");
+	let mut c = ch1.clone();
+	zher2k(Uplo::Lower, Trans::ConjTrans, nn, k, C64::ZERO, &az, 8, &az, 8, 1.0, &mut c, nn, &mut wz).unwrap();
+	assert_eq!(c, ch1, "zher2k alpha = 0, beta = 1");
+	let ch1c: Vec<C32> = ch1.iter().map(|v| C32::new(v.re as f32, v.im as f32)).collect();
+	let acn = vec![C32::new(f32::NAN, f32::NAN); 64];
+	let mut wc1 = vec![C32::ZERO; 64];
+	let mut c = ch1c.clone();
+	cherk(Uplo::Lower, Trans::ConjTrans, nn, k, 0.0, &acn, 8, 1.0, &mut c, nn, &mut wc1).unwrap();
+	assert_eq!(c, ch1c, "cherk alpha = 0, beta = 1");
+	let mut c = ch1c.clone();
+	cher2k(Uplo::Upper, Trans::NoTrans, nn, 0, C32::ONE, &acn, 8, &acn, 8, 1.0, &mut c, nn, &mut wc1).unwrap();
+	assert_eq!(c, ch1c, "cher2k k = 0, beta = 1");
 	let mut b = vec![C32::new(f32::NAN, f32::NAN); m * n];
 	let ac = vec![C32::new(f32::NAN, 0.0); 64];
 	let mut wc = vec![C32::ZERO; 64];

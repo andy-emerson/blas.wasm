@@ -139,7 +139,7 @@ pub(crate) fn dgemm_k(
 	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
 	// reference). Packed also edged tiled +3% at 256³ — recorded, not
 	// routed: the tiled zone below 256³ is unmeasured.
-	if m * k * 8 <= TILED_MAX_A_BYTES {
+	if !packed_route(m, k) {
 		dgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
 		dgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);

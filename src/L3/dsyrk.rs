@@ -48,14 +48,13 @@ pub fn dsyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[f64]
 	// op(A) is materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
 	// the unflagged call on an explicit copy (tested)
-	let (work, a, lda) = if trans == Trans::NoTrans {
-		(work, a, lda)
+	let (a, lda) = if trans == Trans::NoTrans {
+		(a, lda)
 	} else {
-		let (ta, rest) = work.split_at_mut(n * k);
+		let ta = &mut work[..n * k];
 		super::transpose_into(a, lda, k, n, ta, |x| x);
-		(rest, &*ta, n)
+		(&*ta, n)
 	};
-	let _ = work;
 	dsyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }

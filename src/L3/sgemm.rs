@@ -138,7 +138,7 @@ pub(crate) fn sgemm_k(
 	// (packed-gemm race, two runner draws: +3–4% at 1024³,
 	// +5% at 512x4096x1024, unanimous; 512³/256³ stay tiled, where
 	// packed measured noise/−2%). col4 stays as the raced reference.
-	if m * k * 4 <= TILED_MAX_A_BYTES {
+	if !packed_route(m, k) {
 		sgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
 		sgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);

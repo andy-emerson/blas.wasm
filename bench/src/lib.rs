@@ -1728,20 +1728,31 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
 /// Same α/β constants as the layer rows. Returns the C-corner fold —
 /// incumbent and packed are bit-identical by construction, so the
 /// race script asserts the two folds match exactly before timing.
-fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
+/// Which gemm shape `gemm_rect` times: the netlib wrapper as shipped
+/// (the B0 rows), the 4-column fused shape the packed race replaced
+/// above the threshold, or the packed-panel shape itself.
+#[derive(Clone, Copy)]
+enum GemmShape {
+    Shipped,
+    Col4,
+    Packed,
+}
+
+fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, shape: GemmShape) -> f64 {
     use blas_wasm::L3 as l3;
     let s = state_mut();
     let cap = s.n * s.n;
     assert!(m * k <= cap && k * n <= cap && m * n <= cap, "gemm_rect: setup too small");
+    let nt = Trans::NoTrans;
     match ty {
         0 => {
             let a = &s.a[..m * k];
             let b = &s.b[..k * n];
             let c = &mut s.sym[..m * n];
-            if packed {
-                l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_packed_work(m, n, k)]);
-            } else {
-                l3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
+            match shape {
+                GemmShape::Shipped => l3::dgemm(nt, nt, m, n, k, 0.001, a, m, b, k, 0.5, c, m, ws(&mut s.work, l3::dgemm_work(nt, nt, m, n, k), 0.0)).unwrap(),
+                GemmShape::Col4 => l3::dgemm_col4(0.001, m, n, k, a, m, b, k, 0.5, c, m),
+                GemmShape::Packed => l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work, l3::dgemm_packed_work(m, n, k), 0.0)),
             }
             c[0] + c[m * n - 1]
         }
@@ -1749,10 +1760,10 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let a = &s.a32[..m * k];
             let b = &s.b32[..k * n];
             let c = &mut s.sym32[..m * n];
-            if packed {
-                l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_packed_work(m, n, k)]);
-            } else {
-                l3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
+            match shape {
+                GemmShape::Shipped => l3::sgemm(nt, nt, m, n, k, 0.001, a, m, b, k, 0.5, c, m, ws(&mut s.work32, l3::sgemm_work(nt, nt, m, n, k), 0.0)).unwrap(),
+                GemmShape::Col4 => l3::sgemm_col4(0.001, m, n, k, a, m, b, k, 0.5, c, m),
+                GemmShape::Packed => l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, ws(&mut s.work32, l3::sgemm_packed_work(m, n, k), 0.0)),
             }
             (c[0] + c[m * n - 1]) as f64
         }
@@ -1762,10 +1773,10 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let a = &s.az[..m * k];
             let b = &s.bz[..k * n];
             let c = &mut s.symz[..m * n];
-            if packed {
-                l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_packed_work(m, n, k)]);
-            } else {
-                l3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
+            match shape {
+                GemmShape::Shipped => l3::zgemm(nt, nt, m, n, k, al, a, m, b, k, be, c, m, ws(&mut s.workz, l3::zgemm_work(nt, nt, m, n, k), C64::ZERO)).unwrap(),
+                GemmShape::Col4 => l3::zgemm_col4(al, m, n, k, a, m, b, k, be, c, m),
+                GemmShape::Packed => l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m, ws(&mut s.workz, l3::zgemm_packed_work(m, n, k), C64::ZERO)),
             }
             c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im
         }
@@ -1775,10 +1786,10 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let a = &s.ac[..m * k];
             let b = &s.bc[..k * n];
             let c = &mut s.symc[..m * n];
-            if packed {
-                l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_packed_work(m, n, k)]);
-            } else {
-                l3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)]).unwrap();
+            match shape {
+                GemmShape::Shipped => l3::cgemm(nt, nt, m, n, k, al, a, m, b, k, be, c, m, ws(&mut s.workc, l3::cgemm_work(nt, nt, m, n, k), C32::ZERO)).unwrap(),
+                GemmShape::Col4 => l3::cgemm_col4(al, m, n, k, a, m, b, k, be, c, m),
+                GemmShape::Packed => l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m, ws(&mut s.workc, l3::cgemm_packed_work(m, n, k), C32::ZERO)),
             }
             (c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im) as f64
         }
@@ -1786,14 +1797,22 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
     }
 }
 
+/// The shipped wrapper (the B0 rows); the workspace comes from the setup
+/// state, grown on the warmup call, so no allocation lands inside a timed call.
 #[no_mangle]
 pub extern "C" fn run_gemm_rect_incumbent(ty: usize, m: usize, k: usize, n: usize) -> f64 {
-    gemm_rect(ty, m, k, n, false)
+    gemm_rect(ty, m, k, n, GemmShape::Shipped)
+}
+
+/// The 4-column fused shape the packed race replaced above the threshold.
+#[no_mangle]
+pub extern "C" fn run_gemm_rect_col4(ty: usize, m: usize, k: usize, n: usize) -> f64 {
+    gemm_rect(ty, m, k, n, GemmShape::Col4)
 }
 
 #[no_mangle]
 pub extern "C" fn run_gemm_rect_packed(ty: usize, m: usize, k: usize, n: usize) -> f64 {
-    gemm_rect(ty, m, k, n, true)
+    gemm_rect(ty, m, k, n, GemmShape::Packed)
 }
 
 /// Transposed trmm/trsm race (STATUS.md, decision D3): the two
@@ -1819,7 +1838,7 @@ fn tri_t(ty: usize, routine: usize, side: usize, upper: bool, m: usize, n: usize
     let up = if upper { Uplo::Upper } else { Uplo::Lower };
     let dg = Diag::NonUnit;
     macro_rules! run {
-        ($a:expr, $b:expr, $src:expr, $w:expr, $one:expr, $ta:expr, $zero:expr, $trmm:ident, $trmm_copy:ident, $trmm_copy_work:ident, $trmm_stream:ident, $trsm:ident, $trsm_copy:ident, $trsm_copy_work:ident, $trsm_stream:ident) => {{
+        ($a:expr, $b:expr, $src:expr, $w:expr, $one:expr, $ta:expr, $zero:expr, $trmm_copy:ident, $trmm_copy_work:ident, $trmm_stream:ident, $trsm_copy:ident, $trsm_copy_work:ident, $trsm_stream:ident) => {{
             let a = &$a[..];
             let b = &mut $b[..m * n];
             b.copy_from_slice(&$src[..m * n]);
@@ -1836,26 +1855,24 @@ fn tri_t(ty: usize, routine: usize, side: usize, upper: bool, m: usize, n: usize
                 }
                 (_, _) => l3::$trsm_stream(sd, up, $ta, dg, m, n, alpha, a, lda, b, m),
             }
-            let _ = l3::$trmm; // the netlib wrapper is not raced here
-            let _ = l3::$trsm;
             b
         }};
     }
     match ty {
         0 => {
-            let b = run!(s.tri, s.sym, s.b, s.work, 1.0f64, Trans::Trans, 0.0f64, dtrmm, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrsm, dtrsm_copy, dtrsm_copy_work, dtrsm_stream);
+            let b = run!(s.tri, s.sym, s.b, s.work, 1.0f64, Trans::Trans, 0.0f64, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrsm_copy, dtrsm_copy_work, dtrsm_stream);
             b[0] + b[m * n - 1]
         }
         1 => {
-            let b = run!(s.tri32, s.sym32, s.b32, s.work32, 1.0f32, Trans::Trans, 0.0f32, strmm, strmm_copy, strmm_copy_work, strmm_stream, strsm, strsm_copy, strsm_copy_work, strsm_stream);
+            let b = run!(s.tri32, s.sym32, s.b32, s.work32, 1.0f32, Trans::Trans, 0.0f32, strmm_copy, strmm_copy_work, strmm_stream, strsm_copy, strsm_copy_work, strsm_stream);
             (b[0] + b[m * n - 1]) as f64
         }
         2 => {
-            let b = run!(s.triz, s.symz, s.bz, s.workz, C64::ONE, Trans::ConjTrans, C64::ZERO, ztrmm, ztrmm_copy, ztrmm_copy_work, ztrmm_stream, ztrsm, ztrsm_copy, ztrsm_copy_work, ztrsm_stream);
+            let b = run!(s.triz, s.symz, s.bz, s.workz, C64::ONE, Trans::ConjTrans, C64::ZERO, ztrmm_copy, ztrmm_copy_work, ztrmm_stream, ztrsm_copy, ztrsm_copy_work, ztrsm_stream);
             b[0].re + b[0].im + b[m * n - 1].re + b[m * n - 1].im
         }
         _ => {
-            let b = run!(s.tric, s.symc, s.bc, s.workc, C32::ONE, Trans::ConjTrans, C32::ZERO, ctrmm, ctrmm_copy, ctrmm_copy_work, ctrmm_stream, ctrsm, ctrsm_copy, ctrsm_copy_work, ctrsm_stream);
+            let b = run!(s.tric, s.symc, s.bc, s.workc, C32::ONE, Trans::ConjTrans, C32::ZERO, ctrmm_copy, ctrmm_copy_work, ctrmm_stream, ctrsm_copy, ctrsm_copy_work, ctrsm_stream);
             (b[0].re + b[0].im + b[m * n - 1].re + b[m * n - 1].im) as f64
         }
     }

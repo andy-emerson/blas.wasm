@@ -28,7 +28,7 @@ jobs:
           cargo build --release --target wasm32-unknown-unknown
           node check.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm
           node audit.mjs --self-test
-          node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --imports 0 --exports 119
+          node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --surface surface.json
           cp target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm ../blas.wasm
 
       - name: Create release with the artifact

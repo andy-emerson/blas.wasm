@@ -47,7 +47,11 @@ pub fn cher2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C32, a: &[C32
 		return Ok(());
 	}
 	if alpha == C32::ZERO || k == 0 {
-		// reference: the stored triangle of C ← βC without reading A or B
+		// reference: C is untouched when beta == 1, its stored
+		// triangle scaled otherwise (the diagonal from its real part); A and B are not read
+		if beta == 1.0 {
+			return Ok(());
+		}
 		for j in 0..n {
 			let (lo, hi) = if uplo.is_upper() { (0, j + 1) } else { (j, n) };
 			crate::L2::csscale_y(beta, &mut c[j * ldc + lo..j * ldc + hi]);
