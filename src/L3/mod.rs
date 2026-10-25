@@ -8,13 +8,15 @@
 //! a register tile. Same matrix convention as Level 2 (column-major
 //! slice + column stride, unit row stride).
 //!
-//! Transposed and conjugate-transposed operands (gemm's `transa`/
-//! `transb`) are transposed into the caller's workspace by
-//! `transpose_into` and then take the no-transpose shapes unchanged,
-//! so a flagged call is bit-identical to the unflagged call on an
-//! explicit copy by construction; the query `*gemm_work` counts the
-//! copy. The syrk family's, trmm's and trsm's transposed forms are
-//! open: STATUS.md, todo S1.
+//! Transposed and conjugate-transposed operands are defined as the
+//! no-transpose call on an explicit transpose, and every flagged form
+//! is bit-identical to that definition by construction: the syrk
+//! family and small gemm transpose the operand into the caller's
+//! workspace with `transpose_into` and run the no-transpose shape;
+//! large gemm packs from a transposed read (`*gemm_packed_op`); trmm
+//! and trsm route per side between a copy and no-copy kernels. Each
+//! choice is the verdict of a two-draw runner race (`bench/README.md`,
+//! decision D3) and the losing candidate stays exported and tested.
 
 pub mod dgemm;
 pub mod dsymm;

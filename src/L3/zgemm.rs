@@ -32,10 +32,11 @@ const PACKED_MIN_A_BYTES: usize = 1 << 20; // 1 MB
 /// [`zgemm_work`]`(transa, transb, m, n, k)` elements; it may be empty
 /// when the query says zero.
 ///
-/// A transposed operand is transposed (and conjugated) into the
-/// workspace first and the product then runs the no-transpose shapes,
-/// so every flag combination equals the unflagged call on an explicit
-/// copy, bit for bit.
+/// A transposed operand is packed straight from a transposed (and conjugated)
+/// read above the packed threshold ([`zgemm_packed_op`]) and transposed
+/// into the workspace ahead of the register-tile shape below it, so every
+/// flag combination equals the unflagged call on an explicit copy, bit
+/// for bit.
 ///
 /// Errors: a leading dimension below its stored row count (arguments 8,
 /// 10, 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
@@ -60,10 +61,16 @@ pub fn zgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 		}
 		return Ok(());
 	}
-	// op(A) and op(B) are materialized in the workspace ahead of the
-	// no-transpose shapes, so every flag combination is bit-identical
-	// to the unflagged call on an explicit copy (tested); conjugation
-	// is an exact sign flip applied in the copy
+	// Above the packed threshold a transposed operand is packed straight
+	// from a transposed read (`zgemm_packed_op`, the race's winner:
+	// `bench/README.md`); below it the operand is transposed into the
+	// workspace ahead of the register-tile shape. Both are bit-identical
+	// to the unflagged call on an explicit copy (tested); conjugation is
+	// an exact sign flip in either.
+	if (transa != Trans::NoTrans || transb != Trans::NoTrans) && packed_route(m, k) {
+		zgemm_packed_op(transa, transb, alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
+		return Ok(());
+	}
 	let (work, a, lda) = if transa == Trans::NoTrans {
 		(work, a, lda)
 	} else {
@@ -91,17 +98,26 @@ pub fn zgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 }
 
 /// Elements of scratch [`zgemm`] needs for these flags and dimensions:
-/// `m·k` for a transposed `A` and `k·n` for a transposed `B` (the
-/// copies), plus [`zgemm_packed_work`] when the dispatcher routes to
-/// the packed shape; zero for an unflagged call below that size.
+/// above the packed threshold [`zgemm_packed_work`] (unflagged) or
+/// [`zgemm_packed_op_work`] (a transposed operand); below it the
+/// copies, `m·k` for a transposed `A` and `k·n` for a transposed `B`,
+/// so zero for an unflagged call there.
 pub fn zgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
 	if m == 0 || n == 0 || k == 0 {
 		return 0; // the quick returns compute nothing
 	}
-	let ta = if transa == Trans::NoTrans { 0 } else { m * k };
-	let tb = if transb == Trans::NoTrans { 0 } else { k * n };
-	let packed = if packed_route(m, k) { zgemm_packed_work(m, n, k) } else { 0 };
-	ta + tb + packed
+	let flagged = transa != Trans::NoTrans || transb != Trans::NoTrans;
+	if packed_route(m, k) {
+		if flagged {
+			zgemm_packed_op_work(transa, transb, m, n, k)
+		} else {
+			zgemm_packed_work(m, n, k)
+		}
+	} else {
+		let ta = if transa == Trans::NoTrans { 0 } else { m * k };
+		let tb = if transb == Trans::NoTrans { 0 } else { k * n };
+		ta + tb
+	}
 }
 
 /// Elements of scratch [`zgemm_packed`] needs for these dimensions:
@@ -372,9 +388,9 @@ pub fn zgemm_colaxpy(
 	}
 }
 
-/// Candidate for the transposed forms (`STATUS.md`, decision D3; the
-/// netlib wrapper routes the other candidate, a whole-operand copy, or
-/// this one per the race): the packed-panel shape with `op(A)` and
+/// The transposed forms above the packed threshold (the race's winner
+/// over a whole-operand copy, two runner draws: `bench/README.md`): the
+/// packed-panel shape with `op(A)` and
 /// `op(B)` packed straight from a transposed (and conjugated) read —
 /// op(A)'s row is a stored column of A and op(B)'s packed quad is four
 /// consecutive stored elements — so no whole-operand copy is made and
