@@ -7,9 +7,9 @@
 //! unanimous; the tile keeps everything below, where packed measured
 //! noise to −2%) — all bit-identical to the plain sgemv-per-column
 //! reference, which is kept as `sgemm_colaxpy`; col4 stays as the
-//! raced reference. f32 measurements: docs/blas-ab-2026-07.md steps
-//! 10 and 14. Transpose forms: not built — no consumer yet (ssyrk
-//! covers A·Aᵀ).
+//! raced reference. f32 measurements: July 2026 campaign record,
+//! steps 10 and 14 (not in this tree; STATUS.md). Transpose forms:
+//! planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::saxpy4;

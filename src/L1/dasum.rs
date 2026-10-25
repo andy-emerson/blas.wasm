@@ -3,7 +3,7 @@
 //! Implementation: reduction stream (4 accumulator registers = 8 lanes,
 //! `abs` in-lane, folded in a fixed order at the end). Ported from the
 //! raced variant — 3.5–4× faster than the plain loop on all three
-//! runner draws (docs/blas-ab-2026-07.md, step 2): the plain loop's
+//! runner draws (the July 2026 campaign record (not in this tree; STATUS.md), step 2): the plain loop's
 //! serial dependent-add chain is latency-bound, not bandwidth-bound.
 //!
 //! Rounding contract: lane-parallel accumulation reorders the additions

@@ -3,7 +3,7 @@
 //! Implementation: reduction stream (4 accumulator registers = 16 lanes,
 //! `abs` in-lane, folded in a fixed order at the end). Shape ported
 //! from the raced f64 variant (3.5–4× over the plain loop, three
-//! runner draws, docs/blas-ab-2026-07.md step 2 — the plain loop's
+//! runner draws, the July 2026 campaign record (not in this tree; STATUS.md) step 2 — the plain loop's
 //! serial dependent-add chain is latency-bound, not bandwidth-bound);
 //! f32 measurements: step 10.
 //!

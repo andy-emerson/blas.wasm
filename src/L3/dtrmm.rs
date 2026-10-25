@@ -18,8 +18,8 @@
 //! measured better in the step-1 race but is DEFERRED at the f64
 //! campaign close: wasm relaxed-madd rounding is implementation-
 //! dependent, so it trades away cross-target bit-identity — an
-//! architect decision; DESIGN.md, "Fast mode is a lever". Transpose forms: not
-//! built — no consumer yet.
+//! architect decision; DESIGN.md, "Fast mode is a lever". Transpose forms:
+//! planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;

@@ -1,15 +1,14 @@
 //! `dgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched family (tuned 2026-07-18, packed
-//! shape added 2026-07-20): 4×4 register tile below ~1.5 MB of A,
+//! Implementation: size-dispatched family: 4×4 register tile below ~1.5 MB of A,
 //! BLIS-style packed-panel shape above (replaced the 4-column fused
 //! stream after two unanimous runner draws: 1.24× at 512³, 1.44× at
 //! 1024³, 1.10–1.23× deep-K) — all bit-identical to the plain
 //! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
 //! stays as the raced mid-size reference. The pre-packed shapes beat
 //! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; docs/blas-ab-2026-07.md step 6). Transpose forms: not built
-//! — no consumer yet (dsyrk covers A·Aᵀ).
+//! large; July 2026 campaign record, step 6 — not in this tree,
+//! STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
 
 use super::check_mat;
 use crate::kernels::daxpy4;
@@ -18,7 +17,7 @@ use crate::L2::dgemv;
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
 ///
-/// Dispatches by size (tuning campaign, 2026-07-18, two runner draws
+/// Dispatches by size (raced on the reference runners, two draws
 /// agreeing within 3%): the 4×4 register tile wins while A stays small
 /// enough that its column-strided k-walk rides the caches (best
 /// 128–384, 1.4–1.8× over faer); the 4-column fused stream wins above

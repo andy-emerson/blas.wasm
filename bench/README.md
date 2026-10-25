@@ -1,12 +1,13 @@
 # bench/ — the measured benchmarks
 
 The BLAS layer's measurement harness and its current results.
-Self-contained — depends only on `blas-wasm`, no faer — so it
-builds in seconds and `blas/` is the complete product: code
-(`../src`), correctness (`../tests`), measurement (here). The
-append-only evidence trail with raw tables and run IDs is
-`../../docs/blas-ab-2026-07.md`; the tables below quote its steps
-7, 9, and 10.
+Self-contained — depends only on `blas-wasm` — so it builds in
+seconds and the repository is the complete product: code (`../src`),
+correctness (`../tests`), measurement (here). The step-by-step
+evidence trail with raw tables and run IDs is the July 2026 campaign
+record, which lives in the predecessor repository and not in this
+tree (`../STATUS.md`); the tables below quote its steps 7, 9, and 10
+and name the GitHub Actions runs they came from.
 
 ## The scoreboard
 
@@ -116,13 +117,13 @@ hemv kernels (see the Level-2 note).
 
 Market comparison (not the metric): the layer's gemm beats faer's
 blocked gemm in every type raced, two draws each. dgemm 1.25–1.8× at
-every measured size (docs step 6, `../../bench/gemm-tune-ab.mjs` —
-pre-packed; packed adds 1.24–1.44× on top at 512³+); zgemm
+every measured size (campaign record step 6, raced with the
+predecessor repository's `gemm-tune-ab.mjs` — pre-packed; packed adds 1.24–1.44× on top at 512³+); zgemm
 1.49–1.71× at n=256–768 on both draws (n=128 split across draws:
 1.70×/0.96× — call it a tie at the smallest size; packed adds
 1.08–1.33× on top); cgemm 3.11–3.67× at every size including 128,
-unanimous (docs step 13, `../../bench/cplx-gemm-ab.mjs` —
-conservative against us: the blas rows do the full αAB+βC blend
+unanimous (campaign record step 13, the predecessor repository's
+`cplx-gemm-ab.mjs` — conservative against us: the blas rows do the full αAB+βC blend
 where faer's row is a plain replace). The packed-vs-incumbent race
 itself: `packed-gemm-ab.mjs`, runs 29720778259/29720782633, full
 tables in docs step 14.
@@ -130,7 +131,7 @@ tables in docs step 14.
 ## Running a roofline (per level, per type)
 
 ```sh
-cd blas/bench
+cd bench
 cargo build --release --target wasm32-unknown-unknown --lib
 cargo run --release --bin native l3-bits > /tmp/bits.txt
 node l3-roofline.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm /tmp/bits.txt
@@ -161,6 +162,6 @@ ceiling.
 - **Verdict rules** (the standing method): reference machines only
   for verdicts, two draws per claim, sub-1.3× margins are
   direction-only unless unanimous; the dev container is for
-  iteration. Runner draws use the temp-routing procedure in
-  `../../docs/engineer-handoff-2026-07.md`. Update the scoreboard
-  above only from runner draws.
+  iteration. Runner draws come from the bench workflow
+  (`../.github/workflows/bench.yml`, dispatched twice). Update the
+  scoreboard above only from runner draws.

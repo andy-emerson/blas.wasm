@@ -1,16 +1,16 @@
 //! Level 3: matrix–matrix operations, one file per BLAS routine
 //! (netlib naming — src/README.md), every one structurally a loop
-//! of Level 1/2 calls over the right-hand matrix's columns. Since the
-//! 2026-07-19 tuning campaign every op runs its columns four at a
-//! time through the shared blocked kernels (`crate::kernels`) or a
-//! lockstep column walk — bit-identical to the plain composition
+//! of Level 1/2 calls over the right-hand matrix's columns. Every op
+//! runs its columns four at a time through the shared blocked kernels
+//! (`crate::kernels`) or a lockstep column walk — bit-identical to the plain composition
 //! wherever the elimination order allows (the two right-side reorders
 //! are documented in their files); gemm additionally size-dispatches
 //! a register tile. Same matrix convention as Level 2 (column-major
 //! slice + column stride, unit row stride).
 //!
-//! Scope (gap-lined in ../../README.md): no-transpose forms only —
-//! Aᵀ variants of gemm have no consumer yet (syrk covers A·Aᵀ).
+//! Scope today: no-transpose forms only (syrk covers A·Aᵀ). The
+//! transposed and conjugate-transposed forms are planned: STATUS.md,
+//! todo S1.
 
 pub mod dgemm;
 pub mod dsymm;

@@ -116,7 +116,7 @@ bottom.
   with a named job and reader; `ROADMAP.md` retired into them.
   Evidence: the documentation review's placement check, read against
   each file's job.
-- [ ] **0a — No dangling paths or stale notes anywhere in the tree.**
+- [x] **0a — No dangling paths or stale notes anywhere in the tree.**
   README opens on what the product is and where the decompositions
   live. Evidence: a grep for the old parent-repository path patterns
   is empty; README read end to end on a fresh clone. (1–1.5)

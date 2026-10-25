@@ -1,7 +1,6 @@
-# UPDATED gate (2026-07-21): adds the C-ABI artifact build + its node
-# smoke test to the existing checks. STAGED at ci/gate.yml — paste over
-# .github/workflows/gate.yml (GitHub UI: open that file → pencil icon →
-# select-all → paste → commit), then delete this staged copy.
+# The gate: every push to main and every pull request must pass the
+# test suite, clippy on host and wasm, the cross-target determinism
+# probes, and the C-ABI module build with its smoke test.
 name: gate
 on:
   push:

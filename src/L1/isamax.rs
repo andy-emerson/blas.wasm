@@ -4,7 +4,7 @@
 //! pass finds the max VALUE, then one scalar rescan finds its first
 //! index (the realistic SIMD strategy for an argmax). Shape ported
 //! from the raced f64 variant (1.4–1.6× over the branching plain loop,
-//! three runner draws, docs/blas-ab-2026-07.md step 2; a fused
+//! three runner draws, the July 2026 campaign record (not in this tree; STATUS.md) step 2; a fused
 //! single-pass candidate LOST its f64 race and was reverted — step 9 —
 //! so it isn't cloned here either). f32 measurements: step 10.
 //!

@@ -1,18 +1,26 @@
-# blas.wasm — the wasm-native BLAS
+# blas.wasm — the BLAS for the browser
 
-The wasm-native BLAS layer, built as its own finished product per the
-2026-07-18 direction reset: the LAPACK-layer kernels re-route their
-bulk work onto this crate as it fills in. One file per BLAS routine
-per number type in netlib naming (`daxpy.rs`, `saxpy.rs`, … —
-convention: `src/README.md`), one folder per level; this README is
-the plan of record for the layer. Counting convention, used
-everywhere: **23 routines** per real type (netlib names = files; flag
-variants folded, so gemv covers N/T and symm/trmm/trsm cover both
-sides) which split into **27 distinct operations** (the call-graph
-nodes). The complex layers count differently because reference BLAS
-itself splits there: **26 routines / 31 operations** each for c64 and
-c32 (dot → dotu/dotc, ger → geru/gerc, scal gains a real-α form, gemv
-adds the conjugate-transpose form, and the symmetric family becomes
+blas.wasm is a BLAS (the Basic Linear Algebra Subprograms: vector,
+matrix–vector and matrix–matrix routines) written in Rust for
+WebAssembly: hand-written SIMD on every path, zero dependencies, zero
+imports, and results that are bit-identical across native and every
+wasm engine. It ships as two products, the Rust crate `blas-wasm` and
+an npm package wrapping the pre-built module; neither is published to
+a registry yet (`STATUS.md`). It is a BLAS and nothing more: the
+decompositions (solve, inverse, eigen, SVD) are a separate project
+that depends on this crate. Why it is built this way is `DESIGN.md`;
+what is open is `STATUS.md`.
+
+Layout: one file per BLAS routine per number type in netlib naming
+(`daxpy.rs`, `saxpy.rs`, … — convention: `src/README.md`), one folder
+per level. Counting convention, used everywhere: **23 routines** per
+real type (netlib names = files; flag variants folded, so gemv covers
+N/T and symm/trmm/trsm cover both sides) which split into **27
+distinct operations** (the call-graph nodes). The complex layers
+count differently because reference BLAS itself splits there: **26
+routines / 31 operations** each for c64 and c32 (dot → dotu/dotc,
+ger → geru/gerc, scal gains a real-α form, gemv adds the
+conjugate-transpose form, and the symmetric family becomes
 Hermitian). Companion maps: `src/README.md` (who calls whom),
 `bench/README.md` (the measured benchmarks), `tests/README.md` (the
 bit-identical test results).
@@ -32,81 +40,52 @@ review (`AGENTS.md`) judges it against that reader.
 | `bench/README.md` | the measurement method and the current scoreboard | maintainer |
 | `AGENTS.md` | the working agreement between the Human and the Agent (unedited upstream release; `CLAUDE.md` points at it) | both |
 
-**Status — all four type layers are BUILT and TUNED (f64 campaign
-closed 2026-07-19; packed-gemm race across all four types
-2026-07-20; ZERO runtime dependencies since 2026-07-21 — the four
-libm entry points are vendored in `src/math.rs`, cross-checked
-bit-for-bit against libm-as-dev-dependency in CI).** The repo's
-namesake artifact exists: `abi/` wraps every routine in a flat
-C ABI and compiles to the standalone **`blas.wasm`** module (~217 KB,
-116 exports, raw wasm — no bindgen) for JavaScript and any non-Rust
-consumer; conventions in `abi/src/lib.rs`'s module doc, smoke test
-`abi/check.mjs`, released per tag by the release workflow. Rust
-consumers should depend on the crate instead (same code, cross-crate
-inlining, no ABI boundary). Unit stride
-throughout — callers pass contiguous column slices (strided access
-defeats streaming and no consumer wants it). One-line history, full
-plain-English record in `../STATUS.md`, evidence per step in
-`../docs/blas-ab-2026-07.md`, current numbers in `bench/README.md`:
+## What is built
 
-- **f64** (built 2026-07-18, tuned + campaign closed 2026-07-19,
-  docs steps 3–9): every verdict backed by two runner draws; gemm
-  beats faer at every measured size (1.25–1.8×, size-dispatched
-  tile/col4); dot AT the triad read ceiling; symm_left 84–86% of the
-  arithmetic peak via the fused symv. One candidate raced and
-  REFUTED (fused single-pass iamax — reverted, loss recorded in its
-  module docs). Fused-FMA variants DEFERRED at the close
-  (relaxed-madd rounding is implementation-dependent — trades away
-  cross-target bit-identity; architect decision; DESIGN.md, "Fast mode is a lever").
-- **f32** (built 2026-07-19, docs step 10): the tuned layer cloned
-  one-for-one at double lane width; two measured deviations (8×4
-  gemm tile, 3 MB dispatch threshold — runner-raced, container
-  overruled); same ceiling fractions as f64.
-- **c64** (built 2026-07-19, docs step 11; tuned at the close-out,
-  step 13): the first non-mechanical clone — own `C64` scalar,
-  sign-folded lane product bit-exact to the scalar order, six L1
-  delegations onto the tuned d-streams; L3 at 74–86% of the f64
-  arithmetic peak (complex is compute-bound at 4× FLOPs/byte). The
-  4-column grouped fused zhemv won its race (~13%, both draws) and
-  ships; hemm_left rode it from 39–41% to 54–61% of peak. Market:
-  zgemm beats faer's blocked complex gemm 1.49–1.71× at n≥256.
-- **c32** (built 2026-07-19, docs step 12; close-out race step 13):
-  c64 at two-complexes-per-register lane geometry; L3 at 75–87% of
-  the f32 peak — cgemm ~26 GFLOP/s, the fastest absolute row in the
-  library, and 3.1–3.7× over faer's blocked complex gemm at every
-  size. The hemv grouping LOST for c32 (~2%, both draws — refuted,
-  recorded in `src/L2/chemv.rs`); chemv keeps the single-column
-  pass.
-- **packed-panel gemm, all four types** (raced + routed 2026-07-20,
-  docs step 14): BLIS/Goto packing around the existing microkernel
-  math, bit-identical to the colaxpy references. Two runner draws,
-  routed strictly at measured wins: dgemm 1.24–1.44× above the tiled
-  threshold (unanimous, square AND deep-K prefill shapes); sgemm
-  +3–5% above its tiled threshold; zgemm 1.08–1.33× at A ≥ 1 MB
-  (every measured size — this ships the complex register tile
-  previously recorded as a non-starter); cgemm +12% at A ≥ 8 MB
-  only. col4 stays everywhere as the raced reference. Packing pays
-  where memory traffic binds: the win shrinks f64 → c32 as
-  arithmetic density rises.
+- **Four type layers**, f64 / f32 / c64 / c32, every routine of the
+  counting convention above: 116 routine exports in the module. Unit
+  stride: callers pass contiguous column slices with a column stride
+  per matrix.
+- **SIMD on every path**, tuned: four streaming-loop shapes plus one
+  scalar function (the taxonomy below), the column shapes blocked four
+  columns at a time by shared kernels, and gemm size-dispatched
+  between a register tile and a BLIS/Goto packed-panel shape in every
+  type. Every tuned shape is bit-identical to its plain column-axpy
+  reference except where an elimination order forbids it; those two
+  cases are documented in their files and mirrored by their tests.
+- **Zero runtime dependencies.** `no_std`; the four math entry points
+  the layer needs are vendored in `src/math.rs` and cross-checked bit
+  for bit against libm (a dev-dependency only) on every CI run.
+- **Bit-identical native ↔ wasm**, by construction (`src/lanes.rs`
+  emulates the SIMD lane structure elementwise off-wasm) and verified
+  by 90 determinism probes on every gate run (`tests/README.md`).
+- **The module.** `abi/` wraps every routine in a flat C ABI and
+  compiles to the standalone `blas.wasm` (~217 KB, 116 routines plus
+  `wasm_alloc`/`wasm_free`, raw wasm, zero imports); conventions in
+  `abi/src/lib.rs`, smoke test `abi/check.mjs`, attached to the
+  GitHub release for each tag by the release workflow. Rust consumers
+  depend on the crate instead (same code, cross-crate inlining, no
+  ABI boundary).
+- **Measured against the machine's ceilings**, two runner draws per
+  verdict; the scoreboard and the method are in `bench/README.md`.
+  Verdicts that lost are recorded where they lost: the fused
+  single-pass iamax (its module docs), the 4-column hemv grouping for
+  c32 (`src/L2/chemv.rs`; it won for c64 and ships there).
 
-Sequencing (Andy, 2026-07-18, revised same day; now DESIGN.md "Scope is BLAS"
-): f64 tuned first — DONE; the tuned layer
-cloned into the other number types — f32, c64, c32 all DONE
-2026-07-19. **The four-type grid is complete**; per the sequencing,
-LAPACK-layer work (the kernel re-route onto this crate) is now
-unblocked.
+## What is not built
 
-Gaps: FMA variants deferred (above); transpose forms of
-gemm/trmv/trsv/trmm/trsm not built (no consumer yet, any type);
-remaining recorded-not-raced levers — the i*amax rescans (worst:
-isamax 8%), packed-gemm tuning constants (KC/MC first guesses, not
-swept) and the unmeasured dispatch gaps (f64 below 256³ vs tiled,
-c32 between 2 and 8 MB of A); the register-tile zgemm/cgemm lever
-RESOLVED by the packed race (step 14 — packed form ships, unpacked
-form confirmed unnecessary); the complex-symmetric symm/syrk/syr2k
-forms and the complex-s rotation apply (`zrot`) not built (no
-consumer); the `cd blas && cargo test` CI gate line still needs
-adding to the workflow (session tokens can't edit workflow files).
+Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
+and sequenced in `STATUS.md`: the transposed and conjugate-transposed
+forms of gemm, trmv, trsv, trmm and trsm; the transposed forms of
+syrk/syr2k/herk/her2k; vector strides (`incx`/`incy`); the complex
+symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
+`zrot`/`crot`; argument errors are trapped rather than reported; the
+module's exports use an invented argument order rather than CBLAS's;
+packed gemm allocates two panel buffers. Fused multiply-add variants
+measured faster for some routines and are deliberately not shipped:
+relaxed-SIMD rounding is implementation-dependent and would forfeit
+cross-target bit-identity (`DESIGN.md`, "Fast mode is a lever").
+Banded and packed storage forms are not planned.
 
 Hard-won build rule: simd128 is NOT in rustc's default wasm32 feature
 set — every SIMD path must sit under `#[target_feature(enable =
@@ -115,9 +94,8 @@ intrinsics compile as out-of-line calls (measured 6.4× slowdown).
 
 ## Testing contract — two axes, both required to land
 
-**Correctness — `tests/` in this crate** (`cd blas && cargo test
---release`): every routine is tested to the strongest standard its
-math allows — bit-for-bit against a same-order scalar replay
+**Correctness — `tests/` in this crate** (`cargo test --release`):
+every routine is tested to the strongest standard its math allows — bit-for-bit against a same-order scalar replay
 wherever the rounding order is deterministic, n-scaled error bounds
 against higher-precision references where lane parallelism
 legitimately reorders, exact-index/identity checks for iamax/rotg,
@@ -130,9 +108,10 @@ from the machine's measured ceiling** — streaming ops against the
 bandwidth ceiling, multiply-class ops against the arithmetic peak —
 per the re-derived success metric, with same-machine interleaved A/B
 rows and the verdict-stability rule (two runner draws per claim; the
-dev container is iteration only). The harness is self-contained (no
-faer); method and current scoreboard: `bench/README.md`. Market
-races against faer need faer and stay in `../bench/`.
+dev container is iteration only). The harness is self-contained;
+method and current scoreboard: `bench/README.md`. The market
+comparison against faer was raced in the predecessor repository and
+is quoted there, not reproducible from this tree.
 
 ## Implementation taxonomy
 
@@ -187,11 +166,12 @@ is bounds-tested). The tables give each op's shorthand per number
 type — matching cells across type columns are the clones doing their
 job.
 
-The step-1 three-way race measured fused-FMA better for
-`trmm`/`trsm`/`gemv` and harmful for `syrk` — those variants are
-deferred at the campaign close (determinism trade-off; see status
-above). Banded/packed forms are not planned — no consumer demand.
-Evidence per row: `../docs/blas-ab-2026-07.md`.
+A three-way race measured fused-FMA better for `trmm`/`trsm`/`gemv`
+and harmful for `syrk`; those variants are deliberately not shipped
+(determinism trade-off; `DESIGN.md`, "Fast mode is a lever").
+Banded/packed forms are not planned — no consumer demand. Evidence
+per row: the July 2026 campaign record (not in this tree;
+`STATUS.md`).
 
 The type columns map to the routine-name prefixes (d/s/z/c — the
 full convention with the per-routine deviations from reference BLAS:

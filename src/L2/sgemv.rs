@@ -7,7 +7,8 @@
 //! the rounding sequence per element is identical to the plain
 //! column-saxpy loop (bit-for-bit tested). Tail columns fall back to
 //! Level 1 `saxpy`. The transpose form is one `sdot` reduction stream
-//! per column. Evidence: docs/blas-ab-2026-07.md. The fused-FMA
+//! per column. Evidence: July 2026 campaign
+//! record (not in this tree; STATUS.md). The fused-FMA
 //! variant (measured better in the step-1 race) is DEFERRED at the
 //! f32 campaign close (relaxed-madd rounding is implementation-
 //! dependent — architect decision; DESIGN.md, "Fast mode is a lever").

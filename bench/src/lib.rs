@@ -1,19 +1,17 @@
 //! blas-bench — the BLAS layer's own measurement harness: the roofline
 //! rows, the cross-target determinism probes, and the machine-ceiling
 //! probes, for all four number types (f64/f32/c64/c32). Self-contained:
-//! depends only on blas-wasm (no faer), so it builds in seconds
-//! and the blas/ folder is the complete product — code (../src),
-//! correctness (../tests), measurement (here). Scripts:
-//! `l{1,2,3}-roofline.mjs` in this folder; the results scoreboard is
-//! ../bench/README.md (this folder's README); the expected probe bit
-//! patterns are ../tests/README.md.
+//! depends only on blas-wasm, so it builds in seconds and the
+//! repository is the complete product — code (../src), correctness
+//! (../tests), measurement (here). Scripts: `l{1,2,3}-roofline.mjs` in
+//! this folder; the results scoreboard is this folder's README.md; the
+//! expected probe bit patterns are ../tests/README.md.
 //!
 //! State is plain column-major Vecs with cs = n (no padding). The
 //! determinism probes are self-contained (own LCG, own matrices) and
-//! reproduce the bench-harness probe bit patterns exactly — verified
-//! against the step-7/9/10 runner logs at the move. The faer market
-//! races stay in ../../bench (they need faer): `gemm-tune-ab.mjs`
-//! loads both wasm modules side by side.
+//! reproduce the probe bit patterns recorded in ../tests/README.md
+//! exactly. The faer market races were run in the predecessor
+//! repository and are not reproducible from this tree (STATUS.md).
 
 struct State {
     n: usize,
@@ -68,8 +66,8 @@ fn fill(n: usize, mut s: u64) -> Vec<f64> {
     v
 }
 
-/// Column-major n×n fill from a probe's LCG closure (the order faer's
-/// `Mat::from_fn` filled in — probe bits depend on it).
+/// Column-major n×n fill from a probe's LCG closure, column by column
+/// (the probe bit patterns depend on this fill order).
 fn alloc_mat_f64(n: usize, next: &mut impl FnMut() -> f64) -> Vec<f64> {
     let mut v = vec![0.0f64; n * n];
     for j in 0..n {

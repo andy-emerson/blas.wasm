@@ -1,8 +1,7 @@
 # Tag-triggered release: builds the C-ABI module, names it blas.wasm,
-# and attaches it to a GitHub release for the tag. STAGED at
-# ci/release.yml — paste as .github/workflows/release.yml, then delete
-# the staged copy. Trigger by pushing a tag: git tag v0.1.0 && git push
-# origin v0.1.0
+# and attaches it to a GitHub release for the tag. Trigger by pushing a
+# tag: git tag v0.1.0 && git push origin v0.1.0. Nothing is published
+# to a registry (STATUS.md, decision D2).
 name: release
 on:
   push:

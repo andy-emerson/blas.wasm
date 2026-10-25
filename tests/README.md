@@ -157,13 +157,14 @@ end):
 Regenerate/verify: `cd ../bench && cargo run --release --bin native
 l{1,2,3}-bits[-f32|-z|-c]` for the native side; the roofline scripts
 compare the wasm build against a bits file and abort on any mismatch.
-These values have been continuous through the tuning campaign's
-bit-preserving levers and the 2026-07-19 restructures (verified at
-each move).
+These values are checked on every gate run and on every roofline
+run; they change only when an accumulation order is changed
+deliberately.
 
 Known limits of the probes, recorded honestly: the L2/L3 probe folds
 are dominated by their solve-safe diagonals (~5e4), so they are weak
 detectors of reduction-order changes below one ULP of the total
-(docs step 8) — the per-routine replay tests above are the strong
+(July 2026 campaign record, step 8; not in this tree, see
+`../STATUS.md`) — the per-routine replay tests above are the strong
 order locks; the probes' job is cross-target identity, which they
 gate hard.
