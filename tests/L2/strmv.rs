@@ -11,7 +11,7 @@ fn trmv_bit_for_bit_all_variants() {
 				let a = rng.mat_f32(n, n, cs);
 				let x0 = rng.vec_f32(n);
 				let mut x = x0.clone();
-				strmv(n, &a, cs, upper, unit, &mut x);
+				strmv(uplo(upper), Trans::NoTrans, diag(unit), n, &a, cs, &mut x).unwrap();
 				// same-order scalar replay
 				let mut xr = x0.clone();
 				if upper {

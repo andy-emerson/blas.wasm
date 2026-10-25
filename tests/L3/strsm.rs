@@ -29,7 +29,7 @@ fn trsm_both_sides_residual() {
 
 				// left: A·X = α·B0
 				let mut x = b0.clone();
-				strsm_left(0.9, m, n, &a, acs, upper, unit, &mut x, bcs);
+				strsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, 0.9, &a, acs, &mut x, bcs, &mut vec![0.0f32; strsm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					for i in 0..m {
 						let ax = comp_sum32((0..n).map(|l| tri_at(i, l) * x[j * bcs + l]));
@@ -45,7 +45,7 @@ fn trsm_both_sides_residual() {
 
 				// right: X·A = α·B0
 				let mut x = b0.clone();
-				strsm_right(0.9, m, n, &a, acs, upper, unit, &mut x, bcs);
+				strsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, 0.9, &a, acs, &mut x, bcs, &mut vec![0.0f32; strsm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					for i in 0..m {
 						let xa = comp_sum32((0..n).map(|l| x[l * bcs + i] * tri_at(l, j)));
@@ -79,7 +79,7 @@ fn trsm_bit_replay_both_sides() {
 				}
 				let b0 = rng.mat_f32(m, n, bcs);
 				let mut bt = b0.clone();
-				strsm_left(0.9, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				strsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, 0.9, &a, acs, &mut bt, bcs, &mut vec![0.0f32; strsm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				for j in 0..n {
 					for i in 0..m {
@@ -121,7 +121,7 @@ fn trsm_bit_replay_both_sides() {
 				}
 				let b0 = rng.mat_f32(m, n, bcs);
 				let mut bt = b0.clone();
-				strsm_right(0.9, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				strsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, 0.9, &a, acs, &mut bt, bcs, &mut vec![0.0f32; strsm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				let elim = |br: &mut Vec<f32>, j: usize, k: usize| {
 					let t = -a[j * acs + k];

@@ -7,7 +7,7 @@ fn zgemv_bit_for_bit_and_bounded() {
 	let mut rng = Lcg(121);
 	for &(m, n) in SHAPES {
 		for &pad in PADS {
-			let cs = m + pad;
+			let cs = (m + pad).max(1);
 			let a = rng.mat_c64(m, n, cs);
 			let x = rng.vec_c64(n);
 			let y0 = rng.vec_c64(m);
@@ -17,7 +17,7 @@ fn zgemv_bit_for_bit_and_bounded() {
 				(C64::new(0.3, -0.2), C64::new(-1.1, 0.6)),
 			] {
 				let mut y = y0.clone();
-				zgemv(alpha, m, n, &a, cs, &x, beta, &mut y);
+				zgemv(Trans::NoTrans, m, n, alpha, &a, cs, &x, beta, &mut y).unwrap();
 				// same-order scalar replay of column-zaxpy
 				let mut yr = y0.clone();
 				if beta == C64::ZERO {
@@ -64,9 +64,9 @@ fn zgemv_t_and_c_bounded_and_cross_checked() {
 		let alpha = C64::new(0.7, -0.3);
 		let beta = C64::new(-0.3, 0.1);
 		let mut yt = y0.clone();
-		zgemv_t(alpha, m, n, &a, cs, &x, beta, &mut yt);
+		zgemv(Trans::Trans, m, n, alpha, &a, cs, &x, beta, &mut yt).unwrap();
 		let mut yc = y0.clone();
-		zgemv_c(alpha, m, n, &a, cs, &x, beta, &mut yc);
+		zgemv(Trans::ConjTrans, m, n, alpha, &a, cs, &x, beta, &mut yc).unwrap();
 		for j in 0..n {
 			let bt = beta * y0[j];
 			// transpose form: Σ a[i,j]·x[i]
@@ -89,7 +89,7 @@ fn zgemv_t_and_c_bounded_and_cross_checked() {
 		// must be bit-identical to zgemv_t on conj(A)
 		let ac: Vec<C64> = a.iter().map(|v| v.conj()).collect();
 		let mut yt2 = y0.clone();
-		zgemv_t(alpha, m, n, &ac, cs, &x, beta, &mut yt2);
+		zgemv(Trans::Trans, m, n, alpha, &ac, cs, &x, beta, &mut yt2).unwrap();
 		for j in 0..n {
 			assert!(bits_eq_c(yc[j], yt2[j]), "zgemv_c vs zgemv_t(conj A) {m}x{n} j={j}");
 		}
@@ -97,8 +97,7 @@ fn zgemv_t_and_c_bounded_and_cross_checked() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn zgemv_length_mismatch_panics() {
+fn zgemv_length_mismatch_is_an_error() {
 	let a = [C64::ONE; 4];
-	zgemv(C64::ONE, 2, 2, &a, 2, &[C64::ONE], C64::ZERO, &mut [C64::ZERO; 2]);
+	assert_eq!(zgemv(Trans::NoTrans, 2, 2, C64::ONE, &a, 2, &[C64::ONE], C64::ZERO, &mut [C64::ZERO; 2]), Err(blas_wasm::Error { routine: "zgemv", arg: 7, kind: blas_wasm::ErrorKind::Length }));
 }

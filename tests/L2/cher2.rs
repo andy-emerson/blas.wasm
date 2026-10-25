@@ -13,7 +13,7 @@ fn cher2_bit_for_bit_and_real_diagonal() {
 			let x = rng.vec_c32(n);
 			let y = rng.vec_c32(n);
 			let mut a = a0.clone();
-			cher2(alpha, n, &mut a, cs, upper, &x, &y);
+			cher2(uplo(upper), n, alpha, &x, &y, &mut a, cs).unwrap();
 			for j in 0..n {
 				let t1 = alpha * y[j].conj();
 				let t2 = (alpha * x[j]).conj();

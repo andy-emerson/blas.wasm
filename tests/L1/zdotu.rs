@@ -7,7 +7,7 @@ fn zdotu_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_c64(n);
 		let y = rng.vec_c64(n);
-		let s = zdotu(&x, &y);
+		let s = zdotu(&x, &y).unwrap();
 		// products formed in C64 as the implementation forms them,
 		// accumulated component-wise with compensation
 		let want = comp_sum_c((0..n).map(|i| x[i] * y[i]));
@@ -19,7 +19,7 @@ fn zdotu_bounded() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn zdotu_length_mismatch_panics() {
-	zdotu(&[blas_wasm::C64::ONE], &[]);
+fn zdotu_length_mismatch_is_an_error() {
+	let err = zdotu(&[blas_wasm::C64::ONE], &[]).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "zdotu", arg: 2, kind: blas_wasm::ErrorKind::Length });
 }

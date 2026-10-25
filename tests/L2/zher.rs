@@ -12,7 +12,7 @@ fn zher_bit_for_bit_and_real_diagonal() {
 			let a0 = rng.mat_c64(n, n, cs);
 			let x = rng.vec_c64(n);
 			let mut a = a0.clone();
-			zher(alpha, n, &mut a, cs, upper, &x);
+			zher(uplo(upper), n, alpha, &x, &mut a, cs).unwrap();
 			for j in 0..n {
 				// replay: zaxpy over the strict stored segment with
 				// t = α·conj(x[j]), then the DBLE diagonal update

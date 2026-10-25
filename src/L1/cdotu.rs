@@ -12,10 +12,19 @@
 //! construction.
 
 use crate::c32::C32;
+use crate::Error;
 use crate::lanes::F32x4;
 
+/// `xᵀy (unconjugated)` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn cdotu(x: &[C32], y: &[C32]) -> Result<C32, Error> {
+	crate::error::same_len("cdotu", 2, x.len(), y.len())?;
+	Ok(cdotu_k(x, y))
+}
+
 /// Returns xᵀy (no conjugation). Panics on length mismatch.
-pub fn cdotu(x: &[C32], y: &[C32]) -> C32 {
+pub(crate) fn cdotu_k(x: &[C32], y: &[C32]) -> C32 {
 	assert_eq!(x.len(), y.len(), "cdotu: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

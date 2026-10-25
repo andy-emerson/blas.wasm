@@ -208,3 +208,13 @@ pub fn comp_scale_cc(it: impl Iterator<Item = C32>) -> f64 {
 	}
 	s
 }
+
+pub use blas_wasm::{Diag, Side, Trans, Uplo};
+/// Maps the old `upper: bool` test parameter onto the flag enum.
+pub fn uplo(upper: bool) -> Uplo {
+	if upper { Uplo::Upper } else { Uplo::Lower }
+}
+/// Maps the old `unit: bool` test parameter onto the flag enum.
+pub fn diag(unit: bool) -> Diag {
+	if unit { Diag::Unit } else { Diag::NonUnit }
+}

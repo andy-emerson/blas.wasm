@@ -40,7 +40,7 @@ fn zhemv_bounded_both_triangles() {
 			let alpha = C64::new(0.9, 0.2);
 			let beta = C64::new(0.4, -0.1);
 			let mut y = y0.clone();
-			zhemv(alpha, n, &a, cs, upper, &x, beta, &mut y);
+			zhemv(uplo(upper), n, alpha, &a, cs, &x, beta, &mut y).unwrap();
 			for i in 0..n {
 				let want = alpha * comp_sum_c((0..n).map(|j| full[j * n + i] * x[j]))
 					+ beta * y0[i];

@@ -48,6 +48,8 @@
 extern crate alloc;
 
 pub mod book;
+pub mod error;
+pub mod flags;
 #[doc(hidden)]
 pub mod math;
 mod c32;
@@ -57,6 +59,8 @@ mod lanes;
 
 pub use c32::C32;
 pub use c64::C64;
+pub use error::{Error, ErrorKind};
+pub use flags::{Diag, Side, Trans, Uplo};
 
 // Module names match the folder and table spelling (BLAS "Level 1"
 // convention) — deliberately not snake_case.

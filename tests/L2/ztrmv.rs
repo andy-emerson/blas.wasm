@@ -11,7 +11,7 @@ fn ztrmv_bit_for_bit_all_variants() {
 				let a = rng.mat_c64(n, n, cs);
 				let x0 = rng.vec_c64(n);
 				let mut x = x0.clone();
-				ztrmv(n, &a, cs, upper, unit, &mut x);
+				ztrmv(uplo(upper), Trans::NoTrans, diag(unit), n, &a, cs, &mut x).unwrap();
 				// same-order scalar replay
 				let mut xr = x0.clone();
 				if upper {

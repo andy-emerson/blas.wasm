@@ -7,7 +7,7 @@ fn copy_bit_for_bit() {
 	for &n in SIZES {
 		let x = rng.vec_f64(n);
 		let mut y = vec![0.0; n];
-		dcopy(&x, &mut y);
+		dcopy(&x, &mut y).unwrap();
 		for i in 0..n {
 			assert_eq!(x[i].to_bits(), y[i].to_bits(), "dcopy n={n} i={i}");
 		}

@@ -10,7 +10,7 @@ fn rot_bit_for_bit() {
 		let y0 = rng.vec_f32(n);
 		let mut x = x0.clone();
 		let mut y = y0.clone();
-		srot(&mut x, &mut y, c, s);
+		srot(&mut x, &mut y, c, s).unwrap();
 		for i in 0..n {
 			let wx = x0[i] * c + y0[i] * s;
 			let wy = y0[i] * c - x0[i] * s;

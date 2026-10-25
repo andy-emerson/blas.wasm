@@ -10,9 +10,18 @@
 //! by the lane-emulation construction (see `lanes.rs`).
 
 use crate::lanes::F32x4;
+use crate::Error;
+
+/// `xᵀy` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn sdot(x: &[f32], y: &[f32]) -> Result<f32, Error> {
+	crate::error::same_len("sdot", 2, x.len(), y.len())?;
+	Ok(sdot_k(x, y))
+}
 
 /// Returns xᵀy. Panics on length mismatch.
-pub fn sdot(x: &[f32], y: &[f32]) -> f32 {
+pub(crate) fn sdot_k(x: &[f32], y: &[f32]) -> f32 {
 	assert_eq!(x.len(), y.len(), "sdot: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

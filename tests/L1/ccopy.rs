@@ -8,7 +8,7 @@ fn ccopy_exact() {
 	for &n in SIZES {
 		let x = rng.vec_c32(n);
 		let mut y = vec![C32::new(f32::NAN, f32::NAN); n];
-		ccopy(&x, &mut y);
+		ccopy(&x, &mut y).unwrap();
 		for i in 0..n {
 			assert!(bits_eq_cc(y[i], x[i]), "ccopy n={n} i={i}");
 		}
@@ -16,7 +16,7 @@ fn ccopy_exact() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn ccopy_length_mismatch_panics() {
-	ccopy(&[C32::ONE], &mut []);
+fn ccopy_length_mismatch_is_an_error() {
+	let err = ccopy(&[C32::ONE], &mut []).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "ccopy", arg: 2, kind: blas_wasm::ErrorKind::Length });
 }

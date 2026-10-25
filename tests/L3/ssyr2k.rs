@@ -14,7 +14,7 @@ fn syr2k_bit_for_bit() {
 
 
 			let mut c = c0.clone();
-			ssyr2k(0.5, n, k, &a, acs, &b, bcs, 0.25, &mut c, ccs, upper);
+			ssyr2k(uplo(upper), Trans::NoTrans, n, k, 0.5, &a, acs, &b, bcs, 0.25, &mut c, ccs, &mut vec![0.0f32; ssyr2k_work(n, k)]).unwrap();
 			let mut cr = c0.clone();
 			for j in 0..n {
 				let (lo, hi) = if upper { (0, j + 1) } else { (j, n) };

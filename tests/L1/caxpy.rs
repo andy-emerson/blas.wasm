@@ -15,7 +15,7 @@ fn caxpy_bit_for_bit() {
 			C32::ZERO,
 		] {
 			let mut y = y0.clone();
-			caxpy(alpha, &x, &mut y);
+			caxpy(alpha, &x, &mut y).unwrap();
 			for i in 0..n {
 				let want = y0[i] + alpha * x[i];
 				assert!(bits_eq_cc(y[i], want), "caxpy n={n} i={i} α={alpha:?}");
@@ -25,7 +25,7 @@ fn caxpy_bit_for_bit() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn caxpy_length_mismatch_panics() {
-	caxpy(C32::ONE, &[C32::ONE], &mut []);
+fn caxpy_length_mismatch_is_an_error() {
+	let err = caxpy(C32::ONE, &[C32::ONE], &mut []).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "caxpy", arg: 3, kind: blas_wasm::ErrorKind::Length });
 }

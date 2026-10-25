@@ -10,8 +10,67 @@
 //! large; campaign record step 6, STATUS.md). Transpose forms: planned (STATUS.md, todo S1).
 
 use super::check_mat;
+use crate::{Error, Trans};
 use crate::kernels::daxpy4;
-use crate::L2::dgemv;
+use crate::L2::dgemv_k;
+
+// Packed-panel sizes and the routing threshold, shared by the
+// dispatcher, the packed shape and the workspace query.
+const KC: usize = 256;
+const MC: usize = 128;
+const MR: usize = 4;
+const TILED_MAX_A_BYTES: usize = 3 << 19; // 1.5 MB
+
+/// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
+/// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
+/// `Xᴴ` per `transa`/`transb`. `work` is scratch of at least
+/// [`dgemm_work`]`(m, n, k)` elements; it may be empty when the query says
+/// zero.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` or `transb` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 1 or 2.
+///
+/// Errors: a leading dimension below its row count (arguments 8, 10,
+/// 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
+/// `work` shorter than the query (argument 14).
+#[allow(clippy::too_many_arguments)]
+pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: f64, a: &[f64], lda: usize, b: &[f64], ldb: usize, beta: f64, c: &mut [f64], ldc: usize, work: &mut [f64]) -> Result<(), Error> {
+	const R: &str = "dgemm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 1));
+	}
+	if transb != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if transa == Trans::NoTrans { (m, k) } else { (k, m) };
+	let (br, bc) = if transb == Trans::NoTrans { (k, n) } else { (n, k) };
+	crate::error::mat(R, 7, 8, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
+	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
+	crate::error::work(R, 14, work.len(), dgemm_work(m, n, k))?;
+	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	Ok(())
+}
+
+/// Elements of scratch [`dgemm`] needs for these dimensions: zero below
+/// the size at which the packed-panel shape is routed, the two panel
+/// buffers above it.
+pub fn dgemm_work(m: usize, n: usize, k: usize) -> usize {
+	let n4 = n - n % 4;
+	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+		0
+	} else {
+		KC * n4 + MC * KC
+	}
+}
+
+/// Whether the dispatcher routes `m×k` `A` to the packed-panel shape.
+#[inline]
+pub(crate) fn packed_route(m: usize, k: usize) -> bool {
+	m * k * 8 > TILED_MAX_A_BYTES
+}
 
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
@@ -23,11 +82,11 @@ use crate::L2::dgemv;
 /// (512+, ~1.25× over faer). All three shapes are bit-for-bit
 /// identical, so the dispatch is invisible to results.
 #[allow(clippy::too_many_arguments)]
-pub fn dgemm(
+pub(crate) fn dgemm_k(
 	alpha: f64,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f64],
 	acs: usize,
 	b: &[f64],
@@ -43,11 +102,10 @@ pub fn dgemm(
 	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
 	// reference). Packed also edged tiled +3% at 256³ — recorded, not
 	// routed: the tiled zone below 256³ is unmeasured.
-	const TILED_MAX_A_BYTES: usize = 3 << 19; // 1.5 MB
 	if m * k * 8 <= TILED_MAX_A_BYTES {
-		dgemm_tiled(alpha, m, k, n, a, acs, b, bcs, beta, c, ccs);
+		dgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
-		dgemm_packed(alpha, m, k, n, a, acs, b, bcs, beta, c, ccs);
+		dgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	}
 }
 
@@ -57,8 +115,8 @@ pub fn dgemm(
 pub fn dgemm_colaxpy(
 	alpha: f64,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f64],
 	acs: usize,
 	b: &[f64],
@@ -71,7 +129,7 @@ pub fn dgemm_colaxpy(
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	for j in 0..n {
-		dgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		dgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 
@@ -88,8 +146,8 @@ pub fn dgemm_colaxpy(
 pub fn dgemm_tiled(
 	alpha: f64,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f64],
 	acs: usize,
 	b: &[f64],
@@ -127,7 +185,7 @@ pub fn dgemm_tiled(
 				let seg = &mut c[jj * ccs + i..jj * ccs + m];
 				crate::L2::dscale_y(beta, seg);
 				for l in 0..k {
-					crate::L1::daxpy(
+					crate::L1::daxpy_k(
 						alpha * b[jj * bcs + l],
 						&a[l * acs + i..l * acs + m],
 						seg,
@@ -139,7 +197,7 @@ pub fn dgemm_tiled(
 	}
 	// column tail: plain dgemv columns
 	while j < n {
-		dgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		dgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 		j += 1;
 	}
 }
@@ -156,8 +214,8 @@ pub fn dgemm_tiled(
 pub fn dgemm_col4(
 	alpha: f64,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f64],
 	acs: usize,
 	b: &[f64],
@@ -201,7 +259,7 @@ pub fn dgemm_col4(
 		j += 4;
 	}
 	while j < n {
-		dgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		dgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 		j += 1;
 	}
 }
@@ -228,8 +286,8 @@ pub fn dgemm_col4(
 pub fn dgemm_packed(
 	alpha: f64,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f64],
 	acs: usize,
 	b: &[f64],
@@ -245,9 +303,6 @@ pub fn dgemm_packed(
 	// Bp column-group strip = KC·4·8 = 8 KB (L1-resident). First-guess
 	// parameters — the race measures the shape, a later sweep can tune
 	// the numbers.
-	const KC: usize = 256;
-	const MC: usize = 128;
-	const MR: usize = 4;
 	if k == 0 {
 		// degenerate case the packed loops never reach: C ← βC
 		for j in 0..n {
@@ -315,13 +370,13 @@ pub fn dgemm_packed(
 			let seg = &mut c[j * ccs + m_mr..j * ccs + m];
 			crate::L2::dscale_y(beta, seg);
 			for l in 0..k {
-				crate::L1::daxpy(alpha * b[j * bcs + l], &a[l * acs + m_mr..l * acs + m], seg);
+				crate::L1::daxpy_k(alpha * b[j * bcs + l], &a[l * acs + m_mr..l * acs + m], seg);
 			}
 		}
 	}
 	// column tail: plain dgemv columns over all rows
 	for j in n4..n {
-		dgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		dgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 

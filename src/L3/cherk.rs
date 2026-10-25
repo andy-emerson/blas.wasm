@@ -10,15 +10,52 @@
 //! roundoff is discarded), the layer's Hermitian invariant.
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::c32::C32;
 use crate::kernels::caxpy4;
-use crate::L1::caxpy;
+use crate::L1::caxpy_k;
 use crate::L2::csscale_y;
+
+/// `C ← α·op(A)·op(A)ᴴ + βC` with `op(A)` `n×k` for [`Trans::NoTrans`]
+/// and `k×n` otherwise; `C` is Hermitian of order `n` with the triangle
+/// named by `uplo` stored and updated. `work` is scratch of at least
+/// [`cherk_work`]`(n, k)` elements.
+///
+/// [`Trans::Trans`] is not a valid form for a Hermitian update and
+/// returns [`ErrorKind::Argument`](crate::ErrorKind::Argument) on argument 2;
+/// [`Trans::ConjTrans`] is not built yet (`STATUS.md`, todo S1) and returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported).
+///
+/// Errors: a leading dimension below its row count (arguments 7, 10);
+/// `a` or `c` shorter than its extent (arguments 6, 9); `work` shorter
+/// than the query (argument 11).
+#[allow(clippy::too_many_arguments)]
+pub fn cherk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[C32], lda: usize, beta: f32, c: &mut [C32], ldc: usize, work: &mut [C32]) -> Result<(), Error> {
+	const R: &str = "cherk";
+	if trans == Trans::Trans {
+		return Err(crate::error::argument(R, 2));
+	}
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
+	crate::error::work(R, 11, work.len(), cherk_work(n, k))?;
+	cherk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`cherk`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn cherk_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← αAAᴴ + βC with real α, β. A is n×k; C is n×n with the `upper`
 /// (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn cherk(
+pub(crate) fn cherk_k(
 	alpha: f32,
 	n: usize,
 	k: usize,
@@ -83,7 +120,7 @@ pub fn cherk(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		csscale_y(beta, seg);
 		for l in 0..k {
-			caxpy(
+			caxpy_k(
 				a[l * acs + j].conj().scale(alpha),
 				&a[l * acs + lo..l * acs + hi],
 				&mut c[j * ccs + lo..j * ccs + hi],

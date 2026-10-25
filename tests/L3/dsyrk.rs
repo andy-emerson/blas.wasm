@@ -12,7 +12,7 @@ fn syrk_bit_for_bit() {
 			let c0 = rng.mat_f64(n, n, ccs);
 
 			let mut c = c0.clone();
-			dsyrk(0.5, n, k, &a, acs, 0.25, &mut c, ccs, upper);
+			dsyrk(uplo(upper), Trans::NoTrans, n, k, 0.5, &a, acs, 0.25, &mut c, ccs, &mut vec![0.0f64; dsyrk_work(n, k)]).unwrap();
 			let mut cr = c0.clone();
 			for j in 0..n {
 				let (lo, hi) = if upper { (0, j + 1) } else { (j, n) };

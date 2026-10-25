@@ -10,7 +10,7 @@ fn ger_bit_for_bit() {
 		let x = rng.vec_f64(m);
 		let y = rng.vec_f64(n);
 		let mut a = a0.clone();
-		dger(-1.3, m, n, &mut a, cs, &x, &y);
+		dger(m, n, -1.3, &x, &y, &mut a, cs).unwrap();
 		for j in 0..n {
 			let t = -1.3 * y[j];
 			for i in 0..m {

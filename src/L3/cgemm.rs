@@ -12,18 +12,77 @@
 //! yet (cherk covers A·Aᴴ).
 
 use super::check_mat;
+use crate::{Error, Trans};
 use crate::c32::C32;
 use crate::kernels::caxpy4;
-use crate::L2::cgemv;
+use crate::L2::cgemv_k;
+
+// Packed-panel sizes and the routing threshold, shared by the
+// dispatcher, the packed shape and the workspace query.
+const KC: usize = 256;
+const MC: usize = 128;
+const MR: usize = 4;
+const PACKED_MIN_A_BYTES: usize = 8 << 20; // 8 MB
+
+/// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
+/// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
+/// `Xᴴ` per `transa`/`transb`. `work` is scratch of at least
+/// [`cgemm_work`]`(m, n, k)` elements; it may be empty when the query says
+/// zero.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` or `transb` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 1 or 2.
+///
+/// Errors: a leading dimension below its row count (arguments 8, 10,
+/// 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
+/// `work` shorter than the query (argument 14).
+#[allow(clippy::too_many_arguments)]
+pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: C32, a: &[C32], lda: usize, b: &[C32], ldb: usize, beta: C32, c: &mut [C32], ldc: usize, work: &mut [C32]) -> Result<(), Error> {
+	const R: &str = "cgemm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 1));
+	}
+	if transb != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if transa == Trans::NoTrans { (m, k) } else { (k, m) };
+	let (br, bc) = if transb == Trans::NoTrans { (k, n) } else { (n, k) };
+	crate::error::mat(R, 7, 8, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
+	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
+	crate::error::work(R, 14, work.len(), cgemm_work(m, n, k))?;
+	cgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	Ok(())
+}
+
+/// Elements of scratch [`cgemm`] needs for these dimensions: zero below
+/// the size at which the packed-panel shape is routed, the two panel
+/// buffers above it.
+pub fn cgemm_work(m: usize, n: usize, k: usize) -> usize {
+	let n4 = n - n % 4;
+	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+		0
+	} else {
+		KC * n4 * 4 + MC * KC
+	}
+}
+
+/// Whether the dispatcher routes `m×k` `A` to the packed-panel shape.
+#[inline]
+pub(crate) fn packed_route(m: usize, k: usize) -> bool {
+	m * k * 8 >= PACKED_MIN_A_BYTES
+}
 
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its
 /// own column stride.
 #[allow(clippy::too_many_arguments)]
-pub fn cgemm(
+pub(crate) fn cgemm_k(
 	alpha: C32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[C32],
 	acs: usize,
 	b: &[C32],
@@ -39,9 +98,8 @@ pub fn cgemm(
 	// at 1024³ (+12%, A = 8 MB, unanimous); 256³/512³/deep-K measured
 	// noise. Routed at the measured win only — the (2 MB, 8 MB) gap is
 	// unmeasured and col4 keeps it.
-	const PACKED_MIN_A_BYTES: usize = 8 << 20; // 8 MB
 	if m * k * 8 >= PACKED_MIN_A_BYTES {
-		return cgemm_packed(alpha, m, k, n, a, acs, b, bcs, beta, c, ccs);
+		return cgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	}
 	let mut j = 0usize;
 	while j + 4 <= n {
@@ -75,7 +133,7 @@ pub fn cgemm(
 		j += 4;
 	}
 	while j < n {
-		cgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		cgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 		j += 1;
 	}
 }
@@ -86,8 +144,8 @@ pub fn cgemm(
 pub fn cgemm_colaxpy(
 	alpha: C32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[C32],
 	acs: usize,
 	b: &[C32],
@@ -100,7 +158,7 @@ pub fn cgemm_colaxpy(
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	for j in 0..n {
-		cgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		cgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 
@@ -118,8 +176,8 @@ pub fn cgemm_colaxpy(
 pub fn cgemm_packed(
 	alpha: C32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[C32],
 	acs: usize,
 	b: &[C32],
@@ -133,9 +191,6 @@ pub fn cgemm_packed(
 	check_mat(c.len(), m, n, ccs);
 	// Ap = MC·KC complexes = 256 KB (L2-resident); one Bp column-group
 	// strip = KC·32 f32 = 32 KB (L1-resident).
-	const KC: usize = 256;
-	const MC: usize = 128;
-	const MR: usize = 4;
 	if k == 0 {
 		for j in 0..n {
 			crate::L2::cscale_y(beta, &mut c[j * ccs..j * ccs + m]);
@@ -201,7 +256,7 @@ pub fn cgemm_packed(
 	if m_mr < m {
 		for j in 0..n4 {
 			for l in 0..k {
-				crate::L1::caxpy(
+				crate::L1::caxpy_k(
 					alpha * b[j * bcs + l],
 					&a[l * acs + m_mr..l * acs + m],
 					&mut c[j * ccs + m_mr..j * ccs + m],
@@ -211,7 +266,7 @@ pub fn cgemm_packed(
 	}
 	// column tail: plain cgemv columns (handle their own β)
 	for j in n4..n {
-		cgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		cgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 

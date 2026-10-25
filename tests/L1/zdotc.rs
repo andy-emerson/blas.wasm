@@ -7,7 +7,7 @@ fn zdotc_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_c64(n);
 		let y = rng.vec_c64(n);
-		let s = zdotc(&x, &y);
+		let s = zdotc(&x, &y).unwrap();
 		let want = comp_sum_c((0..n).map(|i| x[i].conj() * y[i]));
 		let scale = comp_scale_c((0..n).map(|i| x[i].conj() * y[i]));
 		let tol = f64::EPSILON * (n.max(1) as f64) * 4.0 * scale + 1e-300;
@@ -26,6 +26,6 @@ fn zdotc_is_zdotu_of_conjugated_x_bitwise() {
 		let x = rng.vec_c64(n);
 		let y = rng.vec_c64(n);
 		let xc: Vec<_> = x.iter().map(|v| v.conj()).collect();
-		assert!(bits_eq_c(zdotc(&x, &y), zdotu(&xc, &y)), "n={n}");
+		assert!(bits_eq_c(zdotc(&x, &y).unwrap(), zdotu(&xc, &y).unwrap()), "n={n}");
 	}
 }

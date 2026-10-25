@@ -7,7 +7,7 @@ fn cdotc_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_c32(n);
 		let y = rng.vec_c32(n);
-		let s = cdotc(&x, &y);
+		let s = cdotc(&x, &y).unwrap();
 		let want = comp_sum_cc((0..n).map(|i| x[i].conj() * y[i]));
 		let scale = comp_scale_cc((0..n).map(|i| x[i].conj() * y[i]));
 		let tol = EPS * (n.max(1) as f64) * 4.0 * scale + 1e-30;
@@ -26,6 +26,6 @@ fn cdotc_is_cdotu_of_conjugated_x_bitwise() {
 		let x = rng.vec_c32(n);
 		let y = rng.vec_c32(n);
 		let xc: Vec<_> = x.iter().map(|v| v.conj()).collect();
-		assert!(bits_eq_cc(cdotc(&x, &y), cdotu(&xc, &y)), "n={n}");
+		assert!(bits_eq_cc(cdotc(&x, &y).unwrap(), cdotu(&xc, &y).unwrap()), "n={n}");
 	}
 }

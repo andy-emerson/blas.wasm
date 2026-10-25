@@ -8,10 +8,21 @@
 //! measurement.
 
 use crate::lanes::F64x2;
+use crate::Error;
+
+/// Applies the plane rotation `(x, y) ← (c·x + s·y, c·y − s·x)` over
+/// two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn drot(x: &mut [f64], y: &mut [f64], c: f64, s: f64) -> Result<(), Error> {
+	crate::error::same_len("drot", 2, x.len(), y.len())?;
+	drot_k(x, y, c, s);
+	Ok(())
+}
 
 /// Apply the rotation with cosine `c` and sine `s` to the vector pair.
 /// Panics on length mismatch.
-pub fn drot(x: &mut [f64], y: &mut [f64], c: f64, s: f64) {
+pub(crate) fn drot_k(x: &mut [f64], y: &mut [f64], c: f64, s: f64) {
 	assert_eq!(x.len(), y.len(), "drot: length mismatch");
 	unsafe { imp(x.as_mut_ptr(), y.as_mut_ptr(), c, s, x.len()) }
 }

@@ -14,12 +14,29 @@
 //! emulation as everywhere else).
 
 use super::{check_mat, sscale_y};
+use crate::{Error, Uplo};
 use crate::kernels::{saxpy_dot, saxpy_dot4};
+
+/// `y ← αAx + βy` for a symmetric `A` of order `n` with the triangle
+/// named by `uplo` stored, at leading dimension `lda`; `x` and `y` have
+/// `n` elements. Longer slices are used up to that length.
+///
+/// Errors: `lda < max(1, n)` (argument 5); `a`, `x` or `y` shorter than
+/// its extent (arguments 4, 6, 8).
+#[allow(clippy::too_many_arguments)]
+pub fn ssymv(uplo: Uplo, n: usize, alpha: f32, a: &[f32], lda: usize, x: &[f32], beta: f32, y: &mut [f32]) -> Result<(), Error> {
+	const R: &str = "ssymv";
+	crate::error::mat(R, 4, 5, a.len(), n, n, lda)?;
+	crate::error::vec(R, 6, x.len(), n)?;
+	crate::error::vec(R, 8, y.len(), n)?;
+	ssymv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
+	Ok(())
+}
 
 /// y ← αAx + βy, A symmetric n×n at column stride `cs`, with the
 /// `upper` (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn ssymv(
+pub(crate) fn ssymv_k(
 	alpha: f32,
 	n: usize,
 	a: &[f32],

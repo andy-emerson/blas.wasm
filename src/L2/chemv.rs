@@ -14,13 +14,30 @@
 //! recorded tuning lever, not yet built for c32.
 
 use super::{check_mat, cscale_y};
+use crate::{Error, Uplo};
 use crate::c32::C32;
 use crate::kernels::caxpy_dotc;
+
+/// `y ← αAx + βy` for a Hermitian `A` of order `n` with the triangle
+/// named by `uplo` stored, at leading dimension `lda`; `x` and `y` have
+/// `n` elements. Longer slices are used up to that length.
+///
+/// Errors: `lda < max(1, n)` (argument 5); `a`, `x` or `y` shorter than
+/// its extent (arguments 4, 6, 8).
+#[allow(clippy::too_many_arguments)]
+pub fn chemv(uplo: Uplo, n: usize, alpha: C32, a: &[C32], lda: usize, x: &[C32], beta: C32, y: &mut [C32]) -> Result<(), Error> {
+	const R: &str = "chemv";
+	crate::error::mat(R, 4, 5, a.len(), n, n, lda)?;
+	crate::error::vec(R, 6, x.len(), n)?;
+	crate::error::vec(R, 8, y.len(), n)?;
+	chemv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
+	Ok(())
+}
 
 /// y ← αAx + βy, A Hermitian n×n at column stride `cs`, with the
 /// `upper` (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn chemv(
+pub(crate) fn chemv_k(
 	alpha: C32,
 	n: usize,
 	a: &[C32],

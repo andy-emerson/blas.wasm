@@ -26,7 +26,7 @@ fn ctrmm_both_sides_bounded() {
 				};
 
 				let mut b = b0.clone();
-				ctrmm_left(alpha, m, n, &a, acs, upper, unit, &mut b, bcs);
+				ctrmm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b, bcs, &mut vec![C32::ZERO; ctrmm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					for i in 0..m {
 						let want =
@@ -44,7 +44,7 @@ fn ctrmm_both_sides_bounded() {
 				}
 
 				let mut b = b0.clone();
-				ctrmm_right(alpha, m, n, &a, acs, upper, unit, &mut b, bcs);
+				ctrmm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b, bcs, &mut vec![C32::ZERO; ctrmm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					for i in 0..m {
 						let want =
@@ -79,7 +79,7 @@ fn ctrmm_bit_replay_both_sides() {
 				let a = rng.mat_c32(m, m, acs);
 				let b0 = rng.mat_c32(m, n, bcs);
 				let mut bt = b0.clone();
-				ctrmm_left(alpha, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				ctrmm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut bt, bcs, &mut vec![C32::ZERO; ctrmm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				for j in 0..n {
 					if upper {
@@ -118,7 +118,7 @@ fn ctrmm_bit_replay_both_sides() {
 				let a = rng.mat_c32(n, n, acs);
 				let b0 = rng.mat_c32(m, n, bcs);
 				let mut bt = b0.clone();
-				ctrmm_right(alpha, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				ctrmm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut bt, bcs, &mut vec![C32::ZERO; ctrmm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				let dcol = |br: &mut Vec<C32>, j: usize, lo: usize, hi: usize| {
 					let d = if unit { C32::ONE } else { a[j * acs + j] };

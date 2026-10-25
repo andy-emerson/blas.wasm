@@ -14,7 +14,7 @@ fn cherk_bit_for_bit_and_real_diagonal() {
 			let c0 = rng.mat_c32(n, n, ccs);
 
 			let mut c = c0.clone();
-			cherk(alpha, n, k, &a, acs, beta, &mut c, ccs, upper);
+			cherk(uplo(upper), Trans::NoTrans, n, k, alpha, &a, acs, beta, &mut c, ccs, &mut vec![C32::ZERO; cherk_work(n, k)]).unwrap();
 			// replay: real-β component scale, l ascending with
 			// t = α·conj(A[j,l]), then the diagonal's imag forced to 0
 			let mut cr = c0.clone();

@@ -22,13 +22,52 @@
 //! planned (STATUS.md, todo S1).
 
 use super::check_mat;
+use crate::{Diag, Error, Side, Trans, Uplo};
 use crate::kernels::saxpy4;
-use crate::L1::{saxpy, sscal};
-use crate::L2::strmv;
+use crate::L1::{saxpy_k, sscal};
+use crate::L2::strmv_k;
+
+/// `B ← α·op(A)·B` ([`Side::Left`]) or `B ← α·B·op(A)` ([`Side::Right`])
+/// for a triangular `A`, the triangle named by `uplo` stored, with a
+/// unit diagonal when `diag` says so; `A` is `m×m` on the left and `n×n`
+/// on the right, `B` is `m×n`, each at its own leading dimension.
+/// `op(A)` is `A`, `Aᵀ` or `Aᴴ` per `transa`. `work` is scratch of at
+/// least [`strmm_work`]`(side, transa, m, n)` elements.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 3.
+///
+/// Errors: a leading dimension below its row count (arguments 9, 11);
+/// `a` or `b` shorter than its extent (arguments 8, 10); `work` shorter
+/// than the query (argument 12).
+#[allow(clippy::too_many_arguments)]
+pub fn strmm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: f32, a: &[f32], lda: usize, b: &mut [f32], ldb: usize, work: &mut [f32]) -> Result<(), Error> {
+	const R: &str = "strmm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 3));
+	}
+	let na = if side == Side::Left { m } else { n };
+	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
+	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
+	crate::error::work(R, 12, work.len(), strmm_work(side, transa, m, n))?;
+	match side {
+		Side::Left => strmm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+		Side::Right => strmm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+	}
+	Ok(())
+}
+
+/// Elements of scratch [`strmm`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn strmm_work(_side: Side, _transa: Trans, _m: usize, _n: usize) -> usize {
+	0
+}
 
 /// B ← αAB. A is m×m triangular, B is m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn strmm_left(
+pub(crate) fn strmm_left_k(
 	alpha: f32,
 	m: usize,
 	n: usize,
@@ -96,7 +135,7 @@ pub fn strmm_left(
 	}
 	while j < n {
 		let col = &mut b[j * bcs..j * bcs + m];
-		strmv(m, a, acs, upper, unit, col);
+		strmv_k(m, a, acs, upper, unit, col);
 		if alpha != 1.0 {
 			sscal(alpha, col);
 		}
@@ -106,7 +145,7 @@ pub fn strmm_left(
 
 /// B ← αBA. A is n×n triangular, B is m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn strmm_right(
+pub(crate) fn strmm_right_k(
 	alpha: f32,
 	m: usize,
 	n: usize,
@@ -136,7 +175,7 @@ pub fn strmm_right(
 		sscal(alpha * diag, col_mut(j));
 		let (lo, hi) = if upper { (0, j) } else { (j + 1, n) };
 		for k in lo..hi {
-			saxpy(alpha * a[j * acs + k], col_ref(k), col_mut(j));
+			saxpy_k(alpha * a[j * acs + k], col_ref(k), col_mut(j));
 		}
 	};
 	let fan_out = |gs: usize, k: usize| {
@@ -169,7 +208,7 @@ pub fn strmm_right(
 				let diag = if unit { 1.0 } else { a[tc * acs + tc] };
 				sscal(alpha * diag, col_mut(tc));
 				for k in gs..tc {
-					saxpy(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
+					saxpy_k(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 			}
 			// out-of-group sources, one shared stream each
@@ -189,7 +228,7 @@ pub fn strmm_right(
 				let diag = if unit { 1.0 } else { a[tc * acs + tc] };
 				sscal(alpha * diag, col_mut(tc));
 				for k in tc + 1..gs + 4 {
-					saxpy(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
+					saxpy_k(alpha * a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 			}
 			for k in gs + 4..n {

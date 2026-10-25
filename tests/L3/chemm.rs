@@ -40,7 +40,7 @@ fn chemm_both_sides_bounded_right_bit_replay() {
 			let beta = C32::new(0.3, 0.5);
 
 			let mut c = c0.clone();
-			chemm_left(alpha, m, n, &a, acs, upper, &b, bcs, beta, &mut c, ccs);
+			chemm(Side::Left, uplo(upper), m, n, alpha, &a, acs, &b, bcs, beta, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = c_up(alpha)
@@ -60,7 +60,7 @@ fn chemm_both_sides_bounded_right_bit_replay() {
 			}
 
 			let mut c = c0.clone();
-			chemm_right(alpha, m, n, &a, acs, upper, &b, bcs, beta, &mut c, ccs);
+			chemm(Side::Right, uplo(upper), m, n, alpha, &a, acs, &b, bcs, beta, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = c_up(alpha)

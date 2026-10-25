@@ -40,7 +40,7 @@ fn chemv_bounded_both_triangles() {
 			let alpha = C32::new(0.9, 0.2);
 			let beta = C32::new(0.4, -0.1);
 			let mut y = y0.clone();
-			chemv(alpha, n, &a, cs, upper, &x, beta, &mut y);
+			chemv(uplo(upper), n, alpha, &a, cs, &x, beta, &mut y).unwrap();
 			for i in 0..n {
 				let want = c_up(alpha) * comp_sum_cc((0..n).map(|j| full[j * n + i] * x[j]))
 					+ c_up(beta * y0[i]);

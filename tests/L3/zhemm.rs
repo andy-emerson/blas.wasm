@@ -40,7 +40,7 @@ fn zhemm_both_sides_bounded_right_bit_replay() {
 			let beta = C64::new(0.3, 0.5);
 
 			let mut c = c0.clone();
-			zhemm_left(alpha, m, n, &a, acs, upper, &b, bcs, beta, &mut c, ccs);
+			zhemm(Side::Left, uplo(upper), m, n, alpha, &a, acs, &b, bcs, beta, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = alpha
@@ -60,7 +60,7 @@ fn zhemm_both_sides_bounded_right_bit_replay() {
 			}
 
 			let mut c = c0.clone();
-			zhemm_right(alpha, m, n, &a, acs, upper, &b, bcs, beta, &mut c, ccs);
+			zhemm(Side::Right, uplo(upper), m, n, alpha, &a, acs, &b, bcs, beta, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = alpha

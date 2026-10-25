@@ -11,7 +11,7 @@ fn csrot_bit_for_bit() {
 		let y0 = rng.vec_c32(n);
 		let mut x = x0.clone();
 		let mut y = y0.clone();
-		csrot(&mut x, &mut y, c, s);
+		csrot(&mut x, &mut y, c, s).unwrap();
 		for i in 0..n {
 			// real rotation acts on re and im independently — the
 			// scalar drot definition per component

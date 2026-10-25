@@ -9,14 +9,48 @@
 //! two-stream sweep.
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::kernels::saxpy4;
-use crate::L1::saxpy;
+use crate::L1::saxpy_k;
 use crate::L2::sscale_y;
+
+/// `C ← α·op(A)·op(B)ᵀ + α·op(B)·op(A)ᵀ + βC` with `op(A)` and
+/// `op(B)` `n×k` for [`Trans::NoTrans`] and `k×n` otherwise; `C` is
+/// symmetric of order `n` with the triangle named by `uplo` stored and
+/// updated. `work` is scratch of at least [`ssyr2k_work`]`(n, k)` elements.
+///
+/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
+/// other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 9,
+/// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11);
+/// `work` shorter than the query (argument 13).
+#[allow(clippy::too_many_arguments)]
+pub fn ssyr2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, b: &[f32], ldb: usize, beta: f32, c: &mut [f32], ldc: usize, work: &mut [f32]) -> Result<(), Error> {
+	const R: &str = "ssyr2k";
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
+	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
+	crate::error::work(R, 13, work.len(), ssyr2k_work(n, k))?;
+	ssyr2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`ssyr2k`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn ssyr2k_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← α(ABᵀ + BAᵀ) + βC. A and B are n×k; C is n×n with the `upper`
 /// (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn ssyr2k(
+pub(crate) fn ssyr2k_k(
 	alpha: f32,
 	n: usize,
 	k: usize,
@@ -103,8 +137,8 @@ pub fn ssyr2k(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		sscale_y(beta, seg);
 		for l in 0..k {
-			saxpy(alpha * b[l * bcs + j], &a[l * acs + lo..l * acs + hi], seg);
-			saxpy(alpha * a[l * acs + j], &b[l * bcs + lo..l * bcs + hi], seg);
+			saxpy_k(alpha * b[l * bcs + j], &a[l * acs + lo..l * acs + hi], seg);
+			saxpy_k(alpha * a[l * acs + j], &b[l * bcs + lo..l * bcs + hi], seg);
 		}
 		j += 1;
 	}

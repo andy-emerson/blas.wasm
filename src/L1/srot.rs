@@ -8,10 +8,21 @@
 //! measurement.
 
 use crate::lanes::F32x4;
+use crate::Error;
+
+/// Applies the plane rotation `(x, y) ← (c·x + s·y, c·y − s·x)` over
+/// two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn srot(x: &mut [f32], y: &mut [f32], c: f32, s: f32) -> Result<(), Error> {
+	crate::error::same_len("srot", 2, x.len(), y.len())?;
+	srot_k(x, y, c, s);
+	Ok(())
+}
 
 /// Apply the rotation with cosine `c` and sine `s` to the vector pair.
 /// Panics on length mismatch.
-pub fn srot(x: &mut [f32], y: &mut [f32], c: f32, s: f32) {
+pub(crate) fn srot_k(x: &mut [f32], y: &mut [f32], c: f32, s: f32) {
 	assert_eq!(x.len(), y.len(), "srot: length mismatch");
 	unsafe { imp(x.as_mut_ptr(), y.as_mut_ptr(), c, s, x.len()) }
 }

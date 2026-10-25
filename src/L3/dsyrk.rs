@@ -10,14 +10,47 @@
 //! all three campaign record step-1 draws.
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::kernels::daxpy4;
-use crate::L1::daxpy;
+use crate::L1::daxpy_k;
 use crate::L2::dscale_y;
+
+/// `C ← α·op(A)·op(A)ᵀ + βC` with `op(A)` `n×k` for [`Trans::NoTrans`]
+/// and `k×n` otherwise; `C` is symmetric of order `n` with the triangle
+/// named by `uplo` stored and updated. `work` is scratch of at least
+/// [`dsyrk_work`]`(n, k)` elements.
+///
+/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
+/// other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 10);
+/// `a` or `c` shorter than its extent (arguments 6, 9); `work` shorter
+/// than the query (argument 11).
+#[allow(clippy::too_many_arguments)]
+pub fn dsyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[f64], lda: usize, beta: f64, c: &mut [f64], ldc: usize, work: &mut [f64]) -> Result<(), Error> {
+	const R: &str = "dsyrk";
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
+	crate::error::work(R, 11, work.len(), dsyrk_work(n, k))?;
+	dsyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`dsyrk`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn dsyrk_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← αAAᵀ + βC. A is n×k; C is n×n with the `upper` (or lower)
 /// triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn dsyrk(
+pub(crate) fn dsyrk_k(
 	alpha: f64,
 	n: usize,
 	k: usize,
@@ -76,7 +109,7 @@ pub fn dsyrk(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		dscale_y(beta, seg);
 		for l in 0..k {
-			daxpy(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
+			daxpy_k(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
 		}
 		j += 1;
 	}

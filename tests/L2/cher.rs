@@ -12,7 +12,7 @@ fn cher_bit_for_bit_and_real_diagonal() {
 			let a0 = rng.mat_c32(n, n, cs);
 			let x = rng.vec_c32(n);
 			let mut a = a0.clone();
-			cher(alpha, n, &mut a, cs, upper, &x);
+			cher(uplo(upper), n, alpha, &x, &mut a, cs).unwrap();
 			for j in 0..n {
 				// replay: caxpy over the strict stored segment with
 				// t = α·conj(x[j]), then the DBLE diagonal update

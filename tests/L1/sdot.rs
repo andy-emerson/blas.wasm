@@ -7,7 +7,7 @@ fn dot_error_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_f32(n);
 		let y = rng.vec_f32(n);
-		let got = sdot(&x, &y) as f64;
+		let got = sdot(&x, &y).unwrap() as f64;
 		// NOTE the products are formed in f32 (as the implementation
 		// forms them) and only summed in f64 — the reference isolates
 		// the summation error, which is what the accumulator layout

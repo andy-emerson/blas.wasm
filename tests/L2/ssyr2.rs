@@ -13,7 +13,7 @@ fn syr2_bit_for_bit() {
 
 
 			let mut a = a0.clone();
-			ssyr2(0.6, n, &mut a, cs, upper, &x, &y);
+			ssyr2(uplo(upper), n, 0.6, &x, &y, &mut a, cs).unwrap();
 			for j in 0..n {
 				let (ty, tx) = (0.6 * y[j], 0.6 * x[j]);
 				for i in 0..n {

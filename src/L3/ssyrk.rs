@@ -10,14 +10,47 @@
 //! all three campaign record step-1 draws.
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::kernels::saxpy4;
-use crate::L1::saxpy;
+use crate::L1::saxpy_k;
 use crate::L2::sscale_y;
+
+/// `C ← α·op(A)·op(A)ᵀ + βC` with `op(A)` `n×k` for [`Trans::NoTrans`]
+/// and `k×n` otherwise; `C` is symmetric of order `n` with the triangle
+/// named by `uplo` stored and updated. `work` is scratch of at least
+/// [`ssyrk_work`]`(n, k)` elements.
+///
+/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
+/// other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 10);
+/// `a` or `c` shorter than its extent (arguments 6, 9); `work` shorter
+/// than the query (argument 11).
+#[allow(clippy::too_many_arguments)]
+pub fn ssyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, beta: f32, c: &mut [f32], ldc: usize, work: &mut [f32]) -> Result<(), Error> {
+	const R: &str = "ssyrk";
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
+	crate::error::work(R, 11, work.len(), ssyrk_work(n, k))?;
+	ssyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`ssyrk`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn ssyrk_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← αAAᵀ + βC. A is n×k; C is n×n with the `upper` (or lower)
 /// triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn ssyrk(
+pub(crate) fn ssyrk_k(
 	alpha: f32,
 	n: usize,
 	k: usize,
@@ -76,7 +109,7 @@ pub fn ssyrk(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		sscale_y(beta, seg);
 		for l in 0..k {
-			saxpy(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
+			saxpy_k(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
 		}
 		j += 1;
 	}

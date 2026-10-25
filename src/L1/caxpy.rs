@@ -7,10 +7,20 @@
 //! bit-identical to the scalar definition on every target.
 
 use crate::c32::C32;
+use crate::Error;
 use crate::lanes::F32x4;
 
+/// `y ← αx + y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 3).
+pub fn caxpy(alpha: C32, x: &[C32], y: &mut [C32]) -> Result<(), Error> {
+	crate::error::same_len("caxpy", 3, x.len(), y.len())?;
+	caxpy_k(alpha, x, y);
+	Ok(())
+}
+
 /// y ← αx + y. Panics on length mismatch.
-pub fn caxpy(alpha: C32, x: &[C32], y: &mut [C32]) {
+pub(crate) fn caxpy_k(alpha: C32, x: &[C32], y: &mut [C32]) {
 	assert_eq!(x.len(), y.len(), "caxpy: length mismatch");
 	unsafe { imp(alpha, x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

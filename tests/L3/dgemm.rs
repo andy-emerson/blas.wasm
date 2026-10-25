@@ -11,7 +11,7 @@ fn gemm_bit_for_bit_and_bounded() {
 		let c0 = rng.mat_f64(m, n, ccs);
 		for (alpha, beta) in [(1.0, 0.0), (-0.7, 0.4)] {
 			let mut c = c0.clone();
-			dgemm(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c, ccs);
+			dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, &a, acs, &b, bcs, beta, &mut c, ccs, &mut vec![0.0f64; dgemm_work(m, n, k)]).unwrap();
 			// same-order scalar replay (dgemv per column = column-daxpy)
 			let mut cr = c0.clone();
 			for j in 0..n {
@@ -67,18 +67,18 @@ fn gemm_tiled_bit_identical_to_gemm() {
 		let c0 = rng.mat_f64(m, n, ccs);
 		for (alpha, beta) in [(1.0, 0.0), (-0.7, 0.4), (0.3, 1.0)] {
 			let mut c1 = c0.clone();
-			dgemm_colaxpy(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c1, ccs);
+			dgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut cd = c0.clone();
-			dgemm(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut cd, ccs);
+			dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, &a, acs, &b, bcs, beta, &mut cd, ccs, &mut vec![0.0f64; dgemm_work(m, n, k)]).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(c1[j * ccs + i].to_bits(), cd[j * ccs + i].to_bits(), "dispatcher vs colaxpy");
 				}
 			}
 			let mut c2 = c0.clone();
-			dgemm_tiled(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			dgemm_tiled(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs);
 			let mut c3 = c0.clone();
-			dgemm_col4(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c3, ccs);
+			dgemm_col4(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c3, ccs);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(
@@ -98,9 +98,8 @@ fn gemm_tiled_bit_identical_to_gemm() {
 }
 
 #[test]
-#[should_panic(expected = "storage too short")]
-fn gemm_short_storage_panics() {
-	dgemm(1.0, 2, 2, 2, &[1.0; 4], 2, &[1.0; 3], 2, 0.0, &mut [0.0; 4], 2);
+fn dgemm_short_storage_is_an_error() {
+	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 2, 1.0, &[1.0; 4], 2, &[1.0; 3], 2, 0.0, &mut [0.0; 4], 2, &mut vec![0.0f64; dgemm_work(2, 2, 2)]), Err(blas_wasm::Error { routine: "dgemm", arg: 9, kind: blas_wasm::ErrorKind::Length }));
 }
 
 #[test]
@@ -126,9 +125,9 @@ fn gemm_packed_bit_identical_to_colaxpy() {
 		let c0 = rng.mat_f64(m, n, ccs);
 		for (alpha, beta) in [(1.0, 0.0), (-0.7, 0.4), (0.3, 1.0)] {
 			let mut c1 = c0.clone();
-			dgemm_colaxpy(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c1, ccs);
+			dgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut c2 = c0.clone();
-			dgemm_packed(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			dgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(
@@ -153,9 +152,9 @@ fn gemm_dispatch_packed_zone_bit_identical() {
 	let b = rng.mat_f64(k, n, bcs);
 	let c0 = rng.mat_f64(m, n, ccs);
 	let mut c1 = c0.clone();
-	dgemm_colaxpy(-0.7, m, k, n, &a, acs, &b, bcs, 0.4, &mut c1, ccs);
+	dgemm_colaxpy(-0.7, m, n, k, &a, acs, &b, bcs, 0.4, &mut c1, ccs);
 	let mut c2 = c0.clone();
-	dgemm(-0.7, m, k, n, &a, acs, &b, bcs, 0.4, &mut c2, ccs);
+	dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, -0.7, &a, acs, &b, bcs, 0.4, &mut c2, ccs, &mut vec![0.0f64; dgemm_work(m, n, k)]).unwrap();
 	for i in 0..c1.len() {
 		assert_eq!(c1[i].to_bits(), c2[i].to_bits(), "dispatch(packed zone) vs colaxpy @{i}");
 	}

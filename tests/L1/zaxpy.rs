@@ -15,7 +15,7 @@ fn zaxpy_bit_for_bit() {
 			C64::ZERO,
 		] {
 			let mut y = y0.clone();
-			zaxpy(alpha, &x, &mut y);
+			zaxpy(alpha, &x, &mut y).unwrap();
 			for i in 0..n {
 				let want = y0[i] + alpha * x[i];
 				assert!(bits_eq_c(y[i], want), "zaxpy n={n} i={i} α={alpha:?}");
@@ -25,7 +25,7 @@ fn zaxpy_bit_for_bit() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn zaxpy_length_mismatch_panics() {
-	zaxpy(C64::ONE, &[C64::ONE], &mut []);
+fn zaxpy_length_mismatch_is_an_error() {
+	let err = zaxpy(C64::ONE, &[C64::ONE], &mut []).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "zaxpy", arg: 3, kind: blas_wasm::ErrorKind::Length });
 }

@@ -9,7 +9,7 @@ fn cswap_exact() {
 		let y0 = rng.vec_c32(n);
 		let mut x = x0.clone();
 		let mut y = y0.clone();
-		cswap(&mut x, &mut y);
+		cswap(&mut x, &mut y).unwrap();
 		for i in 0..n {
 			assert!(bits_eq_cc(x[i], y0[i]), "cswap x n={n} i={i}");
 			assert!(bits_eq_cc(y[i], x0[i]), "cswap y n={n} i={i}");

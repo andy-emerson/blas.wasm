@@ -8,9 +8,19 @@
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.
 
 use crate::lanes::F32x4;
+use crate::Error;
+
+/// `x ↔ y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn sswap(x: &mut [f32], y: &mut [f32]) -> Result<(), Error> {
+	crate::error::same_len("sswap", 2, x.len(), y.len())?;
+	sswap_k(x, y);
+	Ok(())
+}
 
 /// x ↔ y. Panics on length mismatch.
-pub fn sswap(x: &mut [f32], y: &mut [f32]) {
+pub(crate) fn sswap_k(x: &mut [f32], y: &mut [f32]) {
 	assert_eq!(x.len(), y.len(), "sswap: length mismatch");
 	unsafe { imp(x.as_mut_ptr(), y.as_mut_ptr(), x.len()) }
 }

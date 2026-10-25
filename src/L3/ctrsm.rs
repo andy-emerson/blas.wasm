@@ -16,14 +16,53 @@
 //! consumer yet.
 
 use super::check_mat;
+use crate::{Diag, Error, Side, Trans, Uplo};
 use crate::c32::C32;
 use crate::kernels::caxpy4;
-use crate::L1::{caxpy, cscal};
-use crate::L2::ctrsv;
+use crate::L1::{caxpy_k, cscal};
+use crate::L2::ctrsv_k;
+
+/// `B ← α·op(A)⁻¹·B` ([`Side::Left`]) or `B ← α·B·op(A)⁻¹` ([`Side::Right`])
+/// for a triangular `A`, the triangle named by `uplo` stored, with a
+/// unit diagonal when `diag` says so; `A` is `m×m` on the left and `n×n`
+/// on the right, `B` is `m×n`, each at its own leading dimension.
+/// `op(A)` is `A`, `Aᵀ` or `Aᴴ` per `transa`. `work` is scratch of at
+/// least [`ctrsm_work`]`(side, transa, m, n)` elements.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 3.
+///
+/// Errors: a leading dimension below its row count (arguments 9, 11);
+/// `a` or `b` shorter than its extent (arguments 8, 10); `work` shorter
+/// than the query (argument 12).
+#[allow(clippy::too_many_arguments)]
+pub fn ctrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: C32, a: &[C32], lda: usize, b: &mut [C32], ldb: usize, work: &mut [C32]) -> Result<(), Error> {
+	const R: &str = "ctrsm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 3));
+	}
+	let na = if side == Side::Left { m } else { n };
+	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
+	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
+	crate::error::work(R, 12, work.len(), ctrsm_work(side, transa, m, n))?;
+	match side {
+		Side::Left => ctrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+		Side::Right => ctrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+	}
+	Ok(())
+}
+
+/// Elements of scratch [`ctrsm`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn ctrsm_work(_side: Side, _transa: Trans, _m: usize, _n: usize) -> usize {
+	0
+}
 
 /// B ← αA⁻¹B. A is m×m triangular, B is m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn ctrsm_left(
+pub(crate) fn ctrsm_left_k(
 	alpha: C32,
 	m: usize,
 	n: usize,
@@ -100,7 +139,7 @@ pub fn ctrsm_left(
 		if alpha != C32::ONE {
 			cscal(alpha, col);
 		}
-		ctrsv(m, a, acs, upper, unit, col);
+		ctrsv_k(m, a, acs, upper, unit, col);
 		j += 1;
 	}
 }
@@ -108,7 +147,7 @@ pub fn ctrsm_left(
 /// B ← αBA⁻¹. A is n×n triangular, B is m×n. Reference `ctrsm`
 /// multiplies by the diagonal's reciprocal (not a division) — kept.
 #[allow(clippy::too_many_arguments)]
-pub fn ctrsm_right(
+pub(crate) fn ctrsm_right_k(
 	alpha: C32,
 	m: usize,
 	n: usize,
@@ -133,7 +172,7 @@ pub fn ctrsm_right(
 			cscal(alpha, col_mut(j));
 		}
 		for k in lo..hi {
-			caxpy(-a[j * acs + k], col_ref(k), col_mut(j));
+			caxpy_k(-a[j * acs + k], col_ref(k), col_mut(j));
 		}
 		if !unit {
 			cscal(C32::ONE / a[j * acs + j], col_mut(j));
@@ -175,7 +214,7 @@ pub fn ctrsm_right(
 			// in-group elimination, original ascending order
 			for tc in gs..gs + 4 {
 				for k in gs..tc {
-					caxpy(-a[tc * acs + k], col_ref(k), col_mut(tc));
+					caxpy_k(-a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 				if !unit {
 					cscal(C32::ONE / a[tc * acs + tc], col_mut(tc));
@@ -203,7 +242,7 @@ pub fn ctrsm_right(
 			// in-group elimination, original descending order
 			for tc in (gs..gs + 4).rev() {
 				for k in tc + 1..gs + 4 {
-					caxpy(-a[tc * acs + k], col_ref(k), col_mut(tc));
+					caxpy_k(-a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 				if !unit {
 					cscal(C32::ONE / a[tc * acs + tc], col_mut(tc));

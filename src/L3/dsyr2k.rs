@@ -9,14 +9,48 @@
 //! two-stream sweep.
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::kernels::daxpy4;
-use crate::L1::daxpy;
+use crate::L1::daxpy_k;
 use crate::L2::dscale_y;
+
+/// `C ← α·op(A)·op(B)ᵀ + α·op(B)·op(A)ᵀ + βC` with `op(A)` and
+/// `op(B)` `n×k` for [`Trans::NoTrans`] and `k×n` otherwise; `C` is
+/// symmetric of order `n` with the triangle named by `uplo` stored and
+/// updated. `work` is scratch of at least [`dsyr2k_work`]`(n, k)` elements.
+///
+/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
+/// other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 9,
+/// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11);
+/// `work` shorter than the query (argument 13).
+#[allow(clippy::too_many_arguments)]
+pub fn dsyr2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[f64], lda: usize, b: &[f64], ldb: usize, beta: f64, c: &mut [f64], ldc: usize, work: &mut [f64]) -> Result<(), Error> {
+	const R: &str = "dsyr2k";
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
+	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
+	crate::error::work(R, 13, work.len(), dsyr2k_work(n, k))?;
+	dsyr2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`dsyr2k`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn dsyr2k_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← α(ABᵀ + BAᵀ) + βC. A and B are n×k; C is n×n with the `upper`
 /// (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn dsyr2k(
+pub(crate) fn dsyr2k_k(
 	alpha: f64,
 	n: usize,
 	k: usize,
@@ -103,8 +137,8 @@ pub fn dsyr2k(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		dscale_y(beta, seg);
 		for l in 0..k {
-			daxpy(alpha * b[l * bcs + j], &a[l * acs + lo..l * acs + hi], seg);
-			daxpy(alpha * a[l * acs + j], &b[l * bcs + lo..l * bcs + hi], seg);
+			daxpy_k(alpha * b[l * bcs + j], &a[l * acs + lo..l * acs + hi], seg);
+			daxpy_k(alpha * a[l * acs + j], &b[l * bcs + lo..l * bcs + hi], seg);
 		}
 		j += 1;
 	}

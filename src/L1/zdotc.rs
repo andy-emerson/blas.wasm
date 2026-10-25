@@ -11,10 +11,19 @@
 //! bit-identical by construction.
 
 use crate::c64::C64;
+use crate::Error;
 use crate::lanes::F64x2;
 
+/// `xᴴy (x conjugated)` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn zdotc(x: &[C64], y: &[C64]) -> Result<C64, Error> {
+	crate::error::same_len("zdotc", 2, x.len(), y.len())?;
+	Ok(zdotc_k(x, y))
+}
+
 /// Returns xᴴy (x conjugated). Panics on length mismatch.
-pub fn zdotc(x: &[C64], y: &[C64]) -> C64 {
+pub(crate) fn zdotc_k(x: &[C64], y: &[C64]) -> C64 {
 	assert_eq!(x.len(), y.len(), "zdotc: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

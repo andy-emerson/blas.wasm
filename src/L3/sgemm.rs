@@ -11,8 +11,67 @@
 //! planned (STATUS.md, todo S1).
 
 use super::check_mat;
+use crate::{Error, Trans};
 use crate::kernels::saxpy4;
-use crate::L2::sgemv;
+use crate::L2::sgemv_k;
+
+// Packed-panel sizes and the routing threshold, shared by the
+// dispatcher, the packed shape and the workspace query.
+const KC: usize = 256;
+const MC: usize = 128;
+const MR: usize = 8;
+const TILED_MAX_A_BYTES: usize = 3 << 20; // 3 MB
+
+/// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
+/// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
+/// `Xᴴ` per `transa`/`transb`. `work` is scratch of at least
+/// [`sgemm_work`]`(m, n, k)` elements; it may be empty when the query says
+/// zero.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` or `transb` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 1 or 2.
+///
+/// Errors: a leading dimension below its row count (arguments 8, 10,
+/// 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
+/// `work` shorter than the query (argument 14).
+#[allow(clippy::too_many_arguments)]
+pub fn sgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, b: &[f32], ldb: usize, beta: f32, c: &mut [f32], ldc: usize, work: &mut [f32]) -> Result<(), Error> {
+	const R: &str = "sgemm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 1));
+	}
+	if transb != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if transa == Trans::NoTrans { (m, k) } else { (k, m) };
+	let (br, bc) = if transb == Trans::NoTrans { (k, n) } else { (n, k) };
+	crate::error::mat(R, 7, 8, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
+	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
+	crate::error::work(R, 14, work.len(), sgemm_work(m, n, k))?;
+	sgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	Ok(())
+}
+
+/// Elements of scratch [`sgemm`] needs for these dimensions: zero below
+/// the size at which the packed-panel shape is routed, the two panel
+/// buffers above it.
+pub fn sgemm_work(m: usize, n: usize, k: usize) -> usize {
+	let n4 = n - n % 4;
+	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+		0
+	} else {
+		KC * n4 + MC * KC
+	}
+}
+
+/// Whether the dispatcher routes `m×k` `A` to the packed-panel shape.
+#[inline]
+pub(crate) fn packed_route(m: usize, k: usize) -> bool {
+	m * k * 4 > TILED_MAX_A_BYTES
+}
 
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
@@ -22,11 +81,11 @@ use crate::L2::sgemv;
 /// stream wins above; two draws, campaign record step 10). All three shapes are
 /// bit-for-bit identical, so the dispatch is invisible to results.
 #[allow(clippy::too_many_arguments)]
-pub fn sgemm(
+pub(crate) fn sgemm_k(
 	alpha: f32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f32],
 	acs: usize,
 	b: &[f32],
@@ -43,11 +102,10 @@ pub fn sgemm(
 	// (packed-gemm race, two runner draws: +3–4% at 1024³,
 	// +5% at 512x4096x1024, unanimous; 512³/256³ stay tiled, where
 	// packed measured noise/−2%). col4 stays as the raced reference.
-	const TILED_MAX_A_BYTES: usize = 3 << 20; // 3 MB
 	if m * k * 4 <= TILED_MAX_A_BYTES {
-		sgemm_tiled(alpha, m, k, n, a, acs, b, bcs, beta, c, ccs);
+		sgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
-		sgemm_packed(alpha, m, k, n, a, acs, b, bcs, beta, c, ccs);
+		sgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	}
 }
 
@@ -57,8 +115,8 @@ pub fn sgemm(
 pub fn sgemm_colaxpy(
 	alpha: f32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f32],
 	acs: usize,
 	b: &[f32],
@@ -71,7 +129,7 @@ pub fn sgemm_colaxpy(
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	for j in 0..n {
-		sgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 
@@ -88,8 +146,8 @@ pub fn sgemm_colaxpy(
 pub fn sgemm_tiled(
 	alpha: f32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f32],
 	acs: usize,
 	b: &[f32],
@@ -127,7 +185,7 @@ pub fn sgemm_tiled(
 				let seg = &mut c[jj * ccs + i..jj * ccs + m];
 				crate::L2::sscale_y(beta, seg);
 				for l in 0..k {
-					crate::L1::saxpy(
+					crate::L1::saxpy_k(
 						alpha * b[jj * bcs + l],
 						&a[l * acs + i..l * acs + m],
 						seg,
@@ -139,7 +197,7 @@ pub fn sgemm_tiled(
 	}
 	// column tail: plain sgemv columns
 	while j < n {
-		sgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 		j += 1;
 	}
 }
@@ -156,8 +214,8 @@ pub fn sgemm_tiled(
 pub fn sgemm_col4(
 	alpha: f32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f32],
 	acs: usize,
 	b: &[f32],
@@ -201,7 +259,7 @@ pub fn sgemm_col4(
 		j += 4;
 	}
 	while j < n {
-		sgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 		j += 1;
 	}
 }
@@ -217,8 +275,8 @@ pub fn sgemm_col4(
 pub fn sgemm_packed(
 	alpha: f32,
 	m: usize,
-	k: usize,
 	n: usize,
+	k: usize,
 	a: &[f32],
 	acs: usize,
 	b: &[f32],
@@ -231,9 +289,6 @@ pub fn sgemm_packed(
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	// Ap = MC·KC·4 = 128 KB (L2-resident), one Bp strip = KC·4·4 = 4 KB
-	const KC: usize = 256;
-	const MC: usize = 128;
-	const MR: usize = 8;
 	if k == 0 {
 		for j in 0..n {
 			crate::L2::sscale_y(beta, &mut c[j * ccs..j * ccs + m]);
@@ -295,12 +350,12 @@ pub fn sgemm_packed(
 			let seg = &mut c[j * ccs + m_mr..j * ccs + m];
 			crate::L2::sscale_y(beta, seg);
 			for l in 0..k {
-				crate::L1::saxpy(alpha * b[j * bcs + l], &a[l * acs + m_mr..l * acs + m], seg);
+				crate::L1::saxpy_k(alpha * b[j * bcs + l], &a[l * acs + m_mr..l * acs + m], seg);
 			}
 		}
 	}
 	for j in n4..n {
-		sgemv(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 

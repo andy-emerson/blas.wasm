@@ -10,10 +10,19 @@
 //! construction.
 
 use crate::c32::C32;
+use crate::Error;
 use crate::lanes::F32x4;
 
+/// `xᴴy (x conjugated)` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn cdotc(x: &[C32], y: &[C32]) -> Result<C32, Error> {
+	crate::error::same_len("cdotc", 2, x.len(), y.len())?;
+	Ok(cdotc_k(x, y))
+}
+
 /// Returns xᴴy (x conjugated). Panics on length mismatch.
-pub fn cdotc(x: &[C32], y: &[C32]) -> C32 {
+pub(crate) fn cdotc_k(x: &[C32], y: &[C32]) -> C32 {
 	assert_eq!(x.len(), y.len(), "cdotc: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

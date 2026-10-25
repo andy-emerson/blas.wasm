@@ -31,7 +31,7 @@ fn symv_bounded_both_triangles() {
 			let x = rng.vec_f32(n);
 			let y0 = rng.vec_f32(n);
 			let mut y = y0.clone();
-			ssymv(0.9, n, &a, cs, upper, &x, 0.4, &mut y);
+			ssymv(uplo(upper), n, 0.9, &a, cs, &x, 0.4, &mut y).unwrap();
 			for i in 0..n {
 				let want =
 					0.9 * comp_sum32((0..n).map(|j| full[j * n + i] * x[j])) + (0.4 * y0[i]) as f64;

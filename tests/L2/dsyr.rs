@@ -11,7 +11,7 @@ fn syr_bit_for_bit() {
 			let x = rng.vec_f64(n);
 
 			let mut a = a0.clone();
-			dsyr(0.6, n, &mut a, cs, upper, &x);
+			dsyr(uplo(upper), n, 0.6, &x, &mut a, cs).unwrap();
 			for j in 0..n {
 				let t = 0.6 * x[j];
 				for i in 0..n {

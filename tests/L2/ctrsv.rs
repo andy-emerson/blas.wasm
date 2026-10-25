@@ -17,7 +17,7 @@ fn ctrsv_bit_for_bit_and_residual() {
 				}
 				let b = rng.vec_c32(n);
 				let mut x = b.clone();
-				ctrsv(n, &a, cs, upper, unit, &mut x);
+				ctrsv(uplo(upper), Trans::NoTrans, diag(unit), n, &a, cs, &mut x).unwrap();
 
 				// same-order scalar replay: bit-for-bit
 				let mut xr = b.clone();

@@ -7,7 +7,7 @@ fn dot_error_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_f64(n);
 		let y = rng.vec_f64(n);
-		let got = ddot(&x, &y);
+		let got = ddot(&x, &y).unwrap();
 		let reference = comp_sum((0..n).map(|i| x[i] * y[i]));
 		let scale = comp_sum((0..n).map(|i| (x[i] * y[i]).abs()));
 		let tol = f64::EPSILON * (n.max(1) as f64) * scale + f64::MIN_POSITIVE;

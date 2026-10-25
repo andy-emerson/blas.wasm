@@ -12,15 +12,53 @@
 //! the layer's Hermitian invariant).
 
 use super::check_mat;
+use crate::{Error, Trans, Uplo};
 use crate::c64::C64;
 use crate::kernels::zaxpy4;
-use crate::L1::zaxpy;
+use crate::L1::zaxpy_k;
 use crate::L2::zdscale_y;
+
+/// `C ← α·op(A)·op(B)ᴴ + conj(α)·op(B)·op(A)ᴴ + βC` with `op(A)` and
+/// `op(B)` `n×k` for [`Trans::NoTrans`] and `k×n` otherwise; `C` is
+/// Hermitian of order `n` with the triangle named by `uplo` stored and
+/// updated. `work` is scratch of at least [`zher2k_work`]`(n, k)` elements.
+///
+/// [`Trans::Trans`] is not a valid form for a Hermitian update and
+/// returns [`ErrorKind::Argument`](crate::ErrorKind::Argument) on argument 2;
+/// [`Trans::ConjTrans`] is not built yet (`STATUS.md`, todo S1) and returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported).
+///
+/// Errors: a leading dimension below its row count (arguments 7, 9,
+/// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11);
+/// `work` shorter than the query (argument 13).
+#[allow(clippy::too_many_arguments)]
+pub fn zher2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C64, a: &[C64], lda: usize, b: &[C64], ldb: usize, beta: f64, c: &mut [C64], ldc: usize, work: &mut [C64]) -> Result<(), Error> {
+	const R: &str = "zher2k";
+	if trans == Trans::Trans {
+		return Err(crate::error::argument(R, 2));
+	}
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
+	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
+	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
+	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
+	crate::error::work(R, 13, work.len(), zher2k_work(n, k))?;
+	zher2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
+	Ok(())
+}
+
+/// Elements of scratch [`zher2k`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn zher2k_work(_n: usize, _k: usize) -> usize {
+	0
+}
 
 /// C ← αABᴴ + conj(α)BAᴴ + βC with real β. A and B are n×k; C is n×n
 /// with the `upper` (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn zher2k(
+pub(crate) fn zher2k_k(
 	alpha: C64,
 	n: usize,
 	k: usize,
@@ -113,12 +151,12 @@ pub fn zher2k(
 		let seg = &mut c[j * ccs + lo..j * ccs + hi];
 		zdscale_y(beta, seg);
 		for l in 0..k {
-			zaxpy(
+			zaxpy_k(
 				alpha * b[l * bcs + j].conj(),
 				&a[l * acs + lo..l * acs + hi],
 				&mut c[j * ccs + lo..j * ccs + hi],
 			);
-			zaxpy(
+			zaxpy_k(
 				(alpha * a[l * acs + j]).conj(),
 				&b[l * bcs + lo..l * bcs + hi],
 				&mut c[j * ccs + lo..j * ccs + hi],

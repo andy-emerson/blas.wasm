@@ -20,14 +20,53 @@
 //! planned (STATUS.md, todo S1).
 
 use super::check_mat;
+use crate::{Diag, Error, Side, Trans, Uplo};
 use crate::kernels::daxpy4;
-use crate::L1::{daxpy, dscal};
-use crate::L2::dtrsv;
+use crate::L1::{daxpy_k, dscal};
+use crate::L2::dtrsv_k;
+
+/// `B ← α·op(A)⁻¹·B` ([`Side::Left`]) or `B ← α·B·op(A)⁻¹` ([`Side::Right`])
+/// for a triangular `A`, the triangle named by `uplo` stored, with a
+/// unit diagonal when `diag` says so; `A` is `m×m` on the left and `n×n`
+/// on the right, `B` is `m×n`, each at its own leading dimension.
+/// `op(A)` is `A`, `Aᵀ` or `Aᴴ` per `transa`. `work` is scratch of at
+/// least [`dtrsm_work`]`(side, transa, m, n)` elements.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S1):
+/// `transa` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 3.
+///
+/// Errors: a leading dimension below its row count (arguments 9, 11);
+/// `a` or `b` shorter than its extent (arguments 8, 10); `work` shorter
+/// than the query (argument 12).
+#[allow(clippy::too_many_arguments)]
+pub fn dtrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize, b: &mut [f64], ldb: usize, work: &mut [f64]) -> Result<(), Error> {
+	const R: &str = "dtrsm";
+	if transa != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 3));
+	}
+	let na = if side == Side::Left { m } else { n };
+	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
+	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
+	crate::error::work(R, 12, work.len(), dtrsm_work(side, transa, m, n))?;
+	match side {
+		Side::Left => dtrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+		Side::Right => dtrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
+	}
+	Ok(())
+}
+
+/// Elements of scratch [`dtrsm`] needs for these dimensions. Zero: no form
+/// built so far uses scratch.
+pub fn dtrsm_work(_side: Side, _transa: Trans, _m: usize, _n: usize) -> usize {
+	0
+}
 
 /// B ← αA⁻¹B. A is m×m triangular, B is m×n. No singularity check —
 /// a zero diagonal yields inf/NaN, as in reference BLAS.
 #[allow(clippy::too_many_arguments)]
-pub fn dtrsm_left(
+pub(crate) fn dtrsm_left_k(
 	alpha: f64,
 	m: usize,
 	n: usize,
@@ -104,7 +143,7 @@ pub fn dtrsm_left(
 		if alpha != 1.0 {
 			dscal(alpha, col);
 		}
-		dtrsv(m, a, acs, upper, unit, col);
+		dtrsv_k(m, a, acs, upper, unit, col);
 		j += 1;
 	}
 }
@@ -112,7 +151,7 @@ pub fn dtrsm_left(
 /// B ← αBA⁻¹. A is n×n triangular, B is m×n. Reference `dtrsm`
 /// multiplies by the diagonal's reciprocal (not a division) — kept.
 #[allow(clippy::too_many_arguments)]
-pub fn dtrsm_right(
+pub(crate) fn dtrsm_right_k(
 	alpha: f64,
 	m: usize,
 	n: usize,
@@ -140,7 +179,7 @@ pub fn dtrsm_right(
 			dscal(alpha, col_mut(j));
 		}
 		for k in lo..hi {
-			daxpy(-a[j * acs + k], col_ref(k), col_mut(j));
+			daxpy_k(-a[j * acs + k], col_ref(k), col_mut(j));
 		}
 		if !unit {
 			dscal(1.0 / a[j * acs + j], col_mut(j));
@@ -182,7 +221,7 @@ pub fn dtrsm_right(
 			// in-group elimination, original ascending order
 			for tc in gs..gs + 4 {
 				for k in gs..tc {
-					daxpy(-a[tc * acs + k], col_ref(k), col_mut(tc));
+					daxpy_k(-a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 				if !unit {
 					dscal(1.0 / a[tc * acs + tc], col_mut(tc));
@@ -210,7 +249,7 @@ pub fn dtrsm_right(
 			// in-group elimination, original descending order
 			for tc in (gs..gs + 4).rev() {
 				for k in tc + 1..gs + 4 {
-					daxpy(-a[tc * acs + k], col_ref(k), col_mut(tc));
+					daxpy_k(-a[tc * acs + k], col_ref(k), col_mut(tc));
 				}
 				if !unit {
 					dscal(1.0 / a[tc * acs + tc], col_mut(tc));

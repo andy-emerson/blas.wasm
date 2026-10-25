@@ -10,9 +10,18 @@
 //! by the lane-emulation construction (see `lanes.rs`).
 
 use crate::lanes::F64x2;
+use crate::Error;
+
+/// `xᵀy` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn ddot(x: &[f64], y: &[f64]) -> Result<f64, Error> {
+	crate::error::same_len("ddot", 2, x.len(), y.len())?;
+	Ok(ddot_k(x, y))
+}
 
 /// Returns xᵀy. Panics on length mismatch.
-pub fn ddot(x: &[f64], y: &[f64]) -> f64 {
+pub(crate) fn ddot_k(x: &[f64], y: &[f64]) -> f64 {
 	assert_eq!(x.len(), y.len(), "ddot: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

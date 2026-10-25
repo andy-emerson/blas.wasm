@@ -6,13 +6,13 @@ fn gemv_bit_for_bit_and_bounded() {
 	let mut rng = Lcg(21);
 	for &(m, n) in SHAPES {
 		for &pad in PADS {
-			let cs = m + pad;
+			let cs = (m + pad).max(1);
 			let a = rng.mat_f64(m, n, cs);
 			let x = rng.vec_f64(n);
 			let y0 = rng.vec_f64(m);
 			for (alpha, beta) in [(1.0, 0.0), (-0.5, 1.0), (0.3, -2.0), (0.0, 0.5)] {
 				let mut y = y0.clone();
-				dgemv(alpha, m, n, &a, cs, &x, beta, &mut y);
+				dgemv(Trans::NoTrans, m, n, alpha, &a, cs, &x, beta, &mut y).unwrap();
 				// same-order scalar reference: exact replay of column-daxpy
 				let mut yr = y0.clone();
 				if beta == 0.0 {
@@ -54,7 +54,7 @@ fn gemv_t_bounded() {
 		let x = rng.vec_f64(m);
 		let y0 = rng.vec_f64(n);
 		let mut y = y0.clone();
-		dgemv_t(0.7, m, n, &a, cs, &x, -0.3, &mut y);
+		dgemv(Trans::Trans, m, n, 0.7, &a, cs, &x, -0.3, &mut y).unwrap();
 		for j in 0..n {
 			let want = 0.7 * comp_sum((0..m).map(|i| a[j * cs + i] * x[i])) - 0.3 * y0[j];
 			let scale = comp_sum((0..m).map(|i| (a[j * cs + i] * x[i]).abs())) + y0[j].abs();
@@ -65,13 +65,11 @@ fn gemv_t_bounded() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn gemv_length_mismatch_panics() {
-	dgemv(1.0, 2, 2, &[1.0, 2.0, 3.0, 4.0], 2, &[1.0], 0.0, &mut [0.0, 0.0]);
+fn dgemv_length_mismatch_is_an_error() {
+	assert_eq!(dgemv(Trans::NoTrans, 2, 2, 1.0, &[1.0, 2.0, 3.0, 4.0], 2, &[1.0], 0.0, &mut [0.0, 0.0]), Err(blas_wasm::Error { routine: "dgemv", arg: 7, kind: blas_wasm::ErrorKind::Length }));
 }
 
 #[test]
-#[should_panic(expected = "storage too short")]
-fn gemv_short_storage_panics() {
-	dgemv(1.0, 2, 2, &[1.0, 2.0, 3.0], 2, &[1.0, 1.0], 0.0, &mut [0.0, 0.0]);
+fn dgemv_short_storage_is_an_error() {
+	assert_eq!(dgemv(Trans::NoTrans, 2, 2, 1.0, &[1.0, 2.0, 3.0], 2, &[1.0, 1.0], 0.0, &mut [0.0, 0.0]), Err(blas_wasm::Error { routine: "dgemv", arg: 5, kind: blas_wasm::ErrorKind::Length }));
 }

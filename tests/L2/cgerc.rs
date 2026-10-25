@@ -12,7 +12,7 @@ fn cgerc_bit_for_bit_and_geru_cross_check() {
 		let x = rng.vec_c32(m);
 		let y = rng.vec_c32(n);
 		let mut a = a0.clone();
-		cgerc(alpha, m, n, &mut a, cs, &x, &y);
+		cgerc(m, n, alpha, &x, &y, &mut a, cs).unwrap();
 		for j in 0..n {
 			let t = alpha * y[j].conj();
 			for i in 0..m {
@@ -23,7 +23,7 @@ fn cgerc_bit_for_bit_and_geru_cross_check() {
 		// cgerc(y) must be bit-identical to cgeru(conj(y))
 		let yc: Vec<C32> = y.iter().map(|v| v.conj()).collect();
 		let mut a2 = a0.clone();
-		cgeru(alpha, m, n, &mut a2, cs, &x, &yc);
+		cgeru(m, n, alpha, &x, &yc, &mut a2, cs).unwrap();
 		for (p, q) in a.iter().zip(&a2) {
 			if !p.re.is_nan() {
 				assert!(bits_eq_cc(*p, *q), "cgerc vs cgeru(conj y) {m}x{n}");

@@ -8,9 +8,19 @@
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.
 
 use crate::lanes::F64x2;
+use crate::Error;
+
+/// `y ← x` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn dcopy(x: &[f64], y: &mut [f64]) -> Result<(), Error> {
+	crate::error::same_len("dcopy", 2, x.len(), y.len())?;
+	dcopy_k(x, y);
+	Ok(())
+}
 
 /// y ← x. Panics on length mismatch.
-pub fn dcopy(x: &[f64], y: &mut [f64]) {
+pub(crate) fn dcopy_k(x: &[f64], y: &mut [f64]) {
 	assert_eq!(x.len(), y.len(), "dcopy: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

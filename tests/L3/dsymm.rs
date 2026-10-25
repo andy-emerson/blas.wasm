@@ -30,7 +30,7 @@ fn symm_both_sides_bounded() {
 			let c0 = rng.mat_f64(m, n, ccs);
 
 			let mut c = c0.clone();
-			dsymm_left(0.8, m, n, &a, acs, upper, &b, bcs, 0.3, &mut c, ccs);
+			dsymm(Side::Left, uplo(upper), m, n, 0.8, &a, acs, &b, bcs, 0.3, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = 0.8 * comp_sum((0..n).map(|l| full[l * n + i] * b[j * bcs + l]))
@@ -43,7 +43,7 @@ fn symm_both_sides_bounded() {
 			}
 
 			let mut c = c0.clone();
-			dsymm_right(0.8, m, n, &a, acs, upper, &b, bcs, 0.3, &mut c, ccs);
+			dsymm(Side::Right, uplo(upper), m, n, 0.8, &a, acs, &b, bcs, 0.3, &mut c, ccs).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					let want = 0.8 * comp_sum((0..n).map(|l| b[l * bcs + i] * full[j * n + l]))

@@ -43,6 +43,8 @@ struct State {
 
 use blas_wasm::C64;
 
+use blas_wasm::{Diag, Side, Trans, Uplo};
+
 struct StateCell(core::cell::UnsafeCell<Option<State>>);
 unsafe impl Sync for StateCell {}
 static STATE: StateCell = StateCell(core::cell::UnsafeCell::new(None));
@@ -230,13 +232,13 @@ pub extern "C" fn run_l1_layer(op: usize) -> f64 {
     match op {
         0 => {
             for j in 0..n {
-                l1::dcopy(col(ap, acs, j), col(bp, bcs, j));
+                l1::dcopy(col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *bp };
         }
         1 => {
             for j in 0..n {
-                l1::dswap(col(ap, acs, j), col(bp, bcs, j));
+                l1::dswap(col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *ap };
         }
@@ -248,19 +250,19 @@ pub extern "C" fn run_l1_layer(op: usize) -> f64 {
         }
         3 => {
             for j in 0..n {
-                l1::daxpy(0.001, col(ap, acs, j), col(bp, bcs, j));
+                l1::daxpy(0.001, col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *bp };
         }
         4 => {
             for j in 0..n {
-                l1::drot(col(ap, acs, j), col(bp, bcs, j), 0.8, 0.6);
+                l1::drot(col(ap, acs, j), col(bp, bcs, j), 0.8, 0.6).unwrap();
             }
             sink += unsafe { *ap };
         }
         5 => {
             for j in 0..n {
-                sink += l1::ddot(col(ap, acs, j), col(bp, bcs, j));
+                sink += l1::ddot(col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
         }
         6 => {
@@ -308,20 +310,20 @@ pub extern "C" fn run_l2_layer(op: usize) -> f64 {
     let tri = unsafe { core::slice::from_raw_parts(s.tri.as_ptr(), t_len) };
     let y = unsafe { core::slice::from_raw_parts_mut(s.rhs.as_mut_ptr(), n) };
     match op {
-        0 => l2::dgemv(0.001, n, n, a, acs, bx, 0.5, y),
-        1 => l2::dgemv_t(0.001, n, n, a, acs, bx, 0.5, y),
-        2 => l2::dger(0.0001, n, n, sym, scs, bx, bx),
-        3 => l2::dsymv(0.001, n, sym, scs, true, bx, 0.5, y),
+        0 => l2::dgemv(Trans::NoTrans, n, n, 0.001, a, acs, bx, 0.5, y).unwrap(),
+        1 => l2::dgemv(Trans::Trans, n, n, 0.001, a, acs, bx, 0.5, y).unwrap(),
+        2 => l2::dger(n, n, 0.0001, bx, bx, sym, scs).unwrap(),
+        3 => l2::dsymv(Uplo::Upper, n, 0.001, sym, scs, bx, 0.5, y).unwrap(),
         4 => {
-            l1::dcopy(bx, y);
-            l2::dtrmv(n, tri, tcs, false, false, y);
+            l1::dcopy(bx, y).unwrap();
+            l2::dtrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, tcs, y).unwrap();
         }
         5 => {
-            l1::dcopy(bx, y);
-            l2::dtrsv(n, tri, tcs, false, false, y);
+            l1::dcopy(bx, y).unwrap();
+            l2::dtrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, tcs, y).unwrap();
         }
-        6 => l2::dsyr(0.0001, n, sym, scs, true, bx),
-        7 => l2::dsyr2(0.0001, n, sym, scs, true, bx, bx),
+        6 => l2::dsyr(Uplo::Upper, n, 0.0001, bx, sym, scs).unwrap(),
+        7 => l2::dsyr2(Uplo::Upper, n, 0.0001, bx, bx, sym, scs).unwrap(),
         _ => return f64::NAN,
     }
     y[0] + sym[0] + y[n - 1]
@@ -353,20 +355,20 @@ pub extern "C" fn run_l2_probe(op: usize) -> f64 {
     let mut y: [f64; N] = core::array::from_fn(|_| next());
     let am = &mut a[..a_len];
     match op {
-        0 => l2::dgemv(0.7, N, N, am, cs, &x, 0.3, &mut y),
-        1 => l2::dgemv_t(0.7, N, N, am, cs, &x, 0.3, &mut y),
-        2 => l2::dger(0.7, N, N, am, cs, &x, &x),
-        3 => l2::dsymv(0.7, N, am, cs, true, &x, 0.3, &mut y),
+        0 => l2::dgemv(Trans::NoTrans, N, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
+        1 => l2::dgemv(Trans::Trans, N, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
+        2 => l2::dger(N, N, 0.7, &x, &x, am, cs).unwrap(),
+        3 => l2::dsymv(Uplo::Upper, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
         4 => {
             y.copy_from_slice(&x);
-            l2::dtrmv(N, am, cs, false, false, &mut y);
+            l2::dtrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
         5 => {
             y.copy_from_slice(&x);
-            l2::dtrsv(N, am, cs, false, false, &mut y);
+            l2::dtrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
-        6 => l2::dsyr(0.7, N, am, cs, true, &x),
-        7 => l2::dsyr2(0.7, N, am, cs, true, &x, &x),
+        6 => l2::dsyr(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
+        7 => l2::dsyr2(Uplo::Upper, N, 0.7, &x, &x, am, cs).unwrap(),
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -399,29 +401,29 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
     let sym = unsafe { core::slice::from_raw_parts_mut(s.sym.as_mut_ptr(), len(scs)) };
     let refresh = |dst: &mut [f64]| {
         for j in 0..n {
-            l1::dcopy(&b[j * bcs..j * bcs + n], &mut dst[j * scs..j * scs + n]);
+            l1::dcopy(&b[j * bcs..j * bcs + n], &mut dst[j * scs..j * scs + n]).unwrap();
         }
     };
     match op {
-        0 => l3::dgemm(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs),
-        1 => l3::dsymm_left(0.001, n, n, tri, tcs, true, b, bcs, 0.5, sym, scs),
-        2 => l3::dsyrk(0.001, n, n, a, acs, 0.5, sym, scs, true),
-        3 => l3::dsyr2k(0.001, n, n, a, acs, b, bcs, 0.5, sym, scs, true),
+        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dgemm_work(n, n, n)]).unwrap(),
+        1 => l3::dsymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
+        2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyrk_work(n, n)]).unwrap(),
+        3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyr2k_work(n, n)]).unwrap(),
         4 => {
             refresh(sym);
-            l3::dtrmm_left(1.0, n, n, tri, tcs, false, false, sym, scs);
+            l3::dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::dtrsm_left(1.0, n, n, tri, tcs, false, false, sym, scs);
+            l3::dtrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::dtrmm_right(1.0, n, n, tri, tcs, true, false, sym, scs);
+            l3::dtrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::dtrsm_right(1.0, n, n, tri, tcs, true, false, sym, scs);
+            l3::dtrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -457,15 +459,15 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
     let bv = &b[..len(bcs)];
     let cv = &mut c[..len(ccs)];
     match op {
-        0 => l3::dgemm(0.7, N, K, N, av, acs, bv, bcs, 0.3, cv, ccs),
-        1 => l3::dsymm_left(0.7, N, N, av, acs, true, bv, bcs, 0.3, cv, ccs),
-        2 => l3::dsyrk(0.7, N, K, av, acs, 0.3, cv, ccs, true),
-        3 => l3::dsyr2k(0.7, N, K, av, acs, bv, bcs, 0.3, cv, ccs, true),
-        4 => l3::dtrmm_left(0.7, N, N, av, acs, false, false, cv, ccs),
-        5 => l3::dtrsm_left(0.7, N, N, av, acs, false, false, cv, ccs),
-        6 => l3::dtrmm_right(0.7, N, N, av, acs, true, false, cv, ccs),
-        7 => l3::dtrsm_right(0.7, N, N, av, acs, true, false, cv, ccs),
-        8 => l3::dsymm_right(0.7, N, N, av, acs, true, bv, bcs, 0.3, cv, ccs),
+        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dgemm_work(N, N, K)]).unwrap(),
+        1 => l3::dsymm(Side::Left, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
+        2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dsyrk_work(N, K)]).unwrap(),
+        3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dsyr2k_work(N, K)]).unwrap(),
+        4 => l3::dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrmm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        5 => l3::dtrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrsm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        6 => l3::dtrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        7 => l3::dtrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        8 => l3::dsymm(Side::Right, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0;
@@ -500,7 +502,7 @@ pub extern "C" fn run_l1_probe(op: usize) -> f64 {
         *v = next();
     }
     match op {
-        0 => l1::ddot(&x, &y),
+        0 => l1::ddot(&x, &y).unwrap(),
         1 => l1::dasum(&x),
         2 => l1::dnrm2(&x),
         3 => l1::idamax(&x) as f64,
@@ -637,13 +639,13 @@ pub extern "C" fn run_l1_layer_f32(op: usize) -> f64 {
     match op {
         0 => {
             for j in 0..n {
-                l1::scopy(col(ap, acs, j), col(bp, bcs, j));
+                l1::scopy(col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *bp } as f64;
         }
         1 => {
             for j in 0..n {
-                l1::sswap(col(ap, acs, j), col(bp, bcs, j));
+                l1::sswap(col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *ap } as f64;
         }
@@ -655,19 +657,19 @@ pub extern "C" fn run_l1_layer_f32(op: usize) -> f64 {
         }
         3 => {
             for j in 0..n {
-                l1::saxpy(0.001, col(ap, acs, j), col(bp, bcs, j));
+                l1::saxpy(0.001, col(ap, acs, j), col(bp, bcs, j)).unwrap();
             }
             sink += unsafe { *bp } as f64;
         }
         4 => {
             for j in 0..n {
-                l1::srot(col(ap, acs, j), col(bp, bcs, j), 0.8, 0.6);
+                l1::srot(col(ap, acs, j), col(bp, bcs, j), 0.8, 0.6).unwrap();
             }
             sink += unsafe { *ap } as f64;
         }
         5 => {
             for j in 0..n {
-                sink += l1::sdot(col(ap, acs, j), col(bp, bcs, j)) as f64;
+                sink += l1::sdot(col(ap, acs, j), col(bp, bcs, j)).unwrap() as f64;
             }
         }
         6 => {
@@ -708,20 +710,20 @@ pub extern "C" fn run_l2_layer_f32(op: usize) -> f64 {
     let tri = unsafe { core::slice::from_raw_parts(s.tri32.as_ptr(), t_len) };
     let y = unsafe { core::slice::from_raw_parts_mut(s.rhs32.as_mut_ptr(), n) };
     match op {
-        0 => l2::sgemv(0.001, n, n, a, acs, bx, 0.5, y),
-        1 => l2::sgemv_t(0.001, n, n, a, acs, bx, 0.5, y),
-        2 => l2::sger(0.0001, n, n, sym, scs, bx, bx),
-        3 => l2::ssymv(0.001, n, sym, scs, true, bx, 0.5, y),
+        0 => l2::sgemv(Trans::NoTrans, n, n, 0.001, a, acs, bx, 0.5, y).unwrap(),
+        1 => l2::sgemv(Trans::Trans, n, n, 0.001, a, acs, bx, 0.5, y).unwrap(),
+        2 => l2::sger(n, n, 0.0001, bx, bx, sym, scs).unwrap(),
+        3 => l2::ssymv(Uplo::Upper, n, 0.001, sym, scs, bx, 0.5, y).unwrap(),
         4 => {
-            l1::scopy(bx, y);
-            l2::strmv(n, tri, tcs, false, false, y);
+            l1::scopy(bx, y).unwrap();
+            l2::strmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, tcs, y).unwrap();
         }
         5 => {
-            l1::scopy(bx, y);
-            l2::strsv(n, tri, tcs, false, false, y);
+            l1::scopy(bx, y).unwrap();
+            l2::strsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, tcs, y).unwrap();
         }
-        6 => l2::ssyr(0.0001, n, sym, scs, true, bx),
-        7 => l2::ssyr2(0.0001, n, sym, scs, true, bx, bx),
+        6 => l2::ssyr(Uplo::Upper, n, 0.0001, bx, sym, scs).unwrap(),
+        7 => l2::ssyr2(Uplo::Upper, n, 0.0001, bx, bx, sym, scs).unwrap(),
         _ => return f64::NAN,
     }
     (y[0] + sym[0] + y[n - 1]) as f64
@@ -744,29 +746,29 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
     let sym = unsafe { core::slice::from_raw_parts_mut(s.sym32.as_mut_ptr(), len(scs)) };
     let refresh = |dst: &mut [f32]| {
         for j in 0..n {
-            l1::scopy(&b[j * bcs..j * bcs + n], &mut dst[j * scs..j * scs + n]);
+            l1::scopy(&b[j * bcs..j * bcs + n], &mut dst[j * scs..j * scs + n]).unwrap();
         }
     };
     match op {
-        0 => l3::sgemm(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs),
-        1 => l3::ssymm_left(0.001, n, n, tri, tcs, true, b, bcs, 0.5, sym, scs),
-        2 => l3::ssyrk(0.001, n, n, a, acs, 0.5, sym, scs, true),
-        3 => l3::ssyr2k(0.001, n, n, a, acs, b, bcs, 0.5, sym, scs, true),
+        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::sgemm_work(n, n, n)]).unwrap(),
+        1 => l3::ssymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
+        2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyrk_work(n, n)]).unwrap(),
+        3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyr2k_work(n, n)]).unwrap(),
         4 => {
             refresh(sym);
-            l3::strmm_left(1.0, n, n, tri, tcs, false, false, sym, scs);
+            l3::strmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::strsm_left(1.0, n, n, tri, tcs, false, false, sym, scs);
+            l3::strsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::strmm_right(1.0, n, n, tri, tcs, true, false, sym, scs);
+            l3::strmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::strsm_right(1.0, n, n, tri, tcs, true, false, sym, scs);
+            l3::strsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -795,7 +797,7 @@ pub extern "C" fn run_l1_probe_f32(op: usize) -> f64 {
         *v = next();
     }
     match op {
-        0 => l1::sdot(&x, &y) as f64,
+        0 => l1::sdot(&x, &y).unwrap() as f64,
         1 => l1::sasum(&x) as f64,
         2 => l1::snrm2(&x) as f64,
         3 => l1::isamax(&x) as f64,
@@ -826,20 +828,20 @@ pub extern "C" fn run_l2_probe_f32(op: usize) -> f64 {
     let mut y: [f32; N] = core::array::from_fn(|_| next());
     let am = &mut a[..a_len];
     match op {
-        0 => l2::sgemv(0.7, N, N, am, cs, &x, 0.3, &mut y),
-        1 => l2::sgemv_t(0.7, N, N, am, cs, &x, 0.3, &mut y),
-        2 => l2::sger(0.7, N, N, am, cs, &x, &x),
-        3 => l2::ssymv(0.7, N, am, cs, true, &x, 0.3, &mut y),
+        0 => l2::sgemv(Trans::NoTrans, N, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
+        1 => l2::sgemv(Trans::Trans, N, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
+        2 => l2::sger(N, N, 0.7, &x, &x, am, cs).unwrap(),
+        3 => l2::ssymv(Uplo::Upper, N, 0.7, am, cs, &x, 0.3, &mut y).unwrap(),
         4 => {
             y.copy_from_slice(&x);
-            l2::strmv(N, am, cs, false, false, &mut y);
+            l2::strmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
         5 => {
             y.copy_from_slice(&x);
-            l2::strsv(N, am, cs, false, false, &mut y);
+            l2::strsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
-        6 => l2::ssyr(0.7, N, am, cs, true, &x),
-        7 => l2::ssyr2(0.7, N, am, cs, true, &x, &x),
+        6 => l2::ssyr(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
+        7 => l2::ssyr2(Uplo::Upper, N, 0.7, &x, &x, am, cs).unwrap(),
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -872,15 +874,15 @@ pub extern "C" fn run_l3_probe_f32(op: usize) -> f64 {
     let bv = &b[..len(bcs)];
     let cv = &mut c[..len(ccs)];
     match op {
-        0 => l3::sgemm(0.7, N, K, N, av, acs, bv, bcs, 0.3, cv, ccs),
-        1 => l3::ssymm_left(0.7, N, N, av, acs, true, bv, bcs, 0.3, cv, ccs),
-        2 => l3::ssyrk(0.7, N, K, av, acs, 0.3, cv, ccs, true),
-        3 => l3::ssyr2k(0.7, N, K, av, acs, bv, bcs, 0.3, cv, ccs, true),
-        4 => l3::strmm_left(0.7, N, N, av, acs, false, false, cv, ccs),
-        5 => l3::strsm_left(0.7, N, N, av, acs, false, false, cv, ccs),
-        6 => l3::strmm_right(0.7, N, N, av, acs, true, false, cv, ccs),
-        7 => l3::strsm_right(0.7, N, N, av, acs, true, false, cv, ccs),
-        8 => l3::ssymm_right(0.7, N, N, av, acs, true, bv, bcs, 0.3, cv, ccs),
+        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::sgemm_work(N, N, K)]).unwrap(),
+        1 => l3::ssymm(Side::Left, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
+        2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f32; l3::ssyrk_work(N, K)]).unwrap(),
+        3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::ssyr2k_work(N, K)]).unwrap(),
+        4 => l3::strmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strmm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        5 => l3::strsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strsm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        6 => l3::strmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        7 => l3::strsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        8 => l3::ssymm(Side::Right, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0f32;
@@ -955,13 +957,13 @@ pub extern "C" fn run_l1_layer_z(op: usize) -> f64 {
     match op {
         0 => {
             for j in 0..n {
-                l1::zcopy(col(ap, j), col(bp, j));
+                l1::zcopy(col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*bp).re };
         }
         1 => {
             for j in 0..n {
-                l1::zswap(col(ap, j), col(bp, j));
+                l1::zswap(col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*ap).re };
         }
@@ -979,25 +981,25 @@ pub extern "C" fn run_l1_layer_z(op: usize) -> f64 {
         }
         4 => {
             for j in 0..n {
-                l1::zaxpy(C64::new(0.001, 0.0), col(ap, j), col(bp, j));
+                l1::zaxpy(C64::new(0.001, 0.0), col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*bp).re };
         }
         5 => {
             for j in 0..n {
-                l1::zdrot(col(ap, j), col(bp, j), 0.8, 0.6);
+                l1::zdrot(col(ap, j), col(bp, j), 0.8, 0.6).unwrap();
             }
             sink += unsafe { (*ap).re };
         }
         6 => {
             for j in 0..n {
-                let d = l1::zdotu(col(ap, j), col(bp, j));
+                let d = l1::zdotu(col(ap, j), col(bp, j)).unwrap();
                 sink += d.re + d.im;
             }
         }
         7 => {
             for j in 0..n {
-                let d = l1::zdotc(col(ap, j), col(bp, j));
+                let d = l1::zdotc(col(ap, j), col(bp, j)).unwrap();
                 sink += d.re + d.im;
             }
         }
@@ -1042,22 +1044,22 @@ pub extern "C" fn run_l2_layer_z(op: usize) -> f64 {
     let al4 = C64::new(0.0001, 0.0);
     let be = C64::new(0.5, 0.0);
     match op {
-        0 => l2::zgemv(al, n, n, a, cs, bx, be, y),
-        1 => l2::zgemv_t(al, n, n, a, cs, bx, be, y),
-        2 => l2::zgemv_c(al, n, n, a, cs, bx, be, y),
-        3 => l2::zgeru(al4, n, n, sym, cs, bx, bx),
-        4 => l2::zgerc(al4, n, n, sym, cs, bx, bx),
-        5 => l2::zhemv(al, n, sym, cs, true, bx, be, y),
+        0 => l2::zgemv(Trans::NoTrans, n, n, al, a, cs, bx, be, y).unwrap(),
+        1 => l2::zgemv(Trans::Trans, n, n, al, a, cs, bx, be, y).unwrap(),
+        2 => l2::zgemv(Trans::ConjTrans, n, n, al, a, cs, bx, be, y).unwrap(),
+        3 => l2::zgeru(n, n, al4, bx, bx, sym, cs).unwrap(),
+        4 => l2::zgerc(n, n, al4, bx, bx, sym, cs).unwrap(),
+        5 => l2::zhemv(Uplo::Upper, n, al, sym, cs, bx, be, y).unwrap(),
         6 => {
-            l1::zcopy(bx, y);
-            l2::ztrmv(n, tri, cs, false, false, y);
+            l1::zcopy(bx, y).unwrap();
+            l2::ztrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, cs, y).unwrap();
         }
         7 => {
-            l1::zcopy(bx, y);
-            l2::ztrsv(n, tri, cs, false, false, y);
+            l1::zcopy(bx, y).unwrap();
+            l2::ztrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, cs, y).unwrap();
         }
-        8 => l2::zher(0.0001, n, sym, cs, true, bx),
-        9 => l2::zher2(al4, n, sym, cs, true, bx, bx),
+        8 => l2::zher(Uplo::Upper, n, 0.0001, bx, sym, cs).unwrap(),
+        9 => l2::zher2(Uplo::Upper, n, al4, bx, bx, sym, cs).unwrap(),
         _ => return f64::NAN,
     }
     y[0].re + y[0].im + sym[0].re + y[n - 1].re
@@ -1079,32 +1081,32 @@ pub extern "C" fn run_l3_layer_z(op: usize) -> f64 {
     let sym = unsafe { core::slice::from_raw_parts_mut(s.symz.as_mut_ptr(), len) };
     let refresh = |dst: &mut [C64]| {
         for j in 0..n {
-            l1::zcopy(&b[j * cs..j * cs + n], &mut dst[j * cs..j * cs + n]);
+            l1::zcopy(&b[j * cs..j * cs + n], &mut dst[j * cs..j * cs + n]).unwrap();
         }
     };
     let al = C64::new(0.001, 0.0);
     let be = C64::new(0.5, 0.0);
     let one = C64::ONE;
     match op {
-        0 => l3::zgemm(al, n, n, n, a, cs, b, cs, be, sym, cs),
-        1 => l3::zhemm_left(al, n, n, tri, cs, true, b, cs, be, sym, cs),
-        2 => l3::zherk(0.001, n, n, a, cs, 0.5, sym, cs, true),
-        3 => l3::zher2k(al, n, n, a, cs, b, cs, 0.5, sym, cs, true),
+        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C64::ZERO; l3::zgemm_work(n, n, n)]).unwrap(),
+        1 => l3::zhemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
+        2 => l3::zherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zherk_work(n, n)]).unwrap(),
+        3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zher2k_work(n, n)]).unwrap(),
         4 => {
             refresh(sym);
-            l3::ztrmm_left(one, n, n, tri, cs, false, false, sym, cs);
+            l3::ztrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::ztrsm_left(one, n, n, tri, cs, false, false, sym, cs);
+            l3::ztrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::ztrmm_right(one, n, n, tri, cs, true, false, sym, cs);
+            l3::ztrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::ztrsm_right(one, n, n, tri, cs, true, false, sym, cs);
+            l3::ztrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -1138,11 +1140,11 @@ pub extern "C" fn run_l1_probe_z(op: usize) -> f64 {
     let y = mk();
     match op {
         0 => {
-            let d = l1::zdotu(&x, &y);
+            let d = l1::zdotu(&x, &y).unwrap();
             d.re + d.im
         }
         1 => {
-            let d = l1::zdotc(&x, &y);
+            let d = l1::zdotc(&x, &y).unwrap();
             d.re + d.im
         }
         2 => l1::dznrm2(&x),
@@ -1192,22 +1194,22 @@ pub extern "C" fn run_l2_probe_z(op: usize) -> f64 {
     let al = C64::new(0.7, -0.2);
     let be = C64::new(0.3, 0.1);
     match op {
-        0 => l2::zgemv(al, N, N, am, cs, &x, be, &mut y),
-        1 => l2::zgemv_t(al, N, N, am, cs, &x, be, &mut y),
-        2 => l2::zgemv_c(al, N, N, am, cs, &x, be, &mut y),
-        3 => l2::zgeru(al, N, N, am, cs, &x, &x),
-        4 => l2::zgerc(al, N, N, am, cs, &x, &x),
-        5 => l2::zhemv(al, N, am, cs, true, &x, be, &mut y),
+        0 => l2::zgemv(Trans::NoTrans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        1 => l2::zgemv(Trans::Trans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        2 => l2::zgemv(Trans::ConjTrans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        3 => l2::zgeru(N, N, al, &x, &x, am, cs).unwrap(),
+        4 => l2::zgerc(N, N, al, &x, &x, am, cs).unwrap(),
+        5 => l2::zhemv(Uplo::Upper, N, al, am, cs, &x, be, &mut y).unwrap(),
         6 => {
-            l1::zcopy(&x, &mut y);
-            l2::ztrmv(N, am, cs, false, false, &mut y);
+            l1::zcopy(&x, &mut y).unwrap();
+            l2::ztrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
         7 => {
-            l1::zcopy(&x, &mut y);
-            l2::ztrsv(N, am, cs, false, false, &mut y);
+            l1::zcopy(&x, &mut y).unwrap();
+            l2::ztrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
-        8 => l2::zher(0.7, N, am, cs, true, &x),
-        9 => l2::zher2(al, N, am, cs, true, &x, &x),
+        8 => l2::zher(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
+        9 => l2::zher2(Uplo::Upper, N, al, &x, &x, am, cs).unwrap(),
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -1244,15 +1246,15 @@ pub extern "C" fn run_l3_probe_z(op: usize) -> f64 {
     let al = C64::new(0.7, -0.2);
     let be = C64::new(0.3, 0.1);
     match op {
-        0 => l3::zgemm(al, N, K, N, av, cs, bv, cs, be, cv, cs),
-        1 => l3::zhemm_left(al, N, N, av, cs, true, bv, cs, be, cv, cs),
-        2 => l3::zherk(0.7, N, K, av, cs, 0.3, cv, cs, true),
-        3 => l3::zher2k(al, N, K, av, cs, bv, cs, 0.3, cv, cs, true),
-        4 => l3::ztrmm_left(al, N, N, av, cs, false, false, cv, cs),
-        5 => l3::ztrsm_left(al, N, N, av, cs, false, false, cv, cs),
-        6 => l3::ztrmm_right(al, N, N, av, cs, true, false, cv, cs),
-        7 => l3::ztrsm_right(al, N, N, av, cs, true, false, cv, cs),
-        8 => l3::zhemm_right(al, N, N, av, cs, true, bv, cs, be, cv, cs),
+        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C64::ZERO; l3::zgemm_work(N, N, K)]).unwrap(),
+        1 => l3::zhemm(Side::Left, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
+        2 => l3::zherk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C64::ZERO; l3::zherk_work(N, K)]).unwrap(),
+        3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, N, K, al, av, cs, bv, cs, 0.3, cv, cs, &mut vec![C64::ZERO; l3::zher2k_work(N, K)]).unwrap(),
+        4 => l3::ztrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        5 => l3::ztrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        6 => l3::ztrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        7 => l3::ztrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        8 => l3::zhemm(Side::Right, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0;
@@ -1283,13 +1285,13 @@ pub extern "C" fn run_l1_layer_c(op: usize) -> f64 {
     match op {
         0 => {
             for j in 0..n {
-                l1::ccopy(col(ap, j), col(bp, j));
+                l1::ccopy(col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*bp).re } as f64;
         }
         1 => {
             for j in 0..n {
-                l1::cswap(col(ap, j), col(bp, j));
+                l1::cswap(col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*ap).re } as f64;
         }
@@ -1307,25 +1309,25 @@ pub extern "C" fn run_l1_layer_c(op: usize) -> f64 {
         }
         4 => {
             for j in 0..n {
-                l1::caxpy(C32::new(0.001, 0.0), col(ap, j), col(bp, j));
+                l1::caxpy(C32::new(0.001, 0.0), col(ap, j), col(bp, j)).unwrap();
             }
             sink += unsafe { (*bp).re } as f64;
         }
         5 => {
             for j in 0..n {
-                l1::csrot(col(ap, j), col(bp, j), 0.8, 0.6);
+                l1::csrot(col(ap, j), col(bp, j), 0.8, 0.6).unwrap();
             }
             sink += unsafe { (*ap).re } as f64;
         }
         6 => {
             for j in 0..n {
-                let d = l1::cdotu(col(ap, j), col(bp, j));
+                let d = l1::cdotu(col(ap, j), col(bp, j)).unwrap();
                 sink += (d.re + d.im) as f64;
             }
         }
         7 => {
             for j in 0..n {
-                let d = l1::cdotc(col(ap, j), col(bp, j));
+                let d = l1::cdotc(col(ap, j), col(bp, j)).unwrap();
                 sink += (d.re + d.im) as f64;
             }
         }
@@ -1367,22 +1369,22 @@ pub extern "C" fn run_l2_layer_c(op: usize) -> f64 {
     let al4 = C32::new(0.0001, 0.0);
     let be = C32::new(0.5, 0.0);
     match op {
-        0 => l2::cgemv(al, n, n, a, cs, bx, be, y),
-        1 => l2::cgemv_t(al, n, n, a, cs, bx, be, y),
-        2 => l2::cgemv_c(al, n, n, a, cs, bx, be, y),
-        3 => l2::cgeru(al4, n, n, sym, cs, bx, bx),
-        4 => l2::cgerc(al4, n, n, sym, cs, bx, bx),
-        5 => l2::chemv(al, n, sym, cs, true, bx, be, y),
+        0 => l2::cgemv(Trans::NoTrans, n, n, al, a, cs, bx, be, y).unwrap(),
+        1 => l2::cgemv(Trans::Trans, n, n, al, a, cs, bx, be, y).unwrap(),
+        2 => l2::cgemv(Trans::ConjTrans, n, n, al, a, cs, bx, be, y).unwrap(),
+        3 => l2::cgeru(n, n, al4, bx, bx, sym, cs).unwrap(),
+        4 => l2::cgerc(n, n, al4, bx, bx, sym, cs).unwrap(),
+        5 => l2::chemv(Uplo::Upper, n, al, sym, cs, bx, be, y).unwrap(),
         6 => {
-            l1::ccopy(bx, y);
-            l2::ctrmv(n, tri, cs, false, false, y);
+            l1::ccopy(bx, y).unwrap();
+            l2::ctrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, cs, y).unwrap();
         }
         7 => {
-            l1::ccopy(bx, y);
-            l2::ctrsv(n, tri, cs, false, false, y);
+            l1::ccopy(bx, y).unwrap();
+            l2::ctrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, tri, cs, y).unwrap();
         }
-        8 => l2::cher(0.0001, n, sym, cs, true, bx),
-        9 => l2::cher2(al4, n, sym, cs, true, bx, bx),
+        8 => l2::cher(Uplo::Upper, n, 0.0001, bx, sym, cs).unwrap(),
+        9 => l2::cher2(Uplo::Upper, n, al4, bx, bx, sym, cs).unwrap(),
         _ => return f64::NAN,
     }
     (y[0].re + y[0].im + sym[0].re + y[n - 1].re) as f64
@@ -1403,32 +1405,32 @@ pub extern "C" fn run_l3_layer_c(op: usize) -> f64 {
     let sym = unsafe { core::slice::from_raw_parts_mut(s.symc.as_mut_ptr(), len) };
     let refresh = |dst: &mut [C32]| {
         for j in 0..n {
-            l1::ccopy(&b[j * cs..j * cs + n], &mut dst[j * cs..j * cs + n]);
+            l1::ccopy(&b[j * cs..j * cs + n], &mut dst[j * cs..j * cs + n]).unwrap();
         }
     };
     let al = C32::new(0.001, 0.0);
     let be = C32::new(0.5, 0.0);
     let one = C32::ONE;
     match op {
-        0 => l3::cgemm(al, n, n, n, a, cs, b, cs, be, sym, cs),
-        1 => l3::chemm_left(al, n, n, tri, cs, true, b, cs, be, sym, cs),
-        2 => l3::cherk(0.001, n, n, a, cs, 0.5, sym, cs, true),
-        3 => l3::cher2k(al, n, n, a, cs, b, cs, 0.5, sym, cs, true),
+        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C32::ZERO; l3::cgemm_work(n, n, n)]).unwrap(),
+        1 => l3::chemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
+        2 => l3::cherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cherk_work(n, n)]).unwrap(),
+        3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cher2k_work(n, n)]).unwrap(),
         4 => {
             refresh(sym);
-            l3::ctrmm_left(one, n, n, tri, cs, false, false, sym, cs);
+            l3::ctrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::ctrsm_left(one, n, n, tri, cs, false, false, sym, cs);
+            l3::ctrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::ctrmm_right(one, n, n, tri, cs, true, false, sym, cs);
+            l3::ctrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::ctrsm_right(one, n, n, tri, cs, true, false, sym, cs);
+            l3::ctrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -1460,11 +1462,11 @@ pub extern "C" fn run_l1_probe_c(op: usize) -> f64 {
     let y = mk();
     match op {
         0 => {
-            let d = l1::cdotu(&x, &y);
+            let d = l1::cdotu(&x, &y).unwrap();
             (d.re + d.im) as f64
         }
         1 => {
-            let d = l1::cdotc(&x, &y);
+            let d = l1::cdotc(&x, &y).unwrap();
             (d.re + d.im) as f64
         }
         2 => l1::scnrm2(&x) as f64,
@@ -1511,22 +1513,22 @@ pub extern "C" fn run_l2_probe_c(op: usize) -> f64 {
     let al = C32::new(0.7, -0.2);
     let be = C32::new(0.3, 0.1);
     match op {
-        0 => l2::cgemv(al, N, N, am, cs, &x, be, &mut y),
-        1 => l2::cgemv_t(al, N, N, am, cs, &x, be, &mut y),
-        2 => l2::cgemv_c(al, N, N, am, cs, &x, be, &mut y),
-        3 => l2::cgeru(al, N, N, am, cs, &x, &x),
-        4 => l2::cgerc(al, N, N, am, cs, &x, &x),
-        5 => l2::chemv(al, N, am, cs, true, &x, be, &mut y),
+        0 => l2::cgemv(Trans::NoTrans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        1 => l2::cgemv(Trans::Trans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        2 => l2::cgemv(Trans::ConjTrans, N, N, al, am, cs, &x, be, &mut y).unwrap(),
+        3 => l2::cgeru(N, N, al, &x, &x, am, cs).unwrap(),
+        4 => l2::cgerc(N, N, al, &x, &x, am, cs).unwrap(),
+        5 => l2::chemv(Uplo::Upper, N, al, am, cs, &x, be, &mut y).unwrap(),
         6 => {
-            l1::ccopy(&x, &mut y);
-            l2::ctrmv(N, am, cs, false, false, &mut y);
+            l1::ccopy(&x, &mut y).unwrap();
+            l2::ctrmv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
         7 => {
-            l1::ccopy(&x, &mut y);
-            l2::ctrsv(N, am, cs, false, false, &mut y);
+            l1::ccopy(&x, &mut y).unwrap();
+            l2::ctrsv(Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
         }
-        8 => l2::cher(0.7, N, am, cs, true, &x),
-        9 => l2::cher2(al, N, am, cs, true, &x, &x),
+        8 => l2::cher(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
+        9 => l2::cher2(Uplo::Upper, N, al, &x, &x, am, cs).unwrap(),
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -1561,15 +1563,15 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
     let al = C32::new(0.7, -0.2);
     let be = C32::new(0.3, 0.1);
     match op {
-        0 => l3::cgemm(al, N, K, N, av, cs, bv, cs, be, cv, cs),
-        1 => l3::chemm_left(al, N, N, av, cs, true, bv, cs, be, cv, cs),
-        2 => l3::cherk(0.7, N, K, av, cs, 0.3, cv, cs, true),
-        3 => l3::cher2k(al, N, K, av, cs, bv, cs, 0.3, cv, cs, true),
-        4 => l3::ctrmm_left(al, N, N, av, cs, false, false, cv, cs),
-        5 => l3::ctrsm_left(al, N, N, av, cs, false, false, cv, cs),
-        6 => l3::ctrmm_right(al, N, N, av, cs, true, false, cv, cs),
-        7 => l3::ctrsm_right(al, N, N, av, cs, true, false, cv, cs),
-        8 => l3::chemm_right(al, N, N, av, cs, true, bv, cs, be, cv, cs),
+        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C32::ZERO; l3::cgemm_work(N, N, K)]).unwrap(),
+        1 => l3::chemm(Side::Left, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
+        2 => l3::cherk(Uplo::Upper, Trans::NoTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C32::ZERO; l3::cherk_work(N, K)]).unwrap(),
+        3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, N, K, al, av, cs, bv, cs, 0.3, cv, cs, &mut vec![C32::ZERO; l3::cher2k_work(N, K)]).unwrap(),
+        4 => l3::ctrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        5 => l3::ctrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Left, Trans::NoTrans, N, N)]).unwrap(),
+        6 => l3::ctrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        7 => l3::ctrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
+        8 => l3::chemm(Side::Right, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0f32;
@@ -1598,9 +1600,9 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.b[..k * n];
             let c = &mut s.sym[..m * n];
             if packed {
-                l3::dgemm_packed(0.001, m, k, n, a, m, b, k, 0.5, c, m);
+                l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m);
             } else {
-                l3::dgemm(0.001, m, k, n, a, m, b, k, 0.5, c, m);
+                l3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_work(m, n, k)]).unwrap();
             }
             c[0] + c[m * n - 1]
         }
@@ -1609,9 +1611,9 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.b32[..k * n];
             let c = &mut s.sym32[..m * n];
             if packed {
-                l3::sgemm_packed(0.001, m, k, n, a, m, b, k, 0.5, c, m);
+                l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m);
             } else {
-                l3::sgemm(0.001, m, k, n, a, m, b, k, 0.5, c, m);
+                l3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_work(m, n, k)]).unwrap();
             }
             (c[0] + c[m * n - 1]) as f64
         }
@@ -1622,9 +1624,9 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.bz[..k * n];
             let c = &mut s.symz[..m * n];
             if packed {
-                l3::zgemm_packed(al, m, k, n, a, m, b, k, be, c, m);
+                l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m);
             } else {
-                l3::zgemm(al, m, k, n, a, m, b, k, be, c, m);
+                l3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_work(m, n, k)]).unwrap();
             }
             c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im
         }
@@ -1635,9 +1637,9 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.bc[..k * n];
             let c = &mut s.symc[..m * n];
             if packed {
-                l3::cgemm_packed(al, m, k, n, a, m, b, k, be, c, m);
+                l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m);
             } else {
-                l3::cgemm(al, m, k, n, a, m, b, k, be, c, m);
+                l3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_work(m, n, k)]).unwrap();
             }
             (c[0].re + c[0].im + c[m * n - 1].re + c[m * n - 1].im) as f64
         }

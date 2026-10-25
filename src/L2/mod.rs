@@ -45,36 +45,109 @@ pub mod cher2;
 pub mod ctrmv;
 pub mod ctrsv;
 
-pub use dgemv::{dgemv, dgemv_t};
+pub use dgemv::dgemv;
 pub use dger::dger;
 pub use dsymv::dsymv;
 pub use dsyr::dsyr;
 pub use dsyr2::dsyr2;
 pub use dtrmv::dtrmv;
 pub use dtrsv::dtrsv;
-pub use sgemv::{sgemv, sgemv_t};
+#[allow(unused_imports)]
+pub(crate) use dgemv::dgemv_k;
+#[allow(unused_imports)]
+pub(crate) use dgemv::dgemv_t_k;
+#[allow(unused_imports)]
+pub(crate) use dtrmv::dtrmv_k;
+#[allow(unused_imports)]
+pub(crate) use dtrsv::dtrsv_k;
+#[allow(unused_imports)]
+pub(crate) use dger::dger_k;
+#[allow(unused_imports)]
+pub(crate) use dsymv::dsymv_k;
+#[allow(unused_imports)]
+pub(crate) use dsyr::dsyr_k;
+#[allow(unused_imports)]
+pub(crate) use dsyr2::dsyr2_k;
+pub use sgemv::sgemv;
 pub use sger::sger;
 pub use ssymv::ssymv;
 pub use ssyr::ssyr;
 pub use ssyr2::ssyr2;
 pub use strmv::strmv;
 pub use strsv::strsv;
-pub use zgemv::{zgemv, zgemv_c, zgemv_t};
-pub use zgerc::zgerc;
+#[allow(unused_imports)]
+pub(crate) use sgemv::sgemv_k;
+#[allow(unused_imports)]
+pub(crate) use sgemv::sgemv_t_k;
+#[allow(unused_imports)]
+pub(crate) use strmv::strmv_k;
+#[allow(unused_imports)]
+pub(crate) use strsv::strsv_k;
+#[allow(unused_imports)]
+pub(crate) use sger::sger_k;
+#[allow(unused_imports)]
+pub(crate) use ssymv::ssymv_k;
+#[allow(unused_imports)]
+pub(crate) use ssyr::ssyr_k;
+#[allow(unused_imports)]
+pub(crate) use ssyr2::ssyr2_k;
+pub use zgemv::zgemv;
 pub use zgeru::zgeru;
+pub use zgerc::zgerc;
 pub use zhemv::zhemv;
 pub use zher::zher;
 pub use zher2::zher2;
 pub use ztrmv::ztrmv;
 pub use ztrsv::ztrsv;
-pub use cgemv::{cgemv, cgemv_c, cgemv_t};
-pub use cgerc::cgerc;
+#[allow(unused_imports)]
+pub(crate) use zgemv::zgemv_k;
+#[allow(unused_imports)]
+pub(crate) use zgemv::zgemv_t_k;
+#[allow(unused_imports)]
+pub(crate) use ztrmv::ztrmv_k;
+#[allow(unused_imports)]
+pub(crate) use ztrsv::ztrsv_k;
+#[allow(unused_imports)]
+pub(crate) use zgemv::zgemv_c_k;
+#[allow(unused_imports)]
+pub(crate) use zgeru::zgeru_k;
+#[allow(unused_imports)]
+pub(crate) use zgerc::zgerc_k;
+#[allow(unused_imports)]
+pub(crate) use zhemv::zhemv_k;
+#[allow(unused_imports)]
+pub(crate) use zher::zher_k;
+#[allow(unused_imports)]
+pub(crate) use zher2::zher2_k;
+pub use cgemv::cgemv;
 pub use cgeru::cgeru;
+pub use cgerc::cgerc;
 pub use chemv::chemv;
 pub use cher::cher;
 pub use cher2::cher2;
 pub use ctrmv::ctrmv;
 pub use ctrsv::ctrsv;
+#[allow(unused_imports)]
+pub(crate) use cgemv::cgemv_k;
+#[allow(unused_imports)]
+pub(crate) use cgemv::cgemv_t_k;
+#[allow(unused_imports)]
+pub(crate) use ctrmv::ctrmv_k;
+#[allow(unused_imports)]
+pub(crate) use ctrsv::ctrsv_k;
+#[allow(unused_imports)]
+pub(crate) use cgemv::cgemv_c_k;
+#[allow(unused_imports)]
+pub(crate) use cgeru::cgeru_k;
+#[allow(unused_imports)]
+pub(crate) use cgerc::cgerc_k;
+#[allow(unused_imports)]
+pub(crate) use chemv::chemv_k;
+#[allow(unused_imports)]
+pub(crate) use cher::cher_k;
+#[allow(unused_imports)]
+pub(crate) use cher2::cher2_k;
+
 
 /// Shared entry checks: the storage really contains an nrows×ncols
 /// matrix at stride cs.

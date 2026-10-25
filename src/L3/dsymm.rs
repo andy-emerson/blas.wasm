@@ -9,14 +9,36 @@
 //! bit-for-bit tested).
 
 use super::{check_mat, dsym_at};
+use crate::{Error, Side, Uplo};
 use crate::kernels::daxpy4;
-use crate::L1::daxpy;
-use crate::L2::{dscale_y, dsymv};
+use crate::L1::daxpy_k;
+use crate::L2::{dscale_y, dsymv_k};
+
+/// `C ← αAB + βC` ([`Side::Left`]) or `C ← αBA + βC` ([`Side::Right`])
+/// for a symmetric `A` with the triangle named by `uplo` stored; `A` is
+/// `m×m` on the left and `n×n` on the right, `B` and `C` are `m×n`, each
+/// at its own leading dimension.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 9,
+/// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11).
+#[allow(clippy::too_many_arguments)]
+pub fn dsymm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize, b: &[f64], ldb: usize, beta: f64, c: &mut [f64], ldc: usize) -> Result<(), Error> {
+	const R: &str = "dsymm";
+	let na = if side == Side::Left { m } else { n };
+	crate::error::mat(R, 6, 7, a.len(), na, na, lda)?;
+	crate::error::mat(R, 8, 9, b.len(), m, n, ldb)?;
+	crate::error::mat(R, 11, 12, c.len(), m, n, ldc)?;
+	match side {
+		Side::Left => dsymm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
+		Side::Right => dsymm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
+	}
+	Ok(())
+}
 
 /// C ← αAB + βC. A is m×m symmetric (`upper` triangle stored), B and
 /// C are m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn dsymm_left(
+pub(crate) fn dsymm_left_k(
 	alpha: f64,
 	m: usize,
 	n: usize,
@@ -32,14 +54,14 @@ pub fn dsymm_left(
 	check_mat(b.len(), m, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	for j in 0..n {
-		dsymv(alpha, m, a, acs, upper, &b[j * bcs..j * bcs + m], beta, &mut c[j * ccs..j * ccs + m]);
+		dsymv_k(alpha, m, a, acs, upper, &b[j * bcs..j * bcs + m], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 
 /// C ← αBA + βC. A is n×n symmetric (`upper` triangle stored), B and
 /// C are m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn dsymm_right(
+pub(crate) fn dsymm_right_k(
 	alpha: f64,
 	m: usize,
 	n: usize,
@@ -87,7 +109,7 @@ pub fn dsymm_right(
 		let cj = &mut c[j * ccs..j * ccs + m];
 		dscale_y(beta, cj);
 		for k in 0..n {
-			daxpy(alpha * dsym_at(a, acs, upper, k, j), &b[k * bcs..k * bcs + m], cj);
+			daxpy_k(alpha * dsym_at(a, acs, upper, k, j), &b[k * bcs..k * bcs + m], cj);
 		}
 		j += 1;
 	}

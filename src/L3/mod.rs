@@ -37,30 +37,79 @@ pub mod cherk;
 pub mod ctrmm;
 pub mod ctrsm;
 
-pub use dgemm::{dgemm, dgemm_col4, dgemm_colaxpy, dgemm_packed, dgemm_tiled};
-pub use dsymm::{dsymm_left, dsymm_right};
-pub use dsyr2k::dsyr2k;
-pub use dsyrk::dsyrk;
-pub use dtrmm::{dtrmm_left, dtrmm_right};
-pub use dtrsm::{dtrsm_left, dtrsm_right};
-pub use sgemm::{sgemm, sgemm_col4, sgemm_colaxpy, sgemm_packed, sgemm_tiled};
-pub use ssymm::{ssymm_left, ssymm_right};
-pub use ssyr2k::ssyr2k;
-pub use ssyrk::ssyrk;
-pub use strmm::{strmm_left, strmm_right};
-pub use strsm::{strsm_left, strsm_right};
-pub use zgemm::{zgemm, zgemm_colaxpy, zgemm_packed};
-pub use zhemm::{zhemm_left, zhemm_right};
-pub use zher2k::zher2k;
-pub use zherk::zherk;
-pub use ztrmm::{ztrmm_left, ztrmm_right};
-pub use ztrsm::{ztrsm_left, ztrsm_right};
-pub use cgemm::{cgemm, cgemm_colaxpy, cgemm_packed};
-pub use chemm::{chemm_left, chemm_right};
-pub use cher2k::cher2k;
-pub use cherk::cherk;
-pub use ctrmm::{ctrmm_left, ctrmm_right};
-pub use ctrsm::{ctrsm_left, ctrsm_right};
+pub use dgemm::{dgemm, dgemm_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed};
+#[allow(unused_imports)]
+pub(crate) use dgemm::dgemm_k;
+pub use dsymm::dsymm;
+#[allow(unused_imports)]
+pub(crate) use dsymm::{dsymm_left_k, dsymm_right_k};
+pub use dsyrk::{dsyrk, dsyrk_work};
+#[allow(unused_imports)]
+pub(crate) use dsyrk::dsyrk_k;
+pub use dsyr2k::{dsyr2k, dsyr2k_work};
+#[allow(unused_imports)]
+pub(crate) use dsyr2k::dsyr2k_k;
+pub use dtrmm::{dtrmm, dtrmm_work};
+#[allow(unused_imports)]
+pub(crate) use dtrmm::{dtrmm_left_k, dtrmm_right_k};
+pub use dtrsm::{dtrsm, dtrsm_work};
+#[allow(unused_imports)]
+pub(crate) use dtrsm::{dtrsm_left_k, dtrsm_right_k};
+pub use sgemm::{sgemm, sgemm_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed};
+#[allow(unused_imports)]
+pub(crate) use sgemm::sgemm_k;
+pub use ssymm::ssymm;
+#[allow(unused_imports)]
+pub(crate) use ssymm::{ssymm_left_k, ssymm_right_k};
+pub use ssyrk::{ssyrk, ssyrk_work};
+#[allow(unused_imports)]
+pub(crate) use ssyrk::ssyrk_k;
+pub use ssyr2k::{ssyr2k, ssyr2k_work};
+#[allow(unused_imports)]
+pub(crate) use ssyr2k::ssyr2k_k;
+pub use strmm::{strmm, strmm_work};
+#[allow(unused_imports)]
+pub(crate) use strmm::{strmm_left_k, strmm_right_k};
+pub use strsm::{strsm, strsm_work};
+#[allow(unused_imports)]
+pub(crate) use strsm::{strsm_left_k, strsm_right_k};
+pub use zgemm::{zgemm, zgemm_work, zgemm_colaxpy, zgemm_packed};
+#[allow(unused_imports)]
+pub(crate) use zgemm::zgemm_k;
+pub use zhemm::zhemm;
+#[allow(unused_imports)]
+pub(crate) use zhemm::{zhemm_left_k, zhemm_right_k};
+pub use zherk::{zherk, zherk_work};
+#[allow(unused_imports)]
+pub(crate) use zherk::zherk_k;
+pub use zher2k::{zher2k, zher2k_work};
+#[allow(unused_imports)]
+pub(crate) use zher2k::zher2k_k;
+pub use ztrmm::{ztrmm, ztrmm_work};
+#[allow(unused_imports)]
+pub(crate) use ztrmm::{ztrmm_left_k, ztrmm_right_k};
+pub use ztrsm::{ztrsm, ztrsm_work};
+#[allow(unused_imports)]
+pub(crate) use ztrsm::{ztrsm_left_k, ztrsm_right_k};
+pub use cgemm::{cgemm, cgemm_work, cgemm_colaxpy, cgemm_packed};
+#[allow(unused_imports)]
+pub(crate) use cgemm::cgemm_k;
+pub use chemm::chemm;
+#[allow(unused_imports)]
+pub(crate) use chemm::{chemm_left_k, chemm_right_k};
+pub use cherk::{cherk, cherk_work};
+#[allow(unused_imports)]
+pub(crate) use cherk::cherk_k;
+pub use cher2k::{cher2k, cher2k_work};
+#[allow(unused_imports)]
+pub(crate) use cher2k::cher2k_k;
+pub use ctrmm::{ctrmm, ctrmm_work};
+#[allow(unused_imports)]
+pub(crate) use ctrmm::{ctrmm_left_k, ctrmm_right_k};
+pub use ctrsm::{ctrsm, ctrsm_work};
+#[allow(unused_imports)]
+pub(crate) use ctrsm::{ctrsm_left_k, ctrsm_right_k};
+
 
 pub(crate) use super::L2::check_mat;
 

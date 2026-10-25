@@ -8,9 +8,19 @@
 //! per-op measurement, not built yet.
 
 use crate::lanes::F32x4;
+use crate::Error;
+
+/// `y ← αx + y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 3).
+pub fn saxpy(alpha: f32, x: &[f32], y: &mut [f32]) -> Result<(), Error> {
+	crate::error::same_len("saxpy", 3, x.len(), y.len())?;
+	saxpy_k(alpha, x, y);
+	Ok(())
+}
 
 /// y ← αx + y. Panics on length mismatch.
-pub fn saxpy(alpha: f32, x: &[f32], y: &mut [f32]) {
+pub(crate) fn saxpy_k(alpha: f32, x: &[f32], y: &mut [f32]) {
 	assert_eq!(x.len(), y.len(), "saxpy: length mismatch");
 	unsafe { imp(alpha, x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

@@ -13,10 +13,19 @@
 //! bit-identical by the lane-emulation construction.
 
 use crate::c64::C64;
+use crate::Error;
 use crate::lanes::F64x2;
 
+/// `xᵀy (unconjugated)` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn zdotu(x: &[C64], y: &[C64]) -> Result<C64, Error> {
+	crate::error::same_len("zdotu", 2, x.len(), y.len())?;
+	Ok(zdotu_k(x, y))
+}
+
 /// Returns xᵀy (no conjugation). Panics on length mismatch.
-pub fn zdotu(x: &[C64], y: &[C64]) -> C64 {
+pub(crate) fn zdotu_k(x: &[C64], y: &[C64]) -> C64 {
 	assert_eq!(x.len(), y.len(), "zdotu: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_ptr(), x.len()) }
 }

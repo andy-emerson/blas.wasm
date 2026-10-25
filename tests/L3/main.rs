@@ -4,6 +4,7 @@
 #![allow(non_snake_case)] // test target named for its folder (L1/L2/L3)
 
 mod common;
+mod errors;
 
 mod dgemm;
 mod dsymm;

@@ -8,7 +8,7 @@ fn cgemv_bit_for_bit_and_bounded() {
 	let mut rng = Lcg(121);
 	for &(m, n) in SHAPES {
 		for &pad in PADS {
-			let cs = m + pad;
+			let cs = (m + pad).max(1);
 			let a = rng.mat_c32(m, n, cs);
 			let x = rng.vec_c32(n);
 			let y0 = rng.vec_c32(m);
@@ -18,7 +18,7 @@ fn cgemv_bit_for_bit_and_bounded() {
 				(C32::new(0.3, -0.2), C32::new(-1.1, 0.6)),
 			] {
 				let mut y = y0.clone();
-				cgemv(alpha, m, n, &a, cs, &x, beta, &mut y);
+				cgemv(Trans::NoTrans, m, n, alpha, &a, cs, &x, beta, &mut y).unwrap();
 				// same-order scalar replay of column-caxpy
 				let mut yr = y0.clone();
 				if beta == C32::ZERO {
@@ -65,9 +65,9 @@ fn cgemv_t_and_c_bounded_and_cross_checked() {
 		let alpha = C32::new(0.7, -0.3);
 		let beta = C32::new(-0.3, 0.1);
 		let mut yt = y0.clone();
-		cgemv_t(alpha, m, n, &a, cs, &x, beta, &mut yt);
+		cgemv(Trans::Trans, m, n, alpha, &a, cs, &x, beta, &mut yt).unwrap();
 		let mut yc = y0.clone();
-		cgemv_c(alpha, m, n, &a, cs, &x, beta, &mut yc);
+		cgemv(Trans::ConjTrans, m, n, alpha, &a, cs, &x, beta, &mut yc).unwrap();
 		for j in 0..n {
 			let bt = c_up(beta * y0[j]);
 			// transpose form: Σ a[i,j]·x[i]
@@ -90,7 +90,7 @@ fn cgemv_t_and_c_bounded_and_cross_checked() {
 		// must be bit-identical to cgemv_t on conj(A)
 		let ac: Vec<C32> = a.iter().map(|v| v.conj()).collect();
 		let mut yt2 = y0.clone();
-		cgemv_t(alpha, m, n, &ac, cs, &x, beta, &mut yt2);
+		cgemv(Trans::Trans, m, n, alpha, &ac, cs, &x, beta, &mut yt2).unwrap();
 		for j in 0..n {
 			assert!(bits_eq_cc(yc[j], yt2[j]), "cgemv_c vs cgemv_t(conj A) {m}x{n} j={j}");
 		}
@@ -98,8 +98,7 @@ fn cgemv_t_and_c_bounded_and_cross_checked() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn cgemv_length_mismatch_panics() {
+fn cgemv_length_mismatch_is_an_error() {
 	let a = [C32::ONE; 4];
-	cgemv(C32::ONE, 2, 2, &a, 2, &[C32::ONE], C32::ZERO, &mut [C32::ZERO; 2]);
+	assert_eq!(cgemv(Trans::NoTrans, 2, 2, C32::ONE, &a, 2, &[C32::ONE], C32::ZERO, &mut [C32::ZERO; 2]), Err(blas_wasm::Error { routine: "cgemv", arg: 7, kind: blas_wasm::ErrorKind::Length }));
 }

@@ -32,7 +32,7 @@ fn ztrsm_both_sides_residual() {
 
 				// left: A·X = α·B0
 				let mut x = b0.clone();
-				ztrsm_left(alpha, m, n, &a, acs, upper, unit, &mut x, bcs);
+				ztrsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut x, bcs, &mut vec![C64::ZERO; ztrsm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					let xmax =
 						(0..n).fold(0.0f64, |acc, l| acc.max(x[j * bcs + l].abs1()));
@@ -50,7 +50,7 @@ fn ztrsm_both_sides_residual() {
 
 				// right: X·A = α·B0
 				let mut x = b0.clone();
-				ztrsm_right(alpha, m, n, &a, acs, upper, unit, &mut x, bcs);
+				ztrsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut x, bcs, &mut vec![C64::ZERO; ztrsm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				for j in 0..n {
 					for i in 0..m {
 						let xa = comp_sum_c((0..n).map(|l| x[l * bcs + i] * tri_at(l, j)));
@@ -87,7 +87,7 @@ fn ztrsm_bit_replay_both_sides() {
 				}
 				let b0 = rng.mat_c64(m, n, bcs);
 				let mut bt = b0.clone();
-				ztrsm_left(alpha, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				ztrsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut bt, bcs, &mut vec![C64::ZERO; ztrsm_work(Side::Left, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				for j in 0..n {
 					for i in 0..m {
@@ -129,7 +129,7 @@ fn ztrsm_bit_replay_both_sides() {
 				}
 				let b0 = rng.mat_c64(m, n, bcs);
 				let mut bt = b0.clone();
-				ztrsm_right(alpha, m, n, &a, acs, upper, unit, &mut bt, bcs);
+				ztrsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut bt, bcs, &mut vec![C64::ZERO; ztrsm_work(Side::Right, Trans::NoTrans, m, n)]).unwrap();
 				let mut br = b0.clone();
 				let elim = |br: &mut Vec<C64>, j: usize, k: usize| {
 					let t = -a[j * acs + k];

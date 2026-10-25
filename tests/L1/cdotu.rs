@@ -7,7 +7,7 @@ fn cdotu_bounded() {
 	for &n in SIZES {
 		let x = rng.vec_c32(n);
 		let y = rng.vec_c32(n);
-		let s = cdotu(&x, &y);
+		let s = cdotu(&x, &y).unwrap();
 		// products formed in C32 as the implementation forms them,
 		// accumulated component-wise with compensation
 		let want = comp_sum_cc((0..n).map(|i| x[i] * y[i]));
@@ -19,7 +19,7 @@ fn cdotu_bounded() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn cdotu_length_mismatch_panics() {
-	cdotu(&[blas_wasm::C32::ONE], &[]);
+fn cdotu_length_mismatch_is_an_error() {
+	let err = cdotu(&[blas_wasm::C32::ONE], &[]).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "cdotu", arg: 2, kind: blas_wasm::ErrorKind::Length });
 }

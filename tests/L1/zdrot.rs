@@ -11,7 +11,7 @@ fn zdrot_bit_for_bit() {
 		let y0 = rng.vec_c64(n);
 		let mut x = x0.clone();
 		let mut y = y0.clone();
-		zdrot(&mut x, &mut y, c, s);
+		zdrot(&mut x, &mut y, c, s).unwrap();
 		for i in 0..n {
 			// real rotation acts on re and im independently — the
 			// scalar drot definition per component

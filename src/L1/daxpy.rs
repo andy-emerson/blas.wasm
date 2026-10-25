@@ -65,9 +65,19 @@
 //! per-routine test standard is `tests/README.md`.
 
 use crate::lanes::F64x2;
+use crate::Error;
+
+/// `y ← αx + y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 3).
+pub fn daxpy(alpha: f64, x: &[f64], y: &mut [f64]) -> Result<(), Error> {
+	crate::error::same_len("daxpy", 3, x.len(), y.len())?;
+	daxpy_k(alpha, x, y);
+	Ok(())
+}
 
 /// y ← αx + y. Panics on length mismatch.
-pub fn daxpy(alpha: f64, x: &[f64], y: &mut [f64]) {
+pub(crate) fn daxpy_k(alpha: f64, x: &[f64], y: &mut [f64]) {
 	assert_eq!(x.len(), y.len(), "daxpy: length mismatch");
 	unsafe { imp(alpha, x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

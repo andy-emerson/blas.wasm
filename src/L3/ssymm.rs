@@ -9,14 +9,36 @@
 //! bit-for-bit tested).
 
 use super::{check_mat, ssym_at};
+use crate::{Error, Side, Uplo};
 use crate::kernels::saxpy4;
-use crate::L1::saxpy;
-use crate::L2::{sscale_y, ssymv};
+use crate::L1::saxpy_k;
+use crate::L2::{sscale_y, ssymv_k};
+
+/// `C ← αAB + βC` ([`Side::Left`]) or `C ← αBA + βC` ([`Side::Right`])
+/// for a symmetric `A` with the triangle named by `uplo` stored; `A` is
+/// `m×m` on the left and `n×n` on the right, `B` and `C` are `m×n`, each
+/// at its own leading dimension.
+///
+/// Errors: a leading dimension below its row count (arguments 7, 9,
+/// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11).
+#[allow(clippy::too_many_arguments)]
+pub fn ssymm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: f32, a: &[f32], lda: usize, b: &[f32], ldb: usize, beta: f32, c: &mut [f32], ldc: usize) -> Result<(), Error> {
+	const R: &str = "ssymm";
+	let na = if side == Side::Left { m } else { n };
+	crate::error::mat(R, 6, 7, a.len(), na, na, lda)?;
+	crate::error::mat(R, 8, 9, b.len(), m, n, ldb)?;
+	crate::error::mat(R, 11, 12, c.len(), m, n, ldc)?;
+	match side {
+		Side::Left => ssymm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
+		Side::Right => ssymm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
+	}
+	Ok(())
+}
 
 /// C ← αAB + βC. A is m×m symmetric (`upper` triangle stored), B and
 /// C are m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn ssymm_left(
+pub(crate) fn ssymm_left_k(
 	alpha: f32,
 	m: usize,
 	n: usize,
@@ -32,14 +54,14 @@ pub fn ssymm_left(
 	check_mat(b.len(), m, n, bcs);
 	check_mat(c.len(), m, n, ccs);
 	for j in 0..n {
-		ssymv(alpha, m, a, acs, upper, &b[j * bcs..j * bcs + m], beta, &mut c[j * ccs..j * ccs + m]);
+		ssymv_k(alpha, m, a, acs, upper, &b[j * bcs..j * bcs + m], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
 
 /// C ← αBA + βC. A is n×n symmetric (`upper` triangle stored), B and
 /// C are m×n.
 #[allow(clippy::too_many_arguments)]
-pub fn ssymm_right(
+pub(crate) fn ssymm_right_k(
 	alpha: f32,
 	m: usize,
 	n: usize,
@@ -87,7 +109,7 @@ pub fn ssymm_right(
 		let cj = &mut c[j * ccs..j * ccs + m];
 		sscale_y(beta, cj);
 		for k in 0..n {
-			saxpy(alpha * ssym_at(a, acs, upper, k, j), &b[k * bcs..k * bcs + m], cj);
+			saxpy_k(alpha * ssym_at(a, acs, upper, k, j), &b[k * bcs..k * bcs + m], cj);
 		}
 		j += 1;
 	}

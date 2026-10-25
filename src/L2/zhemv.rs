@@ -17,13 +17,30 @@
 //! everywhere else.
 
 use super::{check_mat, zscale_y};
+use crate::{Error, Uplo};
 use crate::c64::C64;
 use crate::kernels::{zaxpy_dotc, zaxpy_dotc4};
+
+/// `y ← αAx + βy` for a Hermitian `A` of order `n` with the triangle
+/// named by `uplo` stored, at leading dimension `lda`; `x` and `y` have
+/// `n` elements. Longer slices are used up to that length.
+///
+/// Errors: `lda < max(1, n)` (argument 5); `a`, `x` or `y` shorter than
+/// its extent (arguments 4, 6, 8).
+#[allow(clippy::too_many_arguments)]
+pub fn zhemv(uplo: Uplo, n: usize, alpha: C64, a: &[C64], lda: usize, x: &[C64], beta: C64, y: &mut [C64]) -> Result<(), Error> {
+	const R: &str = "zhemv";
+	crate::error::mat(R, 4, 5, a.len(), n, n, lda)?;
+	crate::error::vec(R, 6, x.len(), n)?;
+	crate::error::vec(R, 8, y.len(), n)?;
+	zhemv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
+	Ok(())
+}
 
 /// y ← αAx + βy, A Hermitian n×n at column stride `cs`, with the
 /// `upper` (or lower) triangle stored.
 #[allow(clippy::too_many_arguments)]
-pub fn zhemv(
+pub(crate) fn zhemv_k(
 	alpha: C64,
 	n: usize,
 	a: &[C64],

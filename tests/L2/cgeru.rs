@@ -12,7 +12,7 @@ fn cgeru_bit_for_bit() {
 		let x = rng.vec_c32(m);
 		let y = rng.vec_c32(n);
 		let mut a = a0.clone();
-		cgeru(alpha, m, n, &mut a, cs, &x, &y);
+		cgeru(m, n, alpha, &x, &y, &mut a, cs).unwrap();
 		for j in 0..n {
 			let t = alpha * y[j];
 			for i in 0..m {

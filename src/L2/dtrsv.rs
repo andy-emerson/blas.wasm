@@ -10,14 +10,38 @@
 //! test. Transposed form: not built — no consumer yet (explicit gap).
 
 use super::check_mat;
+use crate::{Diag, Error, Trans, Uplo};
 use crate::kernels::daxpy4in;
-use crate::L1::daxpy;
+use crate::L1::daxpy_k;
+
+/// `x ← op(A)⁻¹·x` for a triangular `A` of order `n`, the triangle named by
+/// `uplo` stored at leading dimension `lda`, with a unit diagonal when
+/// `diag` says so; `x` has `n` elements. `op(A)` is `A`, `Aᵀ` or `Aᴴ`
+/// per `trans`.
+///
+/// The transposed forms are not built yet (`STATUS.md`, todo S2):
+/// `trans` other than [`Trans::NoTrans`] returns
+/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
+/// argument 2.
+///
+/// Errors: `lda < max(1, n)` (argument 6); `a` or `x` shorter than its
+/// extent (arguments 5, 7).
+pub fn dtrsv(uplo: Uplo, trans: Trans, diag: Diag, n: usize, a: &[f64], lda: usize, x: &mut [f64]) -> Result<(), Error> {
+	const R: &str = "dtrsv";
+	if trans != Trans::NoTrans {
+		return Err(crate::error::unsupported(R, 2));
+	}
+	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
+	crate::error::vec(R, 7, x.len(), n)?;
+	dtrsv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]);
+	Ok(())
+}
 
 /// x ← A⁻¹x, A triangular n×n at column stride `cs`. `upper` selects
 /// the triangle; `unit` treats the diagonal as ones (stored values
 /// ignored). No singularity check — a zero diagonal yields inf/NaN,
 /// as in reference BLAS.
-pub fn dtrsv(n: usize, a: &[f64], cs: usize, upper: bool, unit: bool, x: &mut [f64]) {
+pub(crate) fn dtrsv_k(n: usize, a: &[f64], cs: usize, upper: bool, unit: bool, x: &mut [f64]) {
 	check_mat(a.len(), n, n, cs);
 	assert_eq!(x.len(), n, "dtrsv: x length mismatch");
 	let ap = a.as_ptr();
@@ -30,7 +54,7 @@ pub fn dtrsv(n: usize, a: &[f64], cs: usize, upper: bool, unit: bool, x: &mut [f
 				x[j] /= col[j];
 			}
 			let t = x[j];
-			daxpy(-t, &col[..j], &mut x[..j]);
+			daxpy_k(-t, &col[..j], &mut x[..j]);
 		}
 		let mut g = n - r;
 		while g >= 4 {
@@ -96,7 +120,7 @@ pub fn dtrsv(n: usize, a: &[f64], cs: usize, upper: bool, unit: bool, x: &mut [f
 				x[j] /= col[j];
 			}
 			let t = x[j];
-			daxpy(-t, &col[j + 1..], &mut x[j + 1..]);
+			daxpy_k(-t, &col[j + 1..], &mut x[j + 1..]);
 			j += 1;
 		}
 	}

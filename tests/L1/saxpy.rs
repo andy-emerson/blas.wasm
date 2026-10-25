@@ -9,7 +9,7 @@ fn axpy_bit_for_bit() {
 			let x = rng.vec_f32(n);
 			let y0 = rng.vec_f32(n);
 			let mut y = y0.clone();
-			saxpy(alpha, &x, &mut y);
+			saxpy(alpha, &x, &mut y).unwrap();
 			for i in 0..n {
 				let want = y0[i] + x[i] * alpha;
 				assert_eq!(y[i].to_bits(), want.to_bits(), "saxpy n={n} i={i}");
@@ -19,7 +19,7 @@ fn axpy_bit_for_bit() {
 }
 
 #[test]
-#[should_panic(expected = "length mismatch")]
-fn axpy_length_mismatch_panics() {
-	saxpy(1.0, &[1.0, 2.0], &mut [1.0]);
+fn saxpy_length_mismatch_is_an_error() {
+	let err = saxpy(1.0, &[1.0, 2.0], &mut [1.0]).unwrap_err();
+	assert_eq!(err, blas_wasm::Error { routine: "saxpy", arg: 3, kind: blas_wasm::ErrorKind::Length });
 }

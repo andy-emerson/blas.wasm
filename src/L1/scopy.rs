@@ -8,9 +8,19 @@
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.
 
 use crate::lanes::F32x4;
+use crate::Error;
+
+/// `y ← x` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn scopy(x: &[f32], y: &mut [f32]) -> Result<(), Error> {
+	crate::error::same_len("scopy", 2, x.len(), y.len())?;
+	scopy_k(x, y);
+	Ok(())
+}
 
 /// y ← x. Panics on length mismatch.
-pub fn scopy(x: &[f32], y: &mut [f32]) {
+pub(crate) fn scopy_k(x: &[f32], y: &mut [f32]) {
 	assert_eq!(x.len(), y.len(), "scopy: length mismatch");
 	unsafe { imp(x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

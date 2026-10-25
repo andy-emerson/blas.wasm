@@ -8,9 +8,19 @@
 //! Rounding contract: none — bytes move unchanged, bit-for-bit.
 
 use crate::lanes::F64x2;
+use crate::Error;
+
+/// `x ↔ y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn dswap(x: &mut [f64], y: &mut [f64]) -> Result<(), Error> {
+	crate::error::same_len("dswap", 2, x.len(), y.len())?;
+	dswap_k(x, y);
+	Ok(())
+}
 
 /// x ↔ y. Panics on length mismatch.
-pub fn dswap(x: &mut [f64], y: &mut [f64]) {
+pub(crate) fn dswap_k(x: &mut [f64], y: &mut [f64]) {
 	assert_eq!(x.len(), y.len(), "dswap: length mismatch");
 	unsafe { imp(x.as_mut_ptr(), y.as_mut_ptr(), x.len()) }
 }

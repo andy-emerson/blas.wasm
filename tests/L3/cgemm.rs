@@ -16,7 +16,7 @@ fn cgemm_bit_for_bit_and_bounded() {
 			(C32::new(-0.7, 0.4), C32::new(0.4, -0.2)),
 		] {
 			let mut c = c0.clone();
-			cgemm(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c, ccs);
+			cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, &a, acs, &b, bcs, beta, &mut c, ccs, &mut vec![C32::ZERO; cgemm_work(m, n, k)]).unwrap();
 			// same-order scalar replay (cgemv per column = column-caxpy)
 			let mut cr = c0.clone();
 			for j in 0..n {
@@ -91,9 +91,9 @@ fn cgemm_col4_bit_identical_to_colaxpy() {
 			(C32::new(0.3, -0.6), C32::ONE),
 		] {
 			let mut c1 = c0.clone();
-			cgemm_colaxpy(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c1, ccs);
+			cgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut c2 = c0.clone();
-			cgemm(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, &a, acs, &b, bcs, beta, &mut c2, ccs, &mut vec![C32::ZERO; cgemm_work(m, n, k)]).unwrap();
 			for j in 0..n {
 				for i in 0..m {
 					assert!(
@@ -107,11 +107,10 @@ fn cgemm_col4_bit_identical_to_colaxpy() {
 }
 
 #[test]
-#[should_panic(expected = "storage too short")]
-fn cgemm_short_storage_panics() {
+fn cgemm_short_storage_is_an_error() {
 	let a = [C32::ONE; 4];
 	let b = [C32::ONE; 3];
-	cgemm(C32::ONE, 2, 2, 2, &a, 2, &b, 2, C32::ZERO, &mut [C32::ZERO; 4], 2);
+	assert_eq!(cgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 2, C32::ONE, &a, 2, &b, 2, C32::ZERO, &mut [C32::ZERO; 4], 2, &mut vec![C32::ZERO; cgemm_work(2, 2, 2)]), Err(blas_wasm::Error { routine: "cgemm", arg: 9, kind: blas_wasm::ErrorKind::Length }));
 }
 
 #[test]
@@ -141,9 +140,9 @@ fn cgemm_packed_bit_identical_to_colaxpy() {
 			(C32::new(0.3, -0.6), C32::ONE),
 		] {
 			let mut c1 = c0.clone();
-			cgemm_colaxpy(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c1, ccs);
+			cgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut c2 = c0.clone();
-			cgemm_packed(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			cgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(
@@ -174,9 +173,9 @@ fn cgemm_dispatch_packed_zone_bit_identical() {
 	let c0 = rng.mat_c32(m, n, ccs);
 	let (alpha, beta) = (C32::new(-0.7, 0.2), C32::new(0.4, 0.1));
 	let mut c1 = c0.clone();
-	cgemm_colaxpy(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c1, ccs);
+	cgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 	let mut c2 = c0.clone();
-	cgemm(alpha, m, k, n, &a, acs, &b, bcs, beta, &mut c2, ccs);
+	cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, alpha, &a, acs, &b, bcs, beta, &mut c2, ccs, &mut vec![C32::ZERO; cgemm_work(m, n, k)]).unwrap();
 	for i in 0..c1.len() {
 		assert_eq!(c1[i].re.to_bits(), c2[i].re.to_bits(), "dispatch(packed) re @{i}");
 		assert_eq!(c1[i].im.to_bits(), c2[i].im.to_bits(), "dispatch(packed) im @{i}");

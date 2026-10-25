@@ -16,7 +16,7 @@ fn zher2k_bit_for_bit_and_real_diagonal() {
 			let c0 = rng.mat_c64(n, n, ccs);
 
 			let mut c = c0.clone();
-			zher2k(alpha, n, k, &a, acs, &b, bcs, beta, &mut c, ccs, upper);
+			zher2k(uplo(upper), Trans::NoTrans, n, k, alpha, &a, acs, &b, bcs, beta, &mut c, ccs, &mut vec![C64::ZERO; zher2k_work(n, k)]).unwrap();
 			// replay: real-β component scale; per l the A-sourced adds
 			// (t = α·conj(B[j,l])) precede the B-sourced adds
 			// (t = conj(α·A[j,l])); diagonal imag forced to 0 at the end

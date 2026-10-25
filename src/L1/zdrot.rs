@@ -8,10 +8,21 @@
 //! produces its complex s for when one arrives.)
 
 use crate::c64::{as_re_mut, C64};
-use crate::L1::drot;
+use crate::Error;
+use crate::L1::drot_k;
+
+/// Applies the plane rotation `(x, y) ← (c·x + s·y, c·y − s·x)` over
+/// two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 2).
+pub fn zdrot(x: &mut [C64], y: &mut [C64], c: f64, s: f64) -> Result<(), Error> {
+	crate::error::same_len("zdrot", 2, x.len(), y.len())?;
+	zdrot_k(x, y, c, s);
+	Ok(())
+}
 
 /// Apply the rotation with real cosine `c` and real sine `s`.
 /// Panics on length mismatch.
-pub fn zdrot(x: &mut [C64], y: &mut [C64], c: f64, s: f64) {
-	drot(as_re_mut(x), as_re_mut(y), c, s);
+pub(crate) fn zdrot_k(x: &mut [C64], y: &mut [C64], c: f64, s: f64) {
+	drot_k(as_re_mut(x), as_re_mut(y), c, s);
 }

@@ -7,10 +7,20 @@
 //! definition `y[i] + α·x[i]` on every target.
 
 use crate::c64::C64;
+use crate::Error;
 use crate::lanes::F64x2;
 
+/// `y ← αx + y` over two slices of equal length.
+///
+/// Errors: `x` and `y` differ in length (argument 3).
+pub fn zaxpy(alpha: C64, x: &[C64], y: &mut [C64]) -> Result<(), Error> {
+	crate::error::same_len("zaxpy", 3, x.len(), y.len())?;
+	zaxpy_k(alpha, x, y);
+	Ok(())
+}
+
 /// y ← αx + y. Panics on length mismatch.
-pub fn zaxpy(alpha: C64, x: &[C64], y: &mut [C64]) {
+pub(crate) fn zaxpy_k(alpha: C64, x: &[C64], y: &mut [C64]) {
 	assert_eq!(x.len(), y.len(), "zaxpy: length mismatch");
 	unsafe { imp(alpha, x.as_ptr(), y.as_mut_ptr(), x.len()) }
 }

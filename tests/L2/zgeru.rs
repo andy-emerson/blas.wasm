@@ -12,7 +12,7 @@ fn zgeru_bit_for_bit() {
 		let x = rng.vec_c64(m);
 		let y = rng.vec_c64(n);
 		let mut a = a0.clone();
-		zgeru(alpha, m, n, &mut a, cs, &x, &y);
+		zgeru(m, n, alpha, &x, &y, &mut a, cs).unwrap();
 		for j in 0..n {
 			let t = alpha * y[j];
 			for i in 0..m {
