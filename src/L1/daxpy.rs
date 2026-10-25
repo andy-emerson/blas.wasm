@@ -46,15 +46,20 @@
 //! ## Calling it
 //!
 //! This example is compiled and run by `cargo test`, so it cannot
-//! drift from the code:
+//! drift from the code. The only precondition is that the two slices
+//! have the same length; a mismatch comes back as an [`Error`] naming
+//! argument 3, and nothing is written.
 //!
 //! ```rust
 //! use blas_wasm::L1::daxpy;
 //!
 //! let x = [1.0, 2.0, 3.0, 4.0, 5.0];
 //! let mut y = [10.0, 20.0, 30.0, 40.0, 50.0];
-//! daxpy(2.0, &x, &mut y);
+//! daxpy(2.0, &x, &mut y).unwrap();
 //! assert_eq!(y, [12.0, 24.0, 36.0, 48.0, 60.0]);
+//!
+//! let err = daxpy(2.0, &x, &mut y[..3]).unwrap_err();
+//! assert_eq!((err.routine, err.arg), ("daxpy", 3));
 //! ```
 //!
 //! ## Measured

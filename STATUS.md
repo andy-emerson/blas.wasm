@@ -17,7 +17,7 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 156 tests: L1 64, L2 40, L3 48, vendored math 4) | all pass | local, 2026-10-25, head `641cecc` |
+| `cargo test --release` (native, 164 tests: L1 64, L2 43, L3 52, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S0 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
@@ -118,11 +118,11 @@ warnings denied.
 
 ### M2 — Complete BLAS surface, netlib semantics
 
-- [ ] **S0 — Enums for Trans, Side, Uplo, Diag; `Result` on every
-  routine (D4); workspace slices and size queries where scratch is
-  needed (D3 decides which).** Evidence: the existing 156 tests pass
-  unchanged through the new signatures; a short workspace and a bad
-  argument each return `Err` with the right position. (1–2)
+- [x] **S0 — Enums, netlib argument order, `Result` on every routine,
+  workspace slices and size queries.** Done on this branch. The forms
+  the flags name but the crate has not built return
+  `ErrorKind::Unsupported`: `Trans::Trans`/`ConjTrans` on gemm, trmv,
+  trsv, trmm, trsm and the syrk family (todos S1, S2).
 - [ ] **S4 — The crate never allocates.** Evidence: no `alloc` in
   the crate; packed-gemm probe values unchanged. (1–2)
 - [ ] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,

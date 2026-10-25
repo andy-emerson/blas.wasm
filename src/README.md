@@ -82,13 +82,19 @@ real-rotation forms keep reference names too: `zdscal`/`csscal`
 
 The names are netlib's; the signatures are ours (documented per file):
 
-- **No trans/side/uplo character arguments.** Variants that reference
-  BLAS folds into flag parameters are separate functions:
-  `dgemv`/`dgemv_t` (plus `zgemv_c` for the conjugate transpose),
-  `dsymm_left`/`dsymm_right`, `dtrmm_left`/`dtrmm_right`,
-  `dtrsm_left`/`dtrsm_right` (and their z twins). Triangle and
-  unit-diagonal selection stay as `bool` parameters where the loop
-  structure is shared (`upper`, `unit`).
+- **Flags are enums, errors are values.** The character arguments
+  `TRANS`, `SIDE`, `UPLO`, `DIAG` are the enums `Trans`, `Side`,
+  `Uplo`, `Diag` with netlib meanings, in netlib argument order; every
+  routine with a checkable precondition returns `Result<(), Error>`
+  with the routine and the argument position, instead of calling
+  `xerbla`. Inside each file the public routine validates and calls a
+  crate-private kernel, the `*_k` function (one per flag form:
+  `dgemv_k`, `dgemv_t_k`, `dsymm_left_k`, …), which is the tuned body
+  and asserts its preconditions as a backstop.
+- **A trailing `work` slice** on gemm, the syrk family, trmm and trsm,
+  sized by the routine's `*_work` query; reference BLAS has no
+  workspace arguments because it allocates nothing, and this crate
+  will allocate nothing either (`../STATUS.md`, todo S4).
 - **Unit stride only.** Callers pass contiguous column slices with a
   column stride per matrix — no `incx`/`incy` today. Strides are
   planned (`../STATUS.md`, todo S3; the API shape is decision D7).
@@ -99,9 +105,12 @@ The names are netlib's; the signatures are ours (documented per file):
 - **Tuned-variant exports.** Where a routine ships raced alternates,
   they carry a suffix: `dgemm_colaxpy` (the plain reference shape),
   `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` (and the s twins) —
-  `dgemm` itself is the size dispatcher. z/c export `*gemm_colaxpy`
-  and `*gemm_packed` only; their packed shape is the complex register
-  tile.
+  `dgemm` itself validates and size-dispatches. z/c export
+  `*gemm_colaxpy` and `*gemm_packed` only; their packed shape is the
+  complex register tile. The alternates take `(alpha, m, n, k, a, lda,
+  b, ldb, beta, c, ldc)`, no flags, and assert rather than return
+  errors: they are kernels, exported so the tests and the benchmarks
+  can race them.
 
 Everything else about a routine — what it computes, its rounding
 contract, which tuned loop shape it ships and why — lives in its own

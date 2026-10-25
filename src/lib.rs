@@ -24,6 +24,11 @@
 //! Layout: one file per routine per number type in netlib naming,
 //! `d` = f64, `s` = f32, `z` = c64, `c` = c32, under [`L1`], [`L2`]
 //! and [`L3`]; the complex scalars [`C64`] and [`C32`] are exported.
+//! Arguments follow the netlib order with the character flags as the
+//! enums [`Trans`], [`Side`], [`Uplo`] and [`Diag`]; a failed
+//! precondition is an [`Error`] naming the routine and the argument
+//! position, never a panic; routines that pack take a scratch slice
+//! sized by their `*_work` query.
 //!
 //! ## Conventions
 //!

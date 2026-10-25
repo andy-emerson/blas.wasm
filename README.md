@@ -61,8 +61,9 @@ review (`AGENTS.md`) judges it against that reader.
 - **Bit-identical native ↔ wasm**, by construction (`src/lanes.rs`
   emulates the SIMD lane structure elementwise off-wasm) and verified
   by 90 determinism probes on every gate run (`tests/README.md`).
-- **The module.** `abi/` wraps every routine in a flat C ABI and
-  compiles to the standalone `blas.wasm` (~220 KB, 116 routines plus
+- **The module.** `abi/` wraps every routine in a flat C ABI (the
+  interim argument order, to be replaced by CBLAS names and order in
+  todo C) and compiles to the standalone `blas.wasm` (~220 KB, 116 routines plus
   `wasm_alloc`/`wasm_free`, raw wasm, zero imports); conventions in
   `abi/src/lib.rs`, smoke test `abi/check.mjs`, attached to the
   GitHub release for each tag by the release workflow. Rust consumers
@@ -79,11 +80,14 @@ review (`AGENTS.md`) judges it against that reader.
 Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
 and sequenced in `STATUS.md`: the transposed and conjugate-transposed
 forms of gemm, trmv, trsv, trmm and trsm; the transposed forms of
-syrk/syr2k/herk/her2k; vector strides (`incx`/`incy`); the complex
+syrk/syr2k/herk/her2k (the flags exist and return
+`ErrorKind::Unsupported`); vector strides (`incx`/`incy`); the complex
 symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
-`zrot`/`crot`; argument errors are trapped rather than reported; the
-module's exports use an invented argument order rather than CBLAS's;
-packed gemm allocates two panel buffers. Fused multiply-add variants
+`zrot`/`crot`; the quick-return and NaN rules of reference BLAS; the
+module's exports use an invented argument order rather than CBLAS's
+and trap on an argument error instead of reporting it; packed gemm
+still allocates its two panel buffers internally although the caller
+already passes the workspace. Fused multiply-add variants
 measured faster for some routines and are deliberately not shipped:
 relaxed-SIMD rounding is implementation-dependent and would forfeit
 cross-target bit-identity (`DESIGN.md`, "Fast mode is a lever").
@@ -96,30 +100,39 @@ on crates.io: `STATUS.md`, D2). Routines live under `L1`, `L2` and
 `L3` by level and carry netlib names; every matrix is a column-major
 slice with its own column stride (`cs ≥ rows`; column `j` of an
 `rows × cols` matrix is `a[j*cs .. j*cs + rows]`), and every vector is
-a contiguous slice. Flag variants are separate functions
-(`dgemv`/`dgemv_t`, `dtrsm_left`/`dtrsm_right`); triangle and
-unit-diagonal selection are `bool`s. The `daxpy` chapter in the crate
-documentation carries the same example, compiled and run by
-`cargo test`.
+a contiguous slice. Arguments follow the netlib order, with the
+character flags as enums (`Trans`, `Side`, `Uplo`, `Diag`) and the
+strides `incx`/`incy` not yet present. Every routine that checks a
+precondition returns `Result<(), Error>`; an `Error` names the routine
+and the position of the offending argument, and nothing is written when
+one is returned. Routines that pack (gemm above its packed threshold)
+take a caller-provided scratch slice sized by their `*_work` query. The
+`daxpy` chapter in the crate documentation carries the same example,
+compiled and run by `cargo test`.
 
 ```rust
-use blas_wasm::{L1, L3};
+use blas_wasm::{L1, L3, Trans};
 
 let x = [1.0, 2.0, 3.0];
 let mut y = [4.0, 5.0, 6.0];
-L1::daxpy(2.0, &x, &mut y);              // y ← 2x + y = [6, 9, 12]
+L1::daxpy(2.0, &x, &mut y)?;             // y ← 2x + y = [6, 9, 12]
 
-// C ← αAB + βC for 2×2 matrices, column-major, each with column stride 2.
+// C ← αAB + βC for 2×2 matrices, column-major, each with leading dimension 2.
 let a = [1.0, 3.0, 2.0, 4.0];            // [[1, 2], [3, 4]]
 let b = [5.0, 7.0, 6.0, 8.0];            // [[5, 6], [7, 8]]
 let mut c = [0.0; 4];
-L3::dgemm(1.0, 2, 2, 2, &a, 2, &b, 2, 0.0, &mut c, 2);
+let mut work = vec![0.0; L3::dgemm_work(2, 2, 2)]; // 0 below the packed threshold
+L3::dgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2, &mut work)?;
 assert_eq!(c, [19.0, 43.0, 22.0, 50.0]); // [[19, 22], [43, 50]]
 ```
 
-The `dgemm` argument order is `(alpha, m, k, n, a, acs, b, bcs, beta,
-c, ccs)` for an `m×k` times `k×n` product; each routine's own
-signature and rounding contract are in its file's module docs.
+The `dgemm` argument order is netlib's, `(transa, transb, m, n, k,
+alpha, a, lda, b, ldb, beta, c, ldc)`, plus the trailing `work`; each
+routine's own signature, error positions and rounding contract are in
+its module documentation. The transposed forms of gemm, trmv, trsv,
+trmm, trsm and the syrk family, and the conjugate-transposed Hermitian
+rank updates, return `ErrorKind::Unsupported` until todos S1 and S2
+land (`STATUS.md`).
 
 **From JavaScript, with the raw module.** `blas.wasm` has no imports,
 so it instantiates with an empty import object. Arguments are flat

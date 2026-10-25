@@ -140,7 +140,9 @@ not pretend otherwise.
    argument checks. Where reference BLAS and this crate differ, the
    reference wins unless the deviation is recorded here with a
    reason. Target state: today's surface lacks the transposed forms,
-   strides and the reportable argument errors (todos S1–S3, S5, S6).
+   strides and the reference quick-return rules (todos S1–S3, S5);
+   the flags, the argument order and the reportable errors are in
+   place.
 7. **The crate never allocates.** Scratch space is the caller's,
    passed in and size-queried, LAPACK style. (Today's packed gemm
    allocates two panel buffers; closing that gap is todo S4 and the
@@ -367,7 +369,9 @@ diagonals end exactly real.
   shorter than the query is an argument error, never a silent slower
   path. Afterwards the crate never allocates and `alloc` is dropped
   (constraint 7, required by threading: no allocator inside a shared
-  memory). This shape is settled by constraint 7 together with the
+  memory). The wrappers already take and check the slice (S0); the
+  packed shape still allocates until S4 moves it onto the slice.
+  This shape is settled by constraint 7 together with the
   no-silent-miss rule rather than by a separate ruling: an optional
   workspace would hide a performance cliff, an owning value would
   need to allocate or be the same slice underneath, and exported
