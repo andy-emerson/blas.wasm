@@ -2,11 +2,13 @@
 //! complex, one triangle of C stored (reference BLAS's `zsyrk`, the
 //! non-Hermitian form).
 //!
-//! Implementation: the `dsyrk` shape — truncated column-zaxpy,
-//! 4-column fan-out over the common triangle segment, ragged edges
-//! scalar in the same per-element order (bit-for-bit tested). Column
-//! j's inner-l scalar is α·`A[j,l]`, unconjugated, and the diagonal is
-//! an ordinary complex element: no Hermitian fix-up.
+//! Implementation: the complex SYMMETRIC form (reference `zsyrk`): the
+//! truncated four-column sweep with the unconjugated scalar α·`A[j,l]`; the
+//! diagonal is an ordinary complex element, no fix-up.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `syrk` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans, Uplo};

@@ -8,8 +8,11 @@ decision that has been closed — with the alternative that lost and
 the condition that would reopen it. It describes the present. Open
 work, open decisions and the latest check results live in
 `STATUS.md`; what the code does, for the person using it, in
-`README.md`; the per-folder conventions in `src/README.md`,
-`tests/README.md` and `bench/README.md`.
+`README.md`; each operation family's chapter in its folder's README
+under `src/` (what it is, how it is computed, what it calls, how it
+performs), each level's map and scoreboard in the level's README; the
+per-folder conventions in `src/README.md`, `tests/README.md` and
+`bench/README.md`.
 
 ## The product
 
@@ -549,11 +552,27 @@ with warnings denied, so a broken link or bad markup fails; the Pages
 workflow runs `cargo doc` and publishes `target/doc`. Nothing else is
 added to the repository for the book.
 
-- One chapter per routine, written in the routine's file. `daxpy`
-  sets the standard; the rest are brought to it family by family as
-  work on them lands.
-- The content of the four READMEs migrates into the crate docs and
-  the READMEs shrink to a paragraph and a link.
+- One chapter per operation family, written as the family folder's
+  `README.md` and included as that module's documentation
+  (`#![doc = include_str!("README.md")]`), so the same file is the
+  page a reader finds beside the code on GitHub or in an editor and
+  the chapter in the book. The chapter says what the operation is,
+  the exact rounding sequence every shape reproduces, how it is
+  computed and why, what it calls, how it performs (the family's race
+  tables and its rows against the named competitors, each with its
+  run identifiers) and where its tests are. The routine's own module
+  header keeps only what differs by type (tile geometry, thresholds,
+  the complex conventions) and points at the chapter. Decision D15,
+  below.
+- One page per level, the level folder's `README.md`: the level's
+  families, its dependency graph down to the leaves, its scoreboard.
+  `src/README.md` is the whole map and is also the `book::call_graph`
+  chapter.
+- The dependency maps are generated from the source by
+  `tools/depmap.mjs` into a marked block in every one of those READMEs
+  and compared by the gate, so they cannot drift from the code. One
+  number has one owner: a measurement lives in the family or level
+  README it belongs to and is cited, not repeated, elsewhere.
 - The API reference and the book are the same site, so there is
   nothing to cross-link.
 
@@ -785,3 +804,16 @@ lost for c32, and `src/L2/chemv.rs` records why it keeps the
 single-column pass. The unit-stride-only convention the code
 currently follows is superseded by constraint 6 and closes with todo
 S3.
+- **D15 — When the book's chapters are written, and in what shape.**
+  Now, as the READMEs of the family and level folders under `src/`,
+  included as module documentation, with the dependency maps
+  generated and gate-checked (ruled 2026-10-25, replacing todo D4's
+  "chapters in M5"). The prose lands level by level as doc passes,
+  Level 3 first because the open decisions are there. Rejected:
+  leaving the chapters to M5 (the Human could not follow the
+  campaign reports without them); writing the chapters only in the
+  routine files' `//!` headers (invisible outside rustdoc, and four
+  copies of one family's explanation); a hand-maintained call graph
+  (the one that existed said Level 3 calls gemv, which K2 had made
+  false). Reopen trigger: a family whose four types diverge so far
+  that one chapter no longer describes them.

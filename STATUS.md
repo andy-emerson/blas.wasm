@@ -21,11 +21,12 @@ Last updated 2026-10-25.
 | 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | gate run 26, head `e4850c1`; the two roofline runs below re-check them |
 | `bench.yml` k2-race (two draws: the broadcast kernel against the pre-K2 packed shape, both called directly) | 1.73–1.91× on every shape, folds identical; table in `bench/README.md` | runs 40226735030, 40226834978 |
 | `bench.yml` k1-race (two draws: the packed syrk, trmm and trsm against the exported sweeps, both called directly) | 1.36–2.63× on every shape, folds identical; table in `bench/README.md` | runs 40231405123, 40232089887 |
-| `bench.yml` rooflines (two draws at the routed head) | probes bit-identical; Level 3 table in `bench/README.md`; the real gemm, syrk, trmm and trsm rows read 86–111% of the peak probe, which is bug B1 | runs 40232849090, 40233130801 |
+| `bench.yml` rooflines (two draws at the routed head) | probes bit-identical; Level 3 table in `src/L3/README.md`; the real gemm, syrk, trmm and trsm rows read 86–111% of the peak probe, which is bug B1 | runs 40232849090, 40233130801 |
+| `node tools/depmap.mjs --check` (the dependency blocks in the 27 source READMEs against the code) | match | gate run 28, head `260c50a`; local at the Level 3 doc pass |
 | `bench.yml` tri-race and gemm-t-race (two draws each, candidates called directly, workspaces outside the timed call) | every fold identical; verdicts and tables in `bench/README.md` | runs 40212210771, 40212213162, 40212214964, 40212217524 |
-| `bench.yml` b0 (two draws: OpenBLAS-wasm, BLIS-wasm, blas.wasm in one Node on one runner, one thread) | rows and verdict in `bench/README.md`: ties OpenBLAS on dgemm and dsyrk, 1.1–1.27× behind on sgemm, dsymm, dtrmm, dtrsm, ahead on the complex types; ahead of BLIS on every row | runs 40232073684, 40232628850 (pre-campaign draws 40220022112, 40220778110) |
+| `bench.yml` b0 (two draws: OpenBLAS-wasm, BLIS-wasm, blas.wasm in one Node on one runner, one thread) | rows and verdict in `src/L3/README.md`: ties OpenBLAS on dgemm and dsyrk, 1.1–1.27× behind on sgemm, dsymm, dtrmm, dtrsm, ahead on the complex types; ahead of BLIS on every row | runs 40232073684, 40232628850 (pre-campaign draws 40220022112, 40220778110) |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
-| gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test (the error slot included), binary audit against `abi/surface.json` (133 exports), the book with warnings denied | run 26, head `e4850c1` (the last crate code commit), github.com/andy-emerson/blas.wasm/actions/runs/40232081694 |
+| gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test (the error slot included), binary audit against `abi/surface.json` (133 exports), the dependency maps, the book with warnings denied | run 28, head `260c50a` (the folder move, the last code commit), github.com/andy-emerson/blas.wasm/actions/runs/40239509801 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; the one doctest (the `daxpy` chapter's example) passes | gate run 26, head `e4850c1`; local at the doc pass that followed |
 | binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 133 exports, 0 relaxed-SIMD | gate run 26, head `e4850c1` |
 
@@ -59,9 +60,12 @@ against OpenBLAS's wasm port true for zgemm (1.05×) and cgemm
   before closing (the transposed routing is provisional until then).
   Gates: the M2 merge recommendation.
 
-Four more gate the M2 merge. Each was settled by the Agent during the
-M2 reviews and is reopened here because it is the Human's to close;
-the fuller framing is owed before a ruling.
+Three more gate the M2 merge. Each was settled by the Agent during
+the M2 reviews and is reopened here because it is the Human's to
+close; the fuller framing is owed before a ruling. (D15, the book's
+chapters, was closed by the Human on 2026-10-25: the family and level
+READMEs under `src/` are the chapters, written now; `DESIGN.md`,
+"Decisions closed".)
 
 - **D12 — The reference's zero-multiplier skips.** Reference BLAS
   skips a column whose multiplier is exactly zero in ger, syr, syr2,
@@ -83,14 +87,6 @@ the fuller framing is owed before a ruling.
   branch now has `abi/surface.json` as the one owner, read by the
   audit in both workflows. Options: (1) keep the file; (2) revert to
   the two workflow literals and a review rule. Gates: the M2 merge.
-- **D15 — When the book's chapters are written.** Today the crate
-  documentation is the crate page, the call-graph chapter and one
-  routine chapter (`daxpy`); every other routine page carries its
-  module header. The approved plan writes the chapters in M5 (todo
-  D4). Options: (1) leave D4 in M5; (2) pull it forward, before the
-  M2 merge or as M2's successor. Gates: the plan's order; what README
-  may call the documentation until then.
-
 Only the Human closes these. D3's ruling (a race, not a pick) is
 closed in `DESIGN.md`; what remains open is the closing question
 above. D8 (the workspace shape) was settled by constraint 7 and is
@@ -258,10 +254,18 @@ above.
 - [ ] **B — The competitor table**: OpenBLAS and BLIS under
   Emscripten, XNNPACK, stdlib, both thread modes, two draws. Evidence:
   the published table with configurations and run identifiers. (5–8)
-- [ ] **D4 — Book migration**: the READMEs become pointers, every
-  routine has a chapter to the `daxpy` standard. Evidence: `cargo doc`
-  clean with warnings denied; every chapter's example runs under
-  `cargo test`; merge-scale documentation review. (3–5)
+- [ ] **D4 — The chapters** (pulled forward from M5 by D15; in
+  progress on this branch): one README per family and per level under
+  `src/`, included as the module's documentation, with the generated
+  dependency maps. Done: the Level 3 chapter and its six families
+  (gemm, symm, syrk, syr2k, trmm, trsm), the source map
+  (`src/README.md`, also the `book::call_graph` chapter), the Level 3
+  routine headers trimmed to what differs by type. Not done: the
+  Level 2 and Level 1 chapters (seven and ten families; the Level 1
+  and 2 scoreboards move from `bench/README.md` with them), the Level
+  2 and 1 routine headers, and a runnable example per chapter to the
+  `daxpy` standard. Evidence: `cargo doc` clean with warnings denied;
+  `tools/depmap.mjs --check`; merge-scale documentation review. (3–5)
 
 Committed total: 58–99 engineer-days; optional campaigns 18–35 more.
 

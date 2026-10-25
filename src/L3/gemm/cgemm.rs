@@ -1,19 +1,16 @@
 //! `cgemm` — complex matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: a 4-column fused column-caxpy (`kernels::caxpy4`)
-//! below 8 MB of A and a BLIS-style packed-panel 4×4 complex register
-//! tile at and above. A transposed or conjugated A (conjugation an
-//! exact sign flip) is packed from a transposed read above the packed
-//! threshold (`cgemm_packed_op`); a transposed B with A untransposed,
-//! and every transposed operand below the threshold, is copied into
-//! the workspace first (`cgemm_copy_op`), per the race in
-//! `bench/README.md`, where the B-only pack lost at every size. The
-//! plain cgemv-per-column loop stays as `cgemm_colaxpy`, the
-//! raced-and-bit-checked reference; all shapes are bit-for-bit
-//! identical, per-element sequence βC then ascending k. Measured: the
-//! packed shape wins only at and above 8 MB (+12% at 1024³, two runner
-//! draws unanimous; 256³–512³ and deep-K were noise, so col4 keeps
-//! them).
+//! Implementation: the fused four-column stream (`kernels::caxpy4`) below
+//! 8 MB of A and the packed 4×4 complex register tile at and above; a
+//! transposed or conjugated A is packed from a transposed read above the
+//! threshold (`cgemm_packed_op`); a transposed B alone, and every
+//! transposed operand below the threshold, is copied into the workspace
+//! first (`cgemm_copy_op`), per the race. The reference `cgemm_colaxpy`
+//! stays exported.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `gemm` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans};

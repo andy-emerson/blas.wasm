@@ -2,12 +2,14 @@
 //! C ← αBA + βC (right), A Hermitian with one triangle stored
 //! (diagonal treated as real, per the storage convention).
 //!
-//! Implementation: the `dsymm` shapes — left side is `chemv` per
-//! column of B/C (riding the fused column pass); right side is a
-//! 4-column fan-out column-caxpy sweep with the Hermitian element
-//! looked up across the stored triangle (`cher_at` — conjugating on
-//! the reflected side, real on the diagonal); per-element rounding
-//! sequence identical to the plain sweep, bit-for-bit tested.
+//! Implementation: left side `chemv` per column of B; right side the
+//! four-column fan-out sweep with the Hermitian element read across the
+//! stored triangle (`cher_at`: conjugated on the reflected side, real on
+//! the diagonal).
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `symm` module page.
 
 use super::super::{check_mat, cher_at};
 use crate::{Error, Side, Uplo};

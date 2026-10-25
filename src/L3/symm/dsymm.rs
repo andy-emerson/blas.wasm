@@ -1,12 +1,13 @@
 //! `dsymm` — symmetric matrix multiply: C ← αAB + βC (left) or
 //! C ← αBA + βC (right), A symmetric with one triangle stored.
 //!
-//! Implementation: left side is `dsymv` per column of B/C; right side
-//! is a 4-column fan-out column-daxpy sweep (each B
-//! column streams once per four C columns — the dgemm `col4` shape —
-//! with the symmetric element looked up across the stored triangle;
-//! per-element rounding sequence identical to the plain sweep,
-//! bit-for-bit tested).
+//! Implementation: left side `dsymv` per column of B; right side the
+//! four-column fan-out sweep with the symmetric element read across the
+//! stored triangle (`dsym_at`).
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `symm` module page.
 
 use super::super::{check_mat, dsym_at};
 use crate::{Error, Side, Uplo};

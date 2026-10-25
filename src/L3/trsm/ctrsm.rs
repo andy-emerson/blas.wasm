@@ -1,20 +1,18 @@
 //! `ctrsm` — triangular solve, many right-hand sides, in place:
 //! B ← αA⁻¹B (left) or B ← αBA⁻¹ (right), complex.
 //!
-//! Implementation: the `dtrsm` shapes verbatim with complex scalars —
-//! left side is αscal then four B columns walking the `ctrsv`
-//! elimination in lockstep sharing each A column read
-//! (`kernels::caxpy4`; divisions by Smith's algorithm, `C32`'s
-//! guarded `/`); right side fans already-solved out-of-group columns
-//! in via one shared stream each, then finishes the in-group
-//! elimination in the original order, multiplying by the diagonal's
-//! reciprocal (reference `ctrsm`'s ONE/A(j,j) — kept). Same reorder
-//! disclosure as the real layers: UPPER-right stays bit-for-bit the plain sweep;
-//! LOWER-right's out-of-group adds precede the in-group adds —
-//! deterministic, documented, mirrored by the tests' replay. No
-//! singularity check. The transposed and
-//! conjugate-transposed forms route between a workspace copy (left) and
-//! the no-copy accessor kernel (right) per the race (`bench/README.md`).
+//! Implementation: the lockstep column sweeps with complex scalars (left:
+//! αscal then four columns of B through the `ctrsv` elimination,
+//! divisions by Smith's algorithm; right: the solved out-of-group columns
+//! one stream each, then the in-group elimination multiplying by the
+//! diagonal's reciprocal, reference `ctrsm`'s ONE/A(j,j)). No singularity
+//! check. The transposed and conjugate-transposed forms route the
+//! workspace copy on the left (`ctrsm_copy`) and the accessor kernel on
+//! the right (`ctrsm_stream`).
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `trsm` module page.
 
 use super::super::check_mat;
 use crate::{Diag, Error, Side, Trans, Uplo};

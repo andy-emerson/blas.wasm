@@ -1,17 +1,14 @@
 //! `sgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: the BLIS-style packed-panel shape with the K2
-//! micro-kernel at every size (`sgemm_packed_bcast`: α folded into the
-//! B panel at pack time, B broadcast by lane shuffles, two loads of A,
-//! one of B, four shuffles, eight multiplies and eight adds per k step);
-//! transposed operands are packed from a transposed read
-//! (`sgemm_packed_op`). Every shape is bit-identical to the plain
-//! sgemv-per-column reference, kept as `sgemm_colaxpy`; the losers of
-//! the races stay exported: `sgemm_tiled` (the 8×4 register tile that
-//! served below 3 MB of A until K2 beat it 1.2–1.5× at every size),
-//! `sgemm_col4` (the fused stream) and `sgemm_packed` (the packed shape
-//! with the pre-K2 kernel, 1.7–1.9× slower on the runner, two draws:
-//! `bench/README.md`).
+//! Implementation: the packed-panel shape with the K2 broadcast micro-
+//! kernel (8×4 tile, KC = 256, MC = 128) at every size,
+//! `sgemm_packed_bcast`; transposed operands are packed from a transposed
+//! read (`sgemm_packed_op`). The reference `sgemm_colaxpy` and the races'
+//! losers `sgemm_col4`, `sgemm_tiled` and `sgemm_packed` stay exported.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `gemm` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans};

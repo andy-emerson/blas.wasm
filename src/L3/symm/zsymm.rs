@@ -2,16 +2,15 @@
 //! C ← αBA + βC (right), A symmetric (not Hermitian) with one triangle
 //! stored — reference BLAS's `zsymm`.
 //!
-//! Implementation: the `zhemm` shapes without the conjugation — left
-//! side is a symmetric matrix-vector pass per column of B/C (the fused
-//! column pass of `zhemv` on the unconjugated product form, a
-//! crate-private kernel here since reference BLAS has no symmetric
-//! complex matrix-vector routine); right side is a 4-column fan-out
-//! column-axpy sweep with the symmetric element looked up across the
-//! stored triangle (`zsym_at`, the mirror unconjugated, the diagonal an
-//! ordinary complex element) whose per-element rounding sequence is
-//! identical to the plain sweep, bit-for-bit tested; the left side's
-//! fused pass re-folds its reduction and is bounds-tested.
+//! Implementation: the complex SYMMETRIC form (reference `zsymm`): left
+//! side a crate-private fused pass per column on the unconjugated product
+//! (reference BLAS has no symmetric complex matrix–vector routine); right
+//! side the four-column sweep with the unconjugated mirror (`zsym_at`),
+//! the diagonal an ordinary complex element.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `symm` module page.
 
 use super::super::{check_mat, zsym_at};
 use crate::{Error, Side, Uplo};

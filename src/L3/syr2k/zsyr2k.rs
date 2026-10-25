@@ -2,14 +2,13 @@
 //! α and β complex, one triangle of C stored (reference BLAS's
 //! `zsyr2k`, the non-Hermitian form).
 //!
-//! Implementation: the `dsyr2k` shape — truncated column-zaxpy,
-//! 4-column fan-out over the common triangle segment for both the
-//! A-sourced and B-sourced streams, ragged edges scalar in the same
-//! per-element order (bit-for-bit tested). Column j's inner-l scalars
-//! are α·`B[j,l]` (applied to A's column) then α·`A[j,l]` (applied to
-//! B's column), unconjugated; within each inner index the A-sourced
-//! add precedes the B-sourced add per element, as in the plain
-//! two-stream sweep. The diagonal is an ordinary complex element.
+//! Implementation: the complex SYMMETRIC form (reference `zsyr2k`): the
+//! truncated four-column sweep with unconjugated scalars; no diagonal
+//! fix-up.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `syr2k` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans, Uplo};

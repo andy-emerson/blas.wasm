@@ -1,25 +1,17 @@
 //! `dtrmm` — triangular matrix multiply, in place:
 //! B ← αAB (left) or B ← αBA (right), A triangular.
 //!
-//! Implementation: both sides run on the packing layer
-//! (`dtrmm_left_packed`, `dtrmm_right_packed`): the off-diagonal
-//! terms go through the packed gemm's 4×4 broadcast tile, the
-//! diagonal blocks through a lane routine (left) or the sweep's own
-//! column code (right), in place, with every element's terms in the
-//! order the column sweeps used — the diagonal product first, then
-//! ascending l for an upper left side and descending for a lower one;
-//! on the right the in-group terms then the out-of-group ones in
-//! ascending k, a documented reorder of the plain sweep for UPPER
-//! (the tests' scalar replay mirrors it). Results are bit-for-bit the
-//! sweeps (tested), which stay exported as `dtrmm_left_sweep` and
-//! `dtrmm_right_sweep`. The K1 race: 1.4–2.1× over the sweeps on
-//! every shape, two runner draws (`bench/README.md`). A fused-FMA variant
-//! measured better in the campaign record step-1 race but is DEFERRED at the f64
-//! campaign close: wasm relaxed-madd rounding is implementation-
-//! dependent, so it trades away cross-target bit-identity — an
-//! architect decision; DESIGN.md, "Fast mode is a lever". The transposed forms route
-//! between a workspace copy and the no-copy kernels per the race
-//! (`bench/README.md`).
+//! Implementation: both sides on the packing layer (`dtrmm_left_packed`,
+//! `dtrmm_right_packed`: the 4×4 broadcast tile for the off-diagonal
+//! terms, a lane routine on the left and the sweep's column code on the
+//! right for the diagonal blocks, every term in the sweep's order); the
+//! sweeps stay exported as `dtrmm_left_sweep` and `dtrmm_right_sweep`.
+//! The transposed forms route the no-copy kernels (`dtrmm_stream`) over
+//! the workspace copy (`dtrmm_copy`), per the race.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `trmm` module page.
 
 use super::super::check_mat;
 use super::super::dgemm::{tile_4x4_packed_bcast, KC, MC, MR};

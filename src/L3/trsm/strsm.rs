@@ -1,25 +1,18 @@
 //! `strsm` — triangular solve, many right-hand sides, in place:
 //! B ← αA⁻¹B (left) or B ← αBA⁻¹ (right).
 //!
-//! Implementation: both sides run on the packing layer
-//! (`strsm_left_packed`, `strsm_right_packed`): the already-solved
-//! rows (left) or columns (right) enter through the packed gemm's 8×4
-//! broadcast tile from panels appended as each block is solved, the
-//! diagonal blocks through a lane solve (left) or the sweep's own
-//! in-group elimination with reference `strsm`'s multiply by the
-//! reciprocal (right), in place, with every element's terms in the
-//! order the column sweeps used — α first, then the subtractions in
-//! elimination order, then the diagonal; on the right the solved
-//! columns outside the group then the in-group ones, a documented
-//! reorder of the plain sweep for LOWER (the tests' scalar replay
-//! mirrors it). Results are bit-for-bit the sweeps (tested), which
-//! stay exported as `strsm_left_sweep` and `strsm_right_sweep`. The
-//! K1 race: 1.4–2.1× over the sweeps on every shape, two runner draws
-//! (`bench/README.md`). The fused-FMA variant is DEFERRED at the f32
-//! campaign close (relaxed-madd rounding is implementation-dependent
-//! — architect decision; DESIGN.md, "Fast mode is a lever"). The transposed forms route
-//! between a workspace copy and the no-copy kernels per the race
-//! (`bench/README.md`).
+//! Implementation: both sides on the packing layer (`strsm_left_packed`,
+//! `strsm_right_packed`: the solved rows or columns enter through the 8×4
+//! broadcast tile from panels appended as each block is solved; the
+//! diagonal block is solved on lanes on the left, by the sweep's in-group
+//! elimination and reciprocal on the right); the sweeps stay exported as
+//! `strsm_left_sweep` and `strsm_right_sweep`. The transposed forms route
+//! the no-copy kernels (`strsm_stream`) over the workspace copy
+//! (`strsm_copy`), per the race.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `trsm` module page.
 
 use super::super::check_mat;
 use super::super::dtrmm::right_panel_base;

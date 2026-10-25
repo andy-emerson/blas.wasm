@@ -1,25 +1,18 @@
 //! `dtrsm` — triangular solve, many right-hand sides, in place:
 //! B ← αA⁻¹B (left) or B ← αBA⁻¹ (right).
 //!
-//! Implementation: both sides run on the packing layer
-//! (`dtrsm_left_packed`, `dtrsm_right_packed`): the already-solved
-//! rows (left) or columns (right) enter through the packed gemm's 4×4
-//! broadcast tile from panels appended as each block is solved, the
-//! diagonal blocks through a lane solve (left) or the sweep's own
-//! in-group elimination with reference `dtrsm`'s multiply by the
-//! reciprocal (right), in place, with every element's terms in the
-//! order the column sweeps used — α first, then the subtractions in
-//! elimination order, then the diagonal; on the right the solved
-//! columns outside the group then the in-group ones, a documented
-//! reorder of the plain sweep for LOWER (the tests' scalar replay
-//! mirrors it). Results are bit-for-bit the sweeps (tested), which
-//! stay exported as `dtrsm_left_sweep` and `dtrsm_right_sweep`. The
-//! K1 race: 1.4–2.1× over the sweeps on every shape, two runner draws
-//! (`bench/README.md`). The fused-FMA variant is DEFERRED at the f64
-//! campaign close (relaxed-madd rounding is implementation-dependent
-//! — architect decision; DESIGN.md, "Fast mode is a lever"). The transposed forms route
-//! between a workspace copy and the no-copy kernels per the race
-//! (`bench/README.md`).
+//! Implementation: both sides on the packing layer (`dtrsm_left_packed`,
+//! `dtrsm_right_packed`: the solved rows or columns enter through the 4×4
+//! broadcast tile from panels appended as each block is solved; the
+//! diagonal block is solved on lanes on the left, by the sweep's in-group
+//! elimination and reciprocal on the right); the sweeps stay exported as
+//! `dtrsm_left_sweep` and `dtrsm_right_sweep`. The transposed forms route
+//! the no-copy kernels (`dtrsm_stream`) over the workspace copy
+//! (`dtrsm_copy`), per the race.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `trsm` module page.
 
 use super::super::check_mat;
 use super::super::dgemm::{tile_4x4_packed_bcast, KC, MC, MR};

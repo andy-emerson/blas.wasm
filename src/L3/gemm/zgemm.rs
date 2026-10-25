@@ -1,18 +1,15 @@
 //! `zgemm` — complex matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: size-dispatched:
-//! 4-column fused column-zaxpy (`kernels::zaxpy4`) below 1 MB of A,
-//! BLIS-style packed-panel 2×4 complex register tile at and above
-//! (two runner draws unanimous at every measured size: 1.08–1.15× at
-//! 256³ to 1.33× at 1024³). The packed tile is the c64 register
-//! geometry the col4-era doc recorded as a non-starter — packing
-//! removes the strided k-walk that made it one. The plain
-//! zgemv-per-column loop stays as `zgemm_colaxpy`, the raced-and-
-//! bit-checked reference; all shapes are bit-for-bit identical,
-//! per-element sequence βC then ascending k. Transposed or conjugated
-//! operands (conjugation an exact sign flip) are packed from a
-//! transposed read above the packed threshold (`zgemm_packed_op`) and
-//! copied into the workspace below it (`zgemm_copy_op`), per the race.
+//! Implementation: the fused four-column stream (`kernels::zaxpy4`) below
+//! 1 MB of A and the packed 2×4 complex register tile at and above;
+//! transposed or conjugated operands are packed from a transposed read
+//! above the threshold (`zgemm_packed_op`) and copied into the workspace
+//! below it (`zgemm_copy_op`). The reference `zgemm_colaxpy` stays
+//! exported.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `gemm` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans};

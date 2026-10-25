@@ -13,9 +13,14 @@ decompositions (solve, inverse, eigen, SVD) are a separate project
 that depends on this crate. Why it is built this way is `DESIGN.md`;
 what is open is `STATUS.md`.
 
-Layout: one file per BLAS routine per number type in netlib naming
-(`daxpy.rs`, `saxpy.rs`, … — convention: `src/README.md`), one folder
-per level. Counting convention, used everywhere: **23 routines** per
+Layout: one folder per level (`src/L1`, `src/L2`, `src/L3`), one
+folder per operation family inside it (`src/L3/gemm/`, …), one file
+per BLAS routine per number type in netlib naming inside that
+(`dgemm.rs`, `sgemm.rs`, `zgemm.rs`, `cgemm.rs` — convention:
+`src/README.md`). Every folder's README is its chapter in the book: a
+family's README says what the operation is, how it is computed, what
+it calls and how it performs; a level's README is the level's map and
+scoreboard. Counting convention, used everywhere: **23 routines** per
 real type (netlib names = files; flag variants folded, so gemv covers
 N/T and symm/trmm/trsm cover both sides) which split into **27
 distinct operations** (the call-graph nodes). The complex layers
@@ -37,10 +42,12 @@ review (`AGENTS.md`) judges it against that reader.
 | `README.md` (this file) | what is built and how to call it | the person using the library |
 | `DESIGN.md` | why it is built this way: product, constraints, claims, design by part, closed decisions with rejected alternatives and reopen triggers | the person building and maintaining it |
 | `STATUS.md` | open work (todos, bugs, open decisions) and the latest check results | whoever picks the work up next |
-| `src/README.md` | routine naming and the call graph | maintainer |
+| `src/README.md` | the map of the source: the folder layout, the naming convention, who calls whom (generated from the code, checked by the gate) | maintainer |
+| `src/L1/README.md`, `src/L2/README.md`, `src/L3/README.md` | one level each: its families, its dependency graph down to the leaves, its scoreboard | the person using or studying the library |
+| `src/L*/<family>/README.md` | one operation family each (gemm, symv, axpy, …): the operation, the exact rounding sequence every shape reproduces, how it is computed and why, what it calls (generated), how it performs against the machine and the named competitors, where its tests are | the person using or studying the library |
 | `tests/README.md` | what each routine is tested to, and the cross-target bit patterns | maintainer |
-| `bench/README.md` | the measurement method and the current scoreboard | maintainer |
-| the crate documentation (`cargo doc --open`; GitHub Pages after merge) | the book: each routine's chapter beside its code, the mathematics and the rounding-order arguments, examples compiled by `cargo test` | the person using or studying the library |
+| `bench/README.md` | the measurement method, the instruments and their defects, the Level 1 and 2 scoreboards until their READMEs take them | maintainer |
+| the crate documentation (`cargo doc --open`; GitHub Pages after merge) | the book: the READMEs above rendered as chapters beside the code they describe, each routine's page from its module header, the mathematics and the rounding-order arguments, examples compiled by `cargo test` | the person using or studying the library |
 | `AGENTS.md` | the working agreement between the Human and the Agent (unedited upstream release; `CLAUDE.md` points at it) | both |
 
 ## What is built

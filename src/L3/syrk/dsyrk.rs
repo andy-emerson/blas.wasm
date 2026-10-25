@@ -1,17 +1,15 @@
 //! `dsyrk` — symmetric rank-k (Gram-matrix) update:
 //! C ← αAAᵀ + βC, one triangle of C stored.
 //!
-//! Implementation: the packed gemm shape over the stored triangle
-//! (`dsyrk_packed`): A's rows are the left panel, A's rows read as
-//! op(B) = Aᵀ the right panel with α folded in, the 4×4 broadcast tile
-//! the micro-kernel; tiles in the unstored triangle are skipped and
-//! the tiles that cross the diagonal are computed into scratch and
-//! copied back only where stored. The per-element rounding sequence is
-//! the plain sweep's (βC, then ascending-k adds of `A[i,l]·(α·A[j,l])`),
-//! so the result is bit-for-bit the sweep (tested); the sweep itself,
-//! the truncated column-axpy fan-out that shipped before the K1 race,
-//! stays exported as `dsyrk_sweep`. The K1 race: 1.9–2.6× over the
-//! sweep on every shape, two runner draws (`bench/README.md`).
+//! Implementation: the packed gemm tile over the stored triangle
+//! (`dsyrk_packed`: A's rows as both panels, α folded into the right one,
+//! the diagonal tiles through scratch); `dsyrk_sweep`, the fan-out sweep
+//! that shipped before K1, stays exported as the tests' bit-identity
+//! reference.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `syrk` module page.
 
 use super::super::check_mat;
 use super::super::dgemm::{tile_4x4_packed_bcast, KC, MC, MR};

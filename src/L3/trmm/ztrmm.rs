@@ -1,17 +1,17 @@
 //! `ztrmm` — triangular matrix multiply, in place: B ← αAB (left) or
 //! B ← αBA (right), A triangular (complex).
 //!
-//! Implementation: the `dtrmm` shapes verbatim with complex scalars —
-//! left side walks four B columns in lockstep through the `ztrmv`
-//! column sweep sharing each A column read (`kernels::zaxpy4`); right
-//! side runs the in-group contributions in the original elimination
-//! order, then fans out-of-group source columns via one stream each.
-//! Same reorder disclosure as f64: LOWER-right keeps the plain
-//! sweep's per-element order bit-for-bit; UPPER-right's in-group adds
-//! precede the out-of-group adds — deterministic, documented, and
-//! mirrored by the tests' scalar replay. The transposed and
-//! conjugate-transposed forms route between a workspace copy (left) and
-//! the no-copy accessor kernel (right) per the race (`bench/README.md`).
+//! Implementation: the lockstep column sweeps with complex scalars (left:
+//! four columns of B through the `ztrmv` sweep sharing each A column,
+//! `kernels::zaxpy4`; right: in-group terms in elimination order, then
+//! the out-of-group columns one stream each). The transposed and
+//! conjugate-transposed forms route the workspace copy on the left
+//! (`ztrmm_copy`) and the accessor kernel on the right (`ztrmm_stream`),
+//! per the race.
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `trmm` module page.
 
 use super::super::check_mat;
 use crate::{Diag, Error, Side, Trans, Uplo};

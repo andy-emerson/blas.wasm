@@ -1,13 +1,14 @@
 //! `zherk` — Hermitian rank-k update: C ← αAAᴴ + βC, α and β REAL,
 //! one triangle of C stored.
 //!
-//! Implementation: the `dsyrk` shape — truncated column-zaxpy,
-//! 4-column fan-out over the common triangle segment, ragged edges
-//! scalar in the same per-element order (bit-for-bit tested). Column
-//! j's inner-l scalar is α·conj(`A[j,l]`). After each column's
-//! accumulation the diagonal's imaginary part is set to exactly 0 —
-//! reference `zherk`'s DBLE() convention (the products' imaginary
-//! roundoff is discarded), the layer's Hermitian invariant.
+//! Implementation: the truncated four-column sweep over the stored
+//! triangle; column j's inner scalar is α·conj(`A[j,l]`), and after each
+//! column the diagonal's imaginary part is set to exactly zero (reference
+//! `zherk`'s DBLE() convention).
+//!
+//! The family's chapter — what the operation is, exactly which rounding
+//! sequence every shape reproduces, how it is computed, what it calls and
+//! how it performs — is this folder's README, the `syrk` module page.
 
 use super::super::check_mat;
 use crate::{Error, Trans, Uplo};
