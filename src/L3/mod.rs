@@ -82,7 +82,7 @@ pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: 
 	}
 }
 
-pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed};
+pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_copy_op, dgemm_copy_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed};
 #[allow(unused_imports)]
 pub(crate) use dgemm::dgemm_k;
 pub use dsymm::dsymm;
@@ -100,7 +100,7 @@ pub(crate) use dtrmm::{dtrmm_left_k, dtrmm_right_k};
 pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream};
 #[allow(unused_imports)]
 pub(crate) use dtrsm::{dtrsm_left_k, dtrsm_right_k};
-pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed};
+pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed};
 #[allow(unused_imports)]
 pub(crate) use sgemm::sgemm_k;
 pub use ssymm::ssymm;
@@ -118,7 +118,7 @@ pub(crate) use strmm::{strmm_left_k, strmm_right_k};
 pub use strsm::{strsm, strsm_work, strsm_copy, strsm_copy_work, strsm_stream};
 #[allow(unused_imports)]
 pub(crate) use strsm::{strsm_left_k, strsm_right_k};
-pub use zgemm::{zgemm, zgemm_work, zgemm_packed_work, zgemm_packed_op, zgemm_packed_op_work, zgemm_colaxpy, zgemm_packed};
+pub use zgemm::{zgemm, zgemm_work, zgemm_packed_work, zgemm_packed_op, zgemm_packed_op_work, zgemm_copy_op, zgemm_copy_op_work, zgemm_colaxpy, zgemm_packed};
 #[allow(unused_imports)]
 pub(crate) use zgemm::zgemm_k;
 pub use zhemm::zhemm;
@@ -139,7 +139,7 @@ pub(crate) use ztrmm::{ztrmm_left_k, ztrmm_right_k};
 pub use ztrsm::{ztrsm, ztrsm_work, ztrsm_copy, ztrsm_copy_work, ztrsm_stream};
 #[allow(unused_imports)]
 pub(crate) use ztrsm::{ztrsm_left_k, ztrsm_right_k};
-pub use cgemm::{cgemm, cgemm_work, cgemm_packed_work, cgemm_packed_op, cgemm_packed_op_work, cgemm_colaxpy, cgemm_packed};
+pub use cgemm::{cgemm, cgemm_work, cgemm_packed_work, cgemm_packed_op, cgemm_packed_op_work, cgemm_copy_op, cgemm_copy_op_work, cgemm_colaxpy, cgemm_packed};
 #[allow(unused_imports)]
 pub(crate) use cgemm::cgemm_k;
 pub use chemm::chemm;

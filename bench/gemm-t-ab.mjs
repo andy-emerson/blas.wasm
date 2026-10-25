@@ -1,7 +1,9 @@
-// Transposed gemm race (decision D3 applied to gemm): `copy` (the netlib
-// wrapper: the transposed operand transposed into the workspace, then
-// the routed shape) vs `pack` (the packed shape packing straight from a
-// transposed read), all four number types, the flag pairs with a
+// Transposed gemm race (decision D3 applied to gemm): `copy`
+// (`*gemm_copy_op`: the transposed operand transposed into the
+// workspace, then the size-dispatched shape) vs `pack`
+// (`*gemm_packed_op`: the packed shape packing straight from a
+// transposed read), both called directly so the race outlives the
+// wrapper's routing, all four number types, the flag pairs with a
 // transposed operand, square and skinny shapes above the packed
 // threshold (the only zone where the two differ: below it the wrapper
 // takes the register tile after the copy either way). Interleaved

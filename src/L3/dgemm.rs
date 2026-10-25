@@ -61,28 +61,15 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	// Above the packed threshold a transposed operand is packed straight
 	// from a transposed read (`dgemm_packed_op`, the race's winner:
 	// `bench/README.md`); below it the operand is transposed into the
-	// workspace ahead of the register-tile shape. Both are bit-identical
-	// to the unflagged call on an explicit copy (tested); conjugation is
-	// an exact sign flip in either.
+	// workspace ahead of the register-tile shape (`dgemm_copy_op`,
+	// the other candidate). Both are bit-identical to the unflagged call
+	// on an explicit copy (tested); conjugation is an exact sign flip in
+	// either.
 	if (transa != Trans::NoTrans || transb != Trans::NoTrans) && packed_route(m, k) {
 		dgemm_packed_op(transa, transb, alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 		return Ok(());
 	}
-	let (work, a, lda) = if transa == Trans::NoTrans {
-		(work, a, lda)
-	} else {
-		let (ta, rest) = work.split_at_mut(m * k);
-		super::transpose_into(a, lda, k, m, ta, |x| x);
-		(rest, &*ta, m)
-	};
-	let (work, b, ldb) = if transb == Trans::NoTrans {
-		(work, b, ldb)
-	} else {
-		let (tb, rest) = work.split_at_mut(k * n);
-		super::transpose_into(b, ldb, n, k, tb, |x| x);
-		(rest, &*tb, k)
-	};
-	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
+	dgemm_copy_op(transa, transb, alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }
 
@@ -534,6 +521,70 @@ unsafe fn tile_4x4(
 		au[0].store(cp.add(u * ccs));
 		au[1].store(cp.add(u * ccs + 2));
 	}
+}
+
+/// The other candidate for the transposed forms (`STATUS.md`, decision
+/// D3): a transposed operand is transposed into `work`
+/// with `transpose_into` and the product then runs the size-dispatched
+/// no-transpose shapes on the copy, so every flag combination is the
+/// explicit-copy definition itself. The netlib wrapper routes it below
+/// the packed threshold, where the two candidates coincide; above it the
+/// race chose [`dgemm_packed_op`]. `work` needs [`dgemm_copy_op_work`]
+/// elements. Exported so the benchmarks can race it; it asserts rather
+/// than returning errors.
+#[allow(clippy::too_many_arguments)]
+pub fn dgemm_copy_op(
+	transa: Trans,
+	transb: Trans,
+	alpha: f64,
+	m: usize,
+	n: usize,
+	k: usize,
+	a: &[f64],
+	lda: usize,
+	b: &[f64],
+	ldb: usize,
+	beta: f64,
+	c: &mut [f64],
+	ldc: usize,
+	work: &mut [f64],
+) {
+	assert!(work.len() >= dgemm_copy_op_work(transa, transb, m, n, k), "dgemm_copy_op: workspace shorter than dgemm_copy_op_work");
+	if m == 0 || n == 0 || k == 0 {
+		// nothing to copy: C ← βC as every shape does before accumulating
+		for j in 0..n {
+			crate::L2::dscale_y(beta, &mut c[j * ldc..j * ldc + m]);
+		}
+		return;
+	}
+	let (work, a, lda) = if transa == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(m * k);
+		super::transpose_into(a, lda, k, m, ta, |x| x);
+		(rest, &*ta, m)
+	};
+	let (work, b, ldb) = if transb == Trans::NoTrans {
+		(work, b, ldb)
+	} else {
+		let (tb, rest) = work.split_at_mut(k * n);
+		super::transpose_into(b, ldb, n, k, tb, |x| x);
+		(rest, &*tb, k)
+	};
+	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
+}
+
+/// Elements of scratch [`dgemm_copy_op`] needs: the copies (`m·k` for a
+/// transposed `A`, `k·n` for a transposed `B`) plus [`dgemm_packed_work`]
+/// when the dispatcher routes to the packed shape.
+pub fn dgemm_copy_op_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
+	if m == 0 || n == 0 || k == 0 {
+		return 0;
+	}
+	let ta = if transa == Trans::NoTrans { 0 } else { m * k };
+	let tb = if transb == Trans::NoTrans { 0 } else { k * n };
+	let packed = if packed_route(m, k) { dgemm_packed_work(m, n, k) } else { 0 };
+	ta + tb + packed
 }
 
 /// The transposed forms above the packed threshold (the race's winner
