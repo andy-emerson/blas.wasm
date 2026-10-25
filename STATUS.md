@@ -17,7 +17,8 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 190 tests: L1 64, L2 44, L3 77, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S1 |
+| `cargo test --release` (native, 199 tests: L1 64, L2 53, L3 77, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S2 |
+| 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S2 |
 | `bench.yml` tri-race and gemm-t-race (two draws each) | every fold identical; verdicts in `bench/README.md` | runs 40208127781, 40208130046, 40208724791, 40208727304 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
@@ -120,10 +121,7 @@ warnings denied.
 ### M2 — Complete BLAS surface, netlib semantics
 
 - [x] **S0 — Enums, netlib argument order, `Result` on every routine,
-  workspace slices and size queries.** Done on this branch. The forms
-  the flags name but the crate has not built return
-  `ErrorKind::Unsupported`: `Trans::Trans`/`ConjTrans` on gemm, trmv,
-  trsv, trmm, trsm and the syrk family (todos S1, S2).
+  workspace slices and size queries.** Done on this branch.
 - [x] **S4 — The crate never allocates.** Done on this branch:
   `extern crate alloc` is gone (the build is the check), the packed
   gemm shapes run on the caller's slice, probe bit patterns unchanged.
@@ -137,8 +135,10 @@ warnings denied.
 - [ ] **B0 — Early sanity rows: OpenBLAS, BLIS, XNNPACK
   single-threaded**, to inform D11. Evidence: same engine, same
   machine, two draws; configurations recorded. (2–3)
-- [ ] **S2 — Level 2 op flags: transposed trmv and trsv.** Evidence:
-  bitwise replay plus residuals. (3–5)
+- [x] **S2 — Level 2 op flags: transposed trmv and trsv.** Done on
+  this branch: dot-fold reductions, replayed bit for bit (`tests/L2`),
+  probed native versus wasm; no routine reports `Unsupported` any
+  more and the error kind is gone.
 - [ ] **S3 — Vector strides on every Level 1 and 2 vector argument.**
   Evidence: the strided call equals the unit-stride call on a gathered
   copy, bitwise; negative strides versus reference. Gated by D7. (5–8)

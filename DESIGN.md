@@ -361,9 +361,14 @@ diagonals end exactly real.
   lanes across four right-hand sides. Which candidate each form
   routes to is the verdict of decision D3's race; the losers stay
   exported and tested.
-- **Level 2 op flags.** gemv already has N/T/C as separate entry
-  points. The transposed trmv and trsv are the `gemv_t`-shaped
-  reduction stream per column: new kernels, same contract.
+- **Level 2 op flags.** gemv has N/T/C. The transposed trmv and trsv
+  are the `gemv_t`-shaped reduction per stored column: each new
+  element is the Level 1 dot kernel's fold of the column's triangle
+  segment with `x` (op(A)'s row read contiguously, SIMD in the fold),
+  so their contract is that fold's deterministic order — replayed bit
+  for bit by the tests — rather than the sweep's sequence, which no
+  single-vector SIMD reduction can keep. The alternative, a copy of
+  op(A), costs as much as the operation itself and was not raced.
 - **Strides.** `incx`/`incy` on every Level 1 and Level 2 vector
   argument. Unit stride keeps the SIMD streams. Non-unit stride takes
   a path that reuses the lane emulation so the fold order is

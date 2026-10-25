@@ -55,8 +55,10 @@ review (`AGENTS.md`) judges it against that reader.
   type. Every tuned shape is bit-identical to its plain column-axpy
   reference except where an elimination order forbids it; those two
   cases are documented in their files and mirrored by their tests.
-- **Every Level 3 flag form**: `transa`/`transb` on gemm, `trans` on
-  the syrk family, `transa` on trmm and trsm, each bit-identical to the
+- **Every flag form.** Level 2: gemv's N/T/C, and the transposed trmv
+  and trsv as dot-fold reductions down the stored columns. Level 3:
+  `transa`/`transb` on gemm, `trans` on the syrk family, `transa` on
+  trmm and trsm, each bit-identical to the
   no-transpose call on an explicit transpose and each the winner of a
   two-draw runner race between candidates (`bench/README.md`): large
   gemm packs the transposed operand from a transposed read, trmm/trsm
@@ -71,7 +73,8 @@ review (`AGENTS.md`) judges it against that reader.
   dev-dependency only) on every CI run.
 - **Bit-identical native ↔ wasm**, by construction (`src/lanes.rs`
   emulates the SIMD lane structure elementwise off-wasm) and verified
-  by 90 determinism probes on every gate run (`tests/README.md`).
+  by 126 determinism probes on every gate run (`tests/README.md`),
+  every flag form included.
 - **The module.** `abi/` wraps every routine in a flat C ABI (the
   interim argument order, to be replaced by CBLAS names and order in
   todo C) and compiles to the standalone `blas.wasm` (~220 KB, 116 routines plus
@@ -89,9 +92,7 @@ review (`AGENTS.md`) judges it against that reader.
 ## What is not built
 
 Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
-and sequenced in `STATUS.md`: the transposed and conjugate-transposed
-forms of trmv and trsv (the flags exist and return
-`ErrorKind::Unsupported`); vector strides (`incx`/`incy`); the complex
+and sequenced in `STATUS.md`: vector strides (`incx`/`incy`); the complex
 symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
 `zrot`/`crot`; the `alpha == 0` / `beta == 1` quick returns and the
 NaN rules of reference BLAS (the zero-dimension quick returns are in
@@ -142,8 +143,8 @@ routine's own signature, error positions and rounding contract are in
 its module documentation. Every Level 3 flag form is built; a
 transposed form is bit-identical to the no-transpose call on an
 explicit transpose, and the work query counts whatever scratch the
-form routed needs. The transposed trmv and trsv return
-`ErrorKind::Unsupported` until todo S2 lands (`STATUS.md`).
+form routed needs. The transposed trmv and trsv reduce with the dot
+kernels' fold, a documented rounding order of their own.
 
 **From JavaScript, with the raw module.** `blas.wasm` has no imports,
 so it instantiates with an empty import object. Arguments are flat

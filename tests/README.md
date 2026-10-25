@@ -36,7 +36,7 @@ forms them).
 | nrm2 | error-bounded + over/underflow guard cases at each type's range (1e±300 / 1e±30) |
 | iamax | **exact index**, incl. BLAS first-occurrence tie-breaking |
 | rotg | defining identities + reference edge cases + subnormal smoke |
-| gemv, ger, syr, syr2, trmv, trsv | **bit-for-bit same-order scalar replay** + independent bounds (trsv also residual-verified) |
+| gemv, ger, syr, syr2, trmv, trsv | **bit-for-bit same-order scalar replay** + independent bounds (trsv also residual-verified); the transposed trmv/trsv **replay the dot kernel's register fold bit for bit** (the replays themselves checked against the public dot routines at every tail length) and agree with the no-transpose call on an explicit transpose within an n-scaled bound |
 | symv | error-bounded (the fused pass legitimately re-folds its reduction) |
 | gemm, syrk, syr2k | **bit-for-bit replay** + bounds; gemm's four shapes (colaxpy / tile / col4 / packed) cross-checked bit-identical — the packed replay crosses the KC/MC/MR block boundaries and a dispatch-zone replay routes above the packed threshold — so the size dispatch is invisible; every `trans` form **bit-identical to the no-transpose call on an explicit transpose**, all flag pairs, below and above the packed threshold, both gemm candidates, workspace NaN-filled |
 | symm | left: bounds (rides symv); right: **bit-for-bit replay** |
@@ -60,8 +60,8 @@ forms them).
 The standing guarantee: our code produces **identical bits on native
 x86-64 and wasm**, by construction (`../src/lanes.rs` emulates the
 SIMD lane structure elementwise off-wasm, and every reduction folds
-its lanes in a fixed order). It is verified by 90 determinism probes
-(21 f64 + 21 f32 + 24 c64 + 24 c32) — fixed-LCG inputs at odd sizes
+its lanes in a fixed order). It is verified by 126 determinism probes
+(30 f64 + 30 f32 + 33 c64 + 33 c32) — fixed-LCG inputs at odd sizes
 so every tail path runs, folded to one f64 — checked on every
 roofline run and on every reference-runner draw to date, **all green
 on every check**.
@@ -93,6 +93,15 @@ other change is a bug, not noise):
 | L3 trmm_right | `41079785fcc3c6a7` | `4107978600000000` |
 | L3 trsm_right | `402684638bea76a3` | `4026846380000000` |
 | L3 symm_right | `4107947163c33400` | `4107947140000000` |
+| L2 trmv_t | `40f0c3cb40dc742a` | `40f0c3cb40000000` |
+| L2 trsv_t | `408418578b718f20` | `40841857a0000000` |
+| L3 gemm_tn | `40f895a06cbee903` | `40f895a060000000` |
+| L3 gemm_tn_packed | `40d132e4926e7486` | `40e3689be8000000` |
+| L3 syrk_t | `411dfb833884c35d` | `411dfb82a0000000` |
+| L3 trmm_left_t | `410795926f9ff548` | `4107959220000000` |
+| L3 trsm_left_t | `402685d273fe9dd2` | `402685d260000000` |
+| L3 trmm_right_t | `410795a27293ea82` | `410795a240000000` |
+| L3 trsm_right_t | `4026865e6f582fa6` | `4026865e40000000` |
 
 The c64 probes (own recipes — complex LCG fills, re then im per
 element; complex results folded re+im):
@@ -123,6 +132,15 @@ element; complex results folded re+im):
 | L3 trmm_right | `411847a9ff1fcb03` |
 | L3 trsm_right | `40372a3fb5d5004e` |
 | L3 hemm_right | `41185b38c1688ef6` |
+| L2 trmv_c | `41008b988d4cb311` |
+| L2 trsv_c | `408829abed241b68` |
+| L3 gemm_cn | `4109a2648ff55d34` |
+| L3 gemm_cn_packed | `40d67c49dc8b338b` |
+| L3 herk_c | `412186fe5cdd2d34` |
+| L3 trmm_left_c | `41183fd4b48a4615` |
+| L3 trsm_left_c | `403731f3ecc1bbda` |
+| L3 trmm_right_c | `41184470caedab9f` |
+| L3 trsm_right_c | `40372cef16c9ea53` |
 
 And the c32 probes (f32 recipes, folds widened to f64 once at the
 end):
@@ -153,6 +171,15 @@ end):
 | L3 trmm_right | `4118482180000000` |
 | L3 trsm_right | `40372f9420000000` |
 | L3 hemm_right | `4118613a80000000` |
+| L2 trmv_c | `40ffb0d6c0000000` |
+| L2 trsv_c | `40883fcb40000000` |
+| L3 gemm_cn | `4109482b60000000` |
+| L3 gemm_cn_packed | `4101b228d4000000` |
+| L3 herk_c | `4121929160000000` |
+| L3 trmm_left_c | `411848ae00000000` |
+| L3 trsm_left_c | `40372e5da0000000` |
+| L3 trmm_right_c | `4118467f40000000` |
+| L3 trsm_right_c | `40373195e0000000` |
 
 Regenerate/verify: `cd ../bench && cargo run --release --bin native
 l{1,2,3}-bits[-f32|-z|-c]` for the native side; the roofline scripts
