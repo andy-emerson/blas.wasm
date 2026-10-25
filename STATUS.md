@@ -17,7 +17,7 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 164 tests: L1 64, L2 43, L3 52, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S0 |
+| `cargo test --release` (native, 166 tests: L1 64, L2 44, L3 53, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S4 and the zero-dimension fix |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
@@ -123,8 +123,9 @@ warnings denied.
   the flags name but the crate has not built return
   `ErrorKind::Unsupported`: `Trans::Trans`/`ConjTrans` on gemm, trmv,
   trsv, trmm, trsm and the syrk family (todos S1, S2).
-- [ ] **S4 — The crate never allocates.** Evidence: no `alloc` in
-  the crate; packed-gemm probe values unchanged. (1–2)
+- [x] **S4 — The crate never allocates.** Done on this branch:
+  `extern crate alloc` is gone (the build is the check), the packed
+  gemm shapes run on the caller's slice, probe bit patterns unchanged.
 - [ ] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,
   four types.** Evidence: the flagged call equals the unflagged call
   on an explicitly transposed copy, bitwise, every combination; each
@@ -141,9 +142,10 @@ warnings denied.
 - [ ] **S3 — Vector strides on every Level 1 and 2 vector argument.**
   Evidence: the strided call equals the unit-stride call on a gathered
   copy, bitwise; negative strides versus reference. Gated by D7. (5–8)
-- [ ] **S5 — Reference semantics**: quick returns, NaN propagation,
-  the complex symmetric symm/syrk/syr2k, `zrot`/`crot`. Evidence:
-  per-rule tests against the reference definitions. (4–6)
+- [ ] **S5 — Reference semantics**: the `alpha == 0` / `beta == 1`
+  quick returns (the zero-dimension returns are in place), NaN
+  propagation, the complex symmetric symm/syrk/syr2k, `zrot`/`crot`.
+  Evidence: per-rule tests against the reference definitions. (4–6)
 - [ ] **S6 — Argument errors reported with the xerbla index; the
   module error slot.** Evidence: every check path returns, never
   traps. (1–2)

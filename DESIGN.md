@@ -144,9 +144,8 @@ not pretend otherwise.
    the flags, the argument order and the reportable errors are in
    place.
 7. **The crate never allocates.** Scratch space is the caller's,
-   passed in and size-queried, LAPACK style. (Today's packed gemm
-   allocates two panel buffers; closing that gap is todo S4 and the
-   shape of the argument is decision D8.)
+   passed in and size-queried, LAPACK style: the crate is `no_std`
+   without `alloc`, and the build is the check.
 
 ## Claims, and what makes each true
 
@@ -367,11 +366,12 @@ diagonals end exactly real.
   query (`dgemm_work(m, k, n) -> usize`). Below the packed threshold
   the query returns zero, so small calls pass an empty slice; a slice
   shorter than the query is an argument error, never a silent slower
-  path. Afterwards the crate never allocates and `alloc` is dropped
-  (constraint 7, required by threading: no allocator inside a shared
-  memory). The wrappers already take and check the slice (S0); the
-  packed shape still allocates until S4 moves it onto the slice.
-  This shape is settled by constraint 7 together with the
+  path. The crate never allocates and has no `alloc` (constraint 7,
+  required by threading: no allocator inside a shared memory): the
+  packed gemm shape carves its two panels from the slice, and the
+  tests hand it a NaN-filled slice of exactly the queried size so a
+  read of unpacked scratch would show. This shape is settled by
+  constraint 7 together with the
   no-silent-miss rule rather than by a separate ruling: an optional
   workspace would hide a performance cliff, an owning value would
   need to allocate or be the same slice underneath, and exported

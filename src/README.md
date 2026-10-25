@@ -92,9 +92,15 @@ The names are netlib's; the signatures are ours (documented per file):
   `dgemv_k`, `dgemv_t_k`, `dsymm_left_k`, …), which is the tuned body
   and asserts its preconditions as a backstop.
 - **A trailing `work` slice** on gemm, the syrk family, trmm and trsm,
-  sized by the routine's `*_work` query; reference BLAS has no
-  workspace arguments because it allocates nothing, and this crate
-  will allocate nothing either (`../STATUS.md`, todo S4).
+  sized by the routine's `*_work` query (zero where the routed shape
+  needs none); reference BLAS has no workspace arguments because it
+  allocates nothing, and this crate allocates nothing either — the
+  kernels that pack (`*gemm_packed`, with their own `*gemm_packed_work`
+  query) take the slice too.
+- **Netlib quick returns on dimensions.** After the argument checks, a
+  zero `m` or `n` returns `Ok` with nothing written; gemm with `k = 0`
+  scales `C` by `β`. The `alpha == 0` / `beta == 1` quick returns are
+  todo S5 (`../STATUS.md`).
 - **Unit stride only.** Callers pass contiguous column slices with a
   column stride per matrix — no `incx`/`incy` today. Strides are
   planned (`../STATUS.md`, todo S3; the API shape is decision D7).

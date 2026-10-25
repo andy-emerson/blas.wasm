@@ -7,8 +7,10 @@
 //! Conventions (mirroring the crate, netlib heritage):
 //! - column-major matrices, `cs`/`acs`/`bcs`/`ccs` = column stride;
 //!   a rows x cols matrix pointer must be valid for exactly
-//!   `cs*(cols-1) + rows` elements (the crate asserts it and TRAPS on
-//!   violation - panics abort in wasm; no error codes);
+//!   `cs*(cols-1) + rows` elements; every argument error the crate
+//!   reports (`Err`) TRAPS here - panics abort in wasm; the error slot
+//!   is STATUS.md todo S6. The checks are netlib's: `cs >= max(1,
+//!   rows)`, so an empty matrix still needs `cs >= 1`;
 //! - `upper`/`unit` flags are u32, 0 = false, nonzero = true;
 //! - complex scalars pass as (re, im) argument pairs; complex arrays
 //!   are interleaved re,im pairs (C64 = 2xf64, C32 = 2xf32, the C99 /

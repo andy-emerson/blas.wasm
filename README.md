@@ -55,9 +55,12 @@ review (`AGENTS.md`) judges it against that reader.
   type. Every tuned shape is bit-identical to its plain column-axpy
   reference except where an elimination order forbids it; those two
   cases are documented in their files and mirrored by their tests.
-- **Zero runtime dependencies.** `no_std`; the four math entry points
-  the layer needs are vendored in `src/math.rs` and cross-checked bit
-  for bit against libm (a dev-dependency only) on every CI run.
+- **Zero runtime dependencies, zero allocation.** `no_std` without
+  `alloc`: the one routine family that needs scratch (gemm above its
+  packed threshold) takes it from the caller, sized by a query. The
+  four math entry points the layer needs are vendored in
+  `src/math.rs` and cross-checked bit for bit against libm (a
+  dev-dependency only) on every CI run.
 - **Bit-identical native ↔ wasm**, by construction (`src/lanes.rs`
   emulates the SIMD lane structure elementwise off-wasm) and verified
   by 90 determinism probes on every gate run (`tests/README.md`).
@@ -83,11 +86,11 @@ forms of gemm, trmv, trsv, trmm and trsm; the transposed forms of
 syrk/syr2k/herk/her2k (the flags exist and return
 `ErrorKind::Unsupported`); vector strides (`incx`/`incy`); the complex
 symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
-`zrot`/`crot`; the quick-return and NaN rules of reference BLAS; the
-module's exports use an invented argument order rather than CBLAS's
-and trap on an argument error instead of reporting it; packed gemm
-still allocates its two panel buffers internally although the caller
-already passes the workspace. Fused multiply-add variants
+`zrot`/`crot`; the `alpha == 0` / `beta == 1` quick returns and the
+NaN rules of reference BLAS (the zero-dimension quick returns are in
+place); the module's exports use an invented argument order rather
+than CBLAS's and trap on an argument error instead of reporting it.
+Fused multiply-add variants
 measured faster for some routines and are deliberately not shipped:
 relaxed-SIMD rounding is implementation-dependent and would forfeit
 cross-target bit-identity (`DESIGN.md`, "Fast mode is a lever").
@@ -155,7 +158,9 @@ This argument order is the interim flat ABI; the module's exports
 become the CBLAS names and order when todo C lands (`STATUS.md`), and
 the npm package will hide the memory management entirely. Argument
 errors trap today (the instance is lost; re-instantiate), and
-memory-bounds violations always will.
+memory-bounds violations always will. The crate's checks are netlib's,
+so a leading dimension of zero traps even for an empty matrix; pass
+at least 1.
 
 ## Testing contract — two axes, both required to land
 
