@@ -10,7 +10,7 @@
 //! per column. Evidence: docs/blas-ab-2026-07.md. The fused-FMA
 //! variant (measured better in the step-1 race) is DEFERRED at the
 //! f64 campaign close (relaxed-madd rounding is implementation-
-//! dependent — architect decision, recorded in ROADMAP).
+//! dependent — architect decision; DESIGN.md, "Fast mode is a lever").
 
 use super::{check_mat, dscale_y};
 use crate::kernels::daxpy4in;

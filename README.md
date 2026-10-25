@@ -17,6 +17,21 @@ Hermitian). Companion maps: `src/README.md` (who calls whom),
 `bench/README.md` (the measured benchmarks), `tests/README.md` (the
 bit-identical test results).
 
+## Documents and their jobs
+
+Each document has one job and one primary reader; the documentation
+review (`AGENTS.md`) judges it against that reader.
+
+| document | job | reader |
+|---|---|---|
+| `README.md` (this file) | what is built and how to call it | the person using the library |
+| `DESIGN.md` | why it is built this way: product, constraints, claims, design by part, closed decisions with rejected alternatives and reopen triggers | the person building and maintaining it |
+| `STATUS.md` | open work (todos, bugs, open decisions) and the latest check results | whoever picks the work up next |
+| `src/README.md` | routine naming and the call graph | maintainer |
+| `tests/README.md` | what each routine is tested to, and the cross-target bit patterns | maintainer |
+| `bench/README.md` | the measurement method and the current scoreboard | maintainer |
+| `AGENTS.md` | the working agreement between the Human and the Agent (unedited upstream release; `CLAUDE.md` points at it) | both |
+
 **Status — all four type layers are BUILT and TUNED (f64 campaign
 closed 2026-07-19; packed-gemm race across all four types
 2026-07-20; ZERO runtime dependencies since 2026-07-21 — the four
@@ -42,7 +57,7 @@ plain-English record in `../STATUS.md`, evidence per step in
   REFUTED (fused single-pass iamax — reverted, loss recorded in its
   module docs). Fused-FMA variants DEFERRED at the close
   (relaxed-madd rounding is implementation-dependent — trades away
-  cross-target bit-identity; architect decision, in ROADMAP).
+  cross-target bit-identity; architect decision; DESIGN.md, "Fast mode is a lever").
 - **f32** (built 2026-07-19, docs step 10): the tuned layer cloned
   one-for-one at double lane width; two measured deviations (8×4
   gemm tile, 3 MB dispatch threshold — runner-raced, container
@@ -74,8 +89,8 @@ plain-English record in `../STATUS.md`, evidence per step in
   where memory traffic binds: the win shrinks f64 → c32 as
   arithmetic density rises.
 
-Sequencing (Andy, 2026-07-18, revised same day; ROADMAP "BLAS
-campaign sequencing"): f64 tuned first — DONE; the tuned layer
+Sequencing (Andy, 2026-07-18, revised same day; now DESIGN.md "Scope is BLAS"
+): f64 tuned first — DONE; the tuned layer
 cloned into the other number types — f32, c64, c32 all DONE
 2026-07-19. **The four-type grid is complete**; per the sequencing,
 LAPACK-layer work (the kernel re-route onto this crate) is now

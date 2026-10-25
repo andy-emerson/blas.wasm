@@ -16,7 +16,7 @@
 //! adds — a deterministic, documented reorder (the tests' scalar
 //! replay mirrors it). The fused-FMA variant is DEFERRED at the f64
 //! campaign close (relaxed-madd rounding is implementation-dependent
-//! — architect decision, recorded in ROADMAP). Transpose forms: not
+//! — architect decision; DESIGN.md, "Fast mode is a lever"). Transpose forms: not
 //! built — no consumer yet.
 
 use super::check_mat;

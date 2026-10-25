@@ -18,7 +18,7 @@
 //! measured better in the step-1 race but is DEFERRED at the f32
 //! campaign close: wasm relaxed-madd rounding is implementation-
 //! dependent, so it trades away cross-target bit-identity — an
-//! architect decision, recorded in ROADMAP. Transpose forms: not
+//! architect decision; DESIGN.md, "Fast mode is a lever". Transpose forms: not
 //! built — no consumer yet.
 
 use super::check_mat;
