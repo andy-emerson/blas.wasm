@@ -30,9 +30,7 @@ function alloc32(values) {
 	return p;
 }
 
-// export surface: all 116 routines + memory + alloc pair
-const fns = Object.keys(e).filter((k) => typeof e[k] === 'function');
-check('exported functions', fns.length, 118);
+// The export and import counts are asserted by audit.mjs, not here.
 
 // ---- L1 f64: ddot([1,2,3],[4,5,6]) = 32
 {

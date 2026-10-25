@@ -427,42 +427,6 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
     sym[0] + sym[len(scs) - 1]
 }
 
-/// Tuning-campaign candidate row: the 4×4 register-tiled gemm on the
-/// same state/constants as run_l3_layer(0) — bit-identical output,
-/// raced for speed only.
-#[no_mangle]
-pub extern "C" fn run_l3_tuned_gemm() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym.as_mut_ptr(), len(scs)) };
-    l3::dgemm_tiled(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    sym[0] + sym[len(scs) - 1]
-}
-
-/// Same, for the 4-column fused candidate.
-#[no_mangle]
-pub extern "C" fn run_l3_col4_gemm() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym.as_mut_ptr(), len(scs)) };
-    l3::dgemm_col4(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    sym[0] + sym[len(scs) - 1]
-}
-
 /// Level-3 cross-target determinism probes: fixed LCG-filled 65×65
 /// matrices (odd — tails everywhere), one op each, folded column-wise
 /// with the layer's own asum. op order matches run_l3_layer plus
@@ -805,40 +769,6 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
         }
         _ => return f64::NAN,
     }
-    (sym[0] + sym[len(scs) - 1]) as f64
-}
-
-/// f32 gemm dispatch-check rows (tiled vs col4 on the same state) —
-/// the byte threshold is inherited from f64; these race it directly.
-#[no_mangle]
-pub extern "C" fn run_l3_tuned_gemm_f32() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a32.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b32.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym32.as_mut_ptr(), len(scs)) };
-    l3::sgemm_tiled(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
-    (sym[0] + sym[len(scs) - 1]) as f64
-}
-
-#[no_mangle]
-pub extern "C" fn run_l3_col4_gemm_f32() -> f64 {
-    use blas_wasm::L3 as l3;
-    let s = state_mut();
-    let n = s.n;
-    let acs = s.n;
-    let bcs = s.n;
-    let scs = s.n;
-    let len = |cs: usize| if n == 0 { 0 } else { cs * (n - 1) + n };
-    let a = unsafe { core::slice::from_raw_parts(s.a32.as_ptr(), len(acs)) };
-    let b = unsafe { core::slice::from_raw_parts(s.b32.as_ptr(), len(bcs)) };
-    let sym = unsafe { core::slice::from_raw_parts_mut(s.sym32.as_mut_ptr(), len(scs)) };
-    l3::sgemm_col4(0.001, n, n, n, a, acs, b, bcs, 0.5, sym, scs);
     (sym[0] + sym[len(scs) - 1]) as f64
 }
 

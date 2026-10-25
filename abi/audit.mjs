@@ -14,8 +14,11 @@
 //     swizzle, relaxed truncations, relaxed min/max, relaxed q15mulr,
 //     relaxed dot products, relaxed laneselect);
 //   - any function body cannot be decoded to its exact end, or ends on
-//     anything but `end`. An opcode this reader does not know is a
-//     failure, never a skip: the audit fails closed.
+//     anything but `end`. A top-level opcode this reader does not know
+//     is a failure, never a skip: the audit fails closed. Unassigned
+//     sub-opcodes inside the SIMD (below the relaxed family) and
+//     atomics ranges are not enumerated here; the engine's validation,
+//     which runs first, rejects them.
 //
 // --self-test assembles two fixtures in memory, one with
 // f32x4.relaxed_madd and one with f32x4.add, and checks that the scan
@@ -92,11 +95,11 @@ function exports(bytes, sec) {
 
 // ---------- instruction decoding ----------
 // Returns the list of relaxed-SIMD hits; throws on anything it cannot decode.
-function scanCode(bytes, sec, firstFuncIndex) {
-	if (!sec) return { functions: 0, instructions: 0, relaxed: [] };
+function scanCode(bytes, sec, firstFuncIndex, relaxed) {
+	if (!sec) return { functions: 0, instructions: 0, relaxed };
 	const r = new Reader(bytes, sec.start, sec.end);
 	const n = r.u32();
-	let instructions = 0; const relaxed = [];
+	let instructions = 0;
 	for (let f = 0; f < n; f++) {
 		const size = r.u32(); const bodyEnd = r.p + size;
 		const b = new Reader(bytes, r.p, bodyEnd);
@@ -178,9 +181,10 @@ export function audit(bytes, expect = {}) {
 	const imp = imports(bytes, by('import'));
 	const exp = exports(bytes, by('export'));
 	const importedFuncs = imp.filter((i) => i.kind === 'func').length;
+	const hits = []; // kept even if decoding fails part-way, so a relaxed op before the failure is still reported
 	let code;
-	try { code = scanCode(bytes, by('code'), importedFuncs); }
-	catch (e) { problems.push(`cannot decode code section: ${e.message}`); code = { functions: 0, instructions: 0, relaxed: [] }; }
+	try { code = scanCode(bytes, by('code'), importedFuncs, hits); }
+	catch (e) { problems.push(`cannot decode code section: ${e.message}`); code = { functions: 0, instructions: 0, relaxed: hits }; }
 	if (code.relaxed.length) problems.push(`${code.relaxed.length} relaxed-SIMD instruction(s): ` + code.relaxed.slice(0, 5).map((h) => `func ${h.func} @${h.offset} sub 0x${h.subop.toString(16)}`).join(', ') + (code.relaxed.length > 5 ? ', …' : ''));
 	if (expect.imports != null && imp.length !== expect.imports) problems.push(`imports: ${imp.length}, expected ${expect.imports}`);
 	if (expect.exports != null && exp.length !== expect.exports) problems.push(`exports: ${exp.length}, expected ${expect.exports}`);
@@ -206,7 +210,7 @@ export function selfTest() {
 	const plain = fixture([0x20, 0x00, 0x20, 0x01, 0xfd, 0xe4, 0x01]);                // f32x4.add (0xe4)
 	const a = audit(relaxed), b = audit(plain);
 	const results = [];
-	results.push([`relaxed fixture validates in this engine (${WebAssembly.validate(relaxed)})`, true]);
+	results.push(['relaxed fixture validates in this engine (so the scan, not the engine, is what rejects it)', WebAssembly.validate(relaxed) === true]);
 	results.push(['relaxed fixture is REJECTED by the scan', !a.ok && a.code.relaxed.length === 1 && a.code.relaxed[0].subop === 0x105]);
 	results.push(['plain simd fixture is accepted by the scan', b.ok && b.code.instructions === 4]);
 	return results;
@@ -221,10 +225,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
 		console.log(failed ? `\naudit self-test: ${failed} FAILED` : '\naudit self-test passed');
 		process.exit(failed ? 1 : 0);
 	}
-	const file = args.find((a) => !a.startsWith('--'));
-	if (!file) { console.error('usage: node audit.mjs <module.wasm> [--imports N] [--exports N] | --self-test'); process.exit(2); }
-	const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? Number(args[i + 1]) : undefined; };
-	const res = audit(readFileSync(file), { imports: opt('--imports'), exports: opt('--exports') });
+	const usage = () => { console.error('usage: node audit.mjs <module.wasm> [--imports N] [--exports N] | --self-test'); process.exit(2); };
+	let file; const expect = {};
+	for (let i = 0; i < args.length; i++) {
+		const a = args[i];
+		if (a === '--imports' || a === '--exports') {
+			const v = args[++i];
+			if (v === undefined || !/^\d+$/.test(v)) usage();
+			expect[a.slice(2)] = Number(v);
+		} else if (a.startsWith('--')) usage();
+		else if (file === undefined) file = a;
+		else usage();
+	}
+	if (file === undefined) usage();
+	const res = audit(readFileSync(file), expect);
 	console.log(`sections: ${res.sections.join(' ')}`);
 	console.log(`imports: ${res.imports.length}${res.imports.length ? ' (' + res.imports.map((i) => `${i.module}.${i.name}:${i.kind}`).join(', ') + ')' : ''}`);
 	console.log(`exports: ${res.exports.length} (${Object.entries(res.exportKinds).map(([k, v]) => `${v} ${k}`).join(', ')})`);
