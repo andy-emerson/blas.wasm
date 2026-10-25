@@ -49,21 +49,21 @@ pub fn dsyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f64, a: &[f64]
 	// op(A) is materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
 	// the unflagged call on an explicit copy (tested)
-	let (a, lda) = if trans == Trans::NoTrans {
-		(a, lda)
+	if trans == Trans::NoTrans {
+		dsyrk_packed(uplo.is_upper(), alpha, n, k, a, lda, beta, c, ldc, work);
 	} else {
-		let ta = &mut work[..n * k];
+		let (ta, rest) = work.split_at_mut(n * k);
 		super::transpose_into(a, lda, k, n, ta, |x| x);
-		(&*ta, n)
-	};
-	dsyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
+		dsyrk_packed(uplo.is_upper(), alpha, n, k, ta, n, beta, c, ldc, rest);
+	}
 	Ok(())
 }
 
 /// Elements of scratch [`dsyrk`] needs for these flags and dimensions:
-/// `n·k` for the transposed form (the copy of `op(A)`), zero otherwise.
+/// the packed panels ([`dsyrk_packed_work`]), plus `n·k` for the
+/// transposed form (the copy of `op(A)`).
 pub fn dsyrk_work(trans: Trans, n: usize, k: usize) -> usize {
-	if trans == Trans::NoTrans { 0 } else { n * k }
+	dsyrk_packed_work(n, k) + if trans == Trans::NoTrans { 0 } else { n * k }
 }
 
 /// C ← αAAᵀ + βC. A is n×k; C is n×n with the `upper` (or lower)
@@ -306,4 +306,13 @@ pub fn dsyrk_packed_work(n: usize, k: usize) -> usize {
 		let kc = KC.min(k);
 		kc * n4 + MC.min(n_mr) * kc + MR * n_mr
 	}
+}
+
+/// The shipping shape before K1, the truncated column-axpy sweep: kept
+/// as the race's loser and the bit-identity reference of
+/// [`dsyrk_packed`]; exported so the tests and the benchmarks can call
+/// it. Asserts rather than returning errors.
+#[allow(clippy::too_many_arguments)]
+pub fn dsyrk_sweep(upper: bool, alpha: f64, n: usize, k: usize, a: &[f64], lda: usize, beta: f64, c: &mut [f64], ldc: usize) {
+	dsyrk_k(alpha, n, k, a, lda, beta, c, ldc, upper);
 }

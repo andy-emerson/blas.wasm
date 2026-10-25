@@ -61,8 +61,8 @@ pub fn dtrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 		return Ok(());
 	}
 	match (side, transa) {
-		(Side::Left, Trans::NoTrans) => dtrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
-		(Side::Right, Trans::NoTrans) => dtrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb, Trans::NoTrans),
+		(Side::Left, Trans::NoTrans) => dtrsm_left_packed(uplo.is_upper(), diag.is_unit(), alpha, m, n, a, lda, b, ldb, work),
+		(Side::Right, Trans::NoTrans) => dtrsm_right_packed(uplo.is_upper(), diag.is_unit(), alpha, m, n, a, lda, b, ldb, work),
 		(Side::Left, _) if LEFT_T_STREAM => dtrsm_stream(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb),
 		(Side::Right, _) if RIGHT_T_STREAM => dtrsm_stream(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb),
 		_ => dtrsm_copy(side, uplo, transa, diag, m, n, alpha, a, lda, b, ldb, work),
@@ -71,12 +71,16 @@ pub fn dtrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 }
 
 /// Elements of scratch [`dtrsm`] needs for these flags and dimensions:
-/// zero for the no-transpose forms and for a transposed form routed to
-/// the streaming candidate; the `na×na` copy ([`dtrsm_copy_work`])
-/// where the copy candidate is routed.
+/// the packed panels for the no-transpose forms ([`dtrsm_left_packed_work`]
+/// / [`dtrsm_right_packed_work`]); zero for a transposed form routed to
+/// the streaming candidate; the `na×na` copy plus the panels
+/// ([`dtrsm_copy_work`]) where the copy candidate is routed.
 pub fn dtrsm_work(side: Side, transa: Trans, m: usize, n: usize) -> usize {
-	if m == 0 || n == 0 || transa == Trans::NoTrans {
+	if m == 0 || n == 0 {
 		return 0;
+	}
+	if transa == Trans::NoTrans {
+		return if side == Side::Left { dtrsm_left_packed_work(m, n) } else { dtrsm_right_packed_work(m, n) };
 	}
 	let stream = if side == Side::Left { LEFT_T_STREAM } else { RIGHT_T_STREAM };
 	if stream { 0 } else { dtrsm_copy_work(side, m, n) }
@@ -312,21 +316,22 @@ pub fn dtrsm_copy(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n
 	assert!(transa != Trans::NoTrans, "dtrsm_copy: a transposed form only");
 	let na = if side == Side::Left { m } else { n };
 	check_mat(a.len(), na, na, lda);
-	assert!(work.len() >= na * na, "dtrsm_copy: workspace shorter than dtrsm_copy_work");
-	let ta = &mut work[..na * na];
+	assert!(work.len() >= dtrsm_copy_work(side, m, n), "dtrsm_copy: workspace shorter than dtrsm_copy_work");
+	let (ta, rest) = work.split_at_mut(na * na);
 		super::transpose_into(a, lda, na, na, ta, |x| x);
 	let upper = !uplo.is_upper();
 	match side {
-		Side::Left => dtrsm_left_k(alpha, m, n, ta, na.max(1), upper, diag.is_unit(), b, ldb),
-		Side::Right => dtrsm_right_k(alpha, m, n, ta, na.max(1), upper, diag.is_unit(), b, ldb, Trans::NoTrans),
+		Side::Left => dtrsm_left_packed(upper, diag.is_unit(), alpha, m, n, ta, na.max(1), b, ldb, rest),
+		Side::Right => dtrsm_right_packed(upper, diag.is_unit(), alpha, m, n, ta, na.max(1), b, ldb, rest),
 	}
 }
 
 /// Elements of scratch [`dtrsm_copy`] needs: the `na×na` copy of
-/// op(A), `na` being `m` on the left and `n` on the right.
+/// op(A), `na` being `m` on the left and `n` on the right, plus the
+/// packed kernel's panels.
 pub fn dtrsm_copy_work(side: Side, m: usize, n: usize) -> usize {
 	let na = if side == Side::Left { m } else { n };
-	na * na
+	na * na + if side == Side::Left { dtrsm_left_packed_work(m, n) } else { dtrsm_right_packed_work(m, n) }
 }
 
 /// Candidate for the transposed forms (decision D3 in `DESIGN.md`; the race in `bench/README.md`): no
@@ -988,4 +993,22 @@ unsafe fn diag_solve_rows(upper: bool, unit: bool, r0: usize, a: &[f64], acs: us
 		*b.add(2 * bcs + i) = hi.lane0();
 		*b.add(3 * bcs + i) = hi.lane1();
 	}
+}
+
+/// The shipping left shape before K1, the lockstep column sweep: kept
+/// as the race's loser and the bit-identity reference of
+/// [`dtrsm_left_packed`]; exported so the tests and the benchmarks can
+/// call it. Asserts rather than returning errors.
+#[allow(clippy::too_many_arguments)]
+pub fn dtrsm_left_sweep(upper: bool, unit: bool, alpha: f64, m: usize, n: usize, a: &[f64], lda: usize, b: &mut [f64], ldb: usize) {
+	dtrsm_left_k(alpha, m, n, a, lda, upper, unit, b, ldb);
+}
+
+/// The shipping right shape before K1, the grouped column sweep: kept
+/// as the race's loser and the bit-identity reference of
+/// [`dtrsm_right_packed`]; exported so the tests and the benchmarks can
+/// call it. Asserts rather than returning errors.
+#[allow(clippy::too_many_arguments)]
+pub fn dtrsm_right_sweep(upper: bool, unit: bool, alpha: f64, m: usize, n: usize, a: &[f64], lda: usize, b: &mut [f64], ldb: usize) {
+	dtrsm_right_k(alpha, m, n, a, lda, upper, unit, b, ldb, Trans::NoTrans);
 }

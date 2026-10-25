@@ -91,7 +91,7 @@ fn dsyrk_packed_bit_identical_to_the_sweep_and_never_writes_the_unstored_triangl
 			}
 			for (alpha, beta) in [(0.5, 0.25), (-1.3, 0.0), (0.7, 1.0)] {
 				let mut c1 = c0.clone();
-				dsyrk(uplo(upper), Trans::NoTrans, n, k, alpha, &a, acs, beta, &mut c1, ccs, &mut []).unwrap();
+				dsyrk_sweep(upper, alpha, n, k, &a, acs, beta, &mut c1, ccs);
 				let mut c2 = c0.clone();
 				let mut work = vec![f64::NAN; dsyrk_packed_work(n, k)];
 				dsyrk_packed(upper, alpha, n, k, &a, acs, beta, &mut c2, ccs, &mut work);

@@ -28,7 +28,7 @@ fn alpha_zero_and_k_zero_scale_c_without_reading_a_or_b() {
 			assert_eq!(c, vec![0.0; m * n], "dgemm β = 0 writes zeros without reading C");
 		}
 	}
-	let mut w = vec![f64::NAN; 64];
+	let mut w = vec![f64::NAN; 256];
 	let mut c = c0.clone();
 	dsymm(Side::Left, Uplo::Upper, m, n, 0.0, &a, 8, &b, 8, 2.0, &mut c, m).unwrap();
 	assert_eq!(c, c0.iter().map(|v| v * 2.0).collect::<Vec<_>>());

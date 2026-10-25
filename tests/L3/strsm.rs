@@ -218,7 +218,7 @@ fn strsm_transposed_candidates_equal_the_explicit_transpose_bitwise() {
 					for dg in [Diag::NonUnit, Diag::Unit] {
 						for alpha in [0.9, 1.0] {
 							let mut x1 = b0.clone();
-							strsm(side, flipped, Trans::NoTrans, dg, m, n, alpha, &oa, lda2, &mut x1, ldb, &mut []).unwrap();
+							strsm(side, flipped, Trans::NoTrans, dg, m, n, alpha, &oa, lda2, &mut x1, ldb, &mut vec![f32::NAN; strsm_work(side, Trans::NoTrans, m, n)]).unwrap();
 							let mut x2 = b0.clone();
 							let mut w = vec![f32::NAN; strsm_copy_work(side, m, n)];
 							strsm_copy(side, uplo, transa, dg, m, n, alpha, &a, lda, &mut x2, ldb, &mut w);
@@ -273,7 +273,7 @@ fn strsm_left_packed_bit_identical_to_the_sweep() {
 				let b0 = rng.mat_f32(m, n, bcs);
 				for alpha in [1.0, -0.7] {
 					let mut b1 = b0.clone();
-					strsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b1, bcs, &mut []).unwrap();
+					strsm_left_sweep(upper, unit, alpha, m, n, &a, acs, &mut b1, bcs);
 					let mut b2 = b0.clone();
 					let mut work = vec![f32::NAN; strsm_left_packed_work(m, n)];
 					strsm_left_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);
@@ -315,7 +315,7 @@ fn strsm_right_packed_bit_identical_to_the_sweep() {
 				let b0 = rng.mat_f32(m, n, bcs);
 				for alpha in [1.0, -0.7] {
 					let mut b1 = b0.clone();
-					strsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b1, bcs, &mut []).unwrap();
+					strsm_right_sweep(upper, unit, alpha, m, n, &a, acs, &mut b1, bcs);
 					let mut b2 = b0.clone();
 					let mut work = vec![f32::NAN; strsm_right_packed_work(m, n)];
 					strsm_right_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);

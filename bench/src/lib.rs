@@ -432,25 +432,25 @@ pub extern "C" fn run_l3_layer(op: usize) -> f64 {
         }
     };
     match op {
-        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
+        0 => l3::dgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, ws(&mut s.work, l3::dgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n), 0.0f64)).unwrap(),
         1 => l3::dsymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
-        2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyrk_work(Trans::NoTrans, n, n)]).unwrap(),
-        3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f64; l3::dsyr2k_work(Trans::NoTrans, n, n)]).unwrap(),
+        2 => l3::dsyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, ws(&mut s.work, l3::dsyrk_work(Trans::NoTrans, n, n), 0.0f64)).unwrap(),
+        3 => l3::dsyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, ws(&mut s.work, l3::dsyr2k_work(Trans::NoTrans, n, n), 0.0f64)).unwrap(),
         4 => {
             refresh(sym);
-            l3::dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work, l3::dtrmm_work(Side::Left, Trans::NoTrans, n, n), 0.0f64)).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::dtrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::dtrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work, l3::dtrsm_work(Side::Left, Trans::NoTrans, n, n), 0.0f64)).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::dtrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::dtrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work, l3::dtrmm_work(Side::Right, Trans::NoTrans, n, n), 0.0f64)).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::dtrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f64; l3::dtrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::dtrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work, l3::dtrsm_work(Side::Right, Trans::NoTrans, n, n), 0.0f64)).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -799,25 +799,25 @@ pub extern "C" fn run_l3_layer_f32(op: usize) -> f64 {
         }
     };
     match op {
-        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
+        0 => l3::sgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, ws(&mut s.work32, l3::sgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n), 0.0f32)).unwrap(),
         1 => l3::ssymm(Side::Left, Uplo::Upper, n, n, 0.001, tri, tcs, b, bcs, 0.5, sym, scs).unwrap(),
-        2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyrk_work(Trans::NoTrans, n, n)]).unwrap(),
-        3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, &mut vec![0.0f32; l3::ssyr2k_work(Trans::NoTrans, n, n)]).unwrap(),
+        2 => l3::ssyrk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, 0.5, sym, scs, ws(&mut s.work32, l3::ssyrk_work(Trans::NoTrans, n, n), 0.0f32)).unwrap(),
+        3 => l3::ssyr2k(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, acs, b, bcs, 0.5, sym, scs, ws(&mut s.work32, l3::ssyr2k_work(Trans::NoTrans, n, n), 0.0f32)).unwrap(),
         4 => {
             refresh(sym);
-            l3::strmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::strmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work32, l3::strmm_work(Side::Left, Trans::NoTrans, n, n), 0.0f32)).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::strsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::strsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work32, l3::strsm_work(Side::Left, Trans::NoTrans, n, n), 0.0f32)).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::strmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::strmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work32, l3::strmm_work(Side::Right, Trans::NoTrans, n, n), 0.0f32)).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::strsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, &mut vec![0.0f32; l3::strsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::strsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, 1.0, tri, tcs, sym, scs, ws(&mut s.work32, l3::strsm_work(Side::Right, Trans::NoTrans, n, n), 0.0f32)).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -1167,25 +1167,25 @@ pub extern "C" fn run_l3_layer_z(op: usize) -> f64 {
     let be = C64::new(0.5, 0.0);
     let one = C64::ONE;
     match op {
-        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C64::ZERO; l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
+        0 => l3::zgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, ws(&mut s.workz, l3::zgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n), C64::ZERO)).unwrap(),
         1 => l3::zhemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
-        2 => l3::zherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zherk_work(Trans::NoTrans, n, n)]).unwrap(),
-        3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C64::ZERO; l3::zher2k_work(Trans::NoTrans, n, n)]).unwrap(),
+        2 => l3::zherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, ws(&mut s.workz, l3::zherk_work(Trans::NoTrans, n, n), C64::ZERO)).unwrap(),
+        3 => l3::zher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, ws(&mut s.workz, l3::zher2k_work(Trans::NoTrans, n, n), C64::ZERO)).unwrap(),
         4 => {
             refresh(sym);
-            l3::ztrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::ztrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workz, l3::ztrmm_work(Side::Left, Trans::NoTrans, n, n), C64::ZERO)).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::ztrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::ztrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workz, l3::ztrsm_work(Side::Left, Trans::NoTrans, n, n), C64::ZERO)).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::ztrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::ztrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workz, l3::ztrmm_work(Side::Right, Trans::NoTrans, n, n), C64::ZERO)).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::ztrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::ztrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workz, l3::ztrsm_work(Side::Right, Trans::NoTrans, n, n), C64::ZERO)).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -1521,25 +1521,25 @@ pub extern "C" fn run_l3_layer_c(op: usize) -> f64 {
     let be = C32::new(0.5, 0.0);
     let one = C32::ONE;
     match op {
-        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, &mut vec![C32::ZERO; l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n)]).unwrap(),
+        0 => l3::cgemm(Trans::NoTrans, Trans::NoTrans, n, n, n, al, a, cs, b, cs, be, sym, cs, ws(&mut s.workc, l3::cgemm_work(Trans::NoTrans, Trans::NoTrans, n, n, n), C32::ZERO)).unwrap(),
         1 => l3::chemm(Side::Left, Uplo::Upper, n, n, al, tri, cs, b, cs, be, sym, cs).unwrap(),
-        2 => l3::cherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cherk_work(Trans::NoTrans, n, n)]).unwrap(),
-        3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, &mut vec![C32::ZERO; l3::cher2k_work(Trans::NoTrans, n, n)]).unwrap(),
+        2 => l3::cherk(Uplo::Upper, Trans::NoTrans, n, n, 0.001, a, cs, 0.5, sym, cs, ws(&mut s.workc, l3::cherk_work(Trans::NoTrans, n, n), C32::ZERO)).unwrap(),
+        3 => l3::cher2k(Uplo::Upper, Trans::NoTrans, n, n, al, a, cs, b, cs, 0.5, sym, cs, ws(&mut s.workc, l3::cher2k_work(Trans::NoTrans, n, n), C32::ZERO)).unwrap(),
         4 => {
             refresh(sym);
-            l3::ctrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::ctrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workc, l3::ctrmm_work(Side::Left, Trans::NoTrans, n, n), C32::ZERO)).unwrap();
         }
         5 => {
             refresh(sym);
-            l3::ctrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Left, Trans::NoTrans, n, n)]).unwrap();
+            l3::ctrsm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workc, l3::ctrsm_work(Side::Left, Trans::NoTrans, n, n), C32::ZERO)).unwrap();
         }
         6 => {
             refresh(sym);
-            l3::ctrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::ctrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workc, l3::ctrmm_work(Side::Right, Trans::NoTrans, n, n), C32::ZERO)).unwrap();
         }
         7 => {
             refresh(sym);
-            l3::ctrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Right, Trans::NoTrans, n, n)]).unwrap();
+            l3::ctrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, n, one, tri, cs, sym, cs, ws(&mut s.workc, l3::ctrsm_work(Side::Right, Trans::NoTrans, n, n), C32::ZERO)).unwrap();
         }
         _ => return f64::NAN,
     }
@@ -1850,7 +1850,7 @@ pub extern "C" fn run_syrk_shape(ty: usize, n: usize, k: usize, upper: usize, pa
             if packed != 0 {
                 l3::dsyrk_packed(up, 0.001, n, k, a, n, 0.5, c, n, ws(&mut s.work, l3::dsyrk_packed_work(n, k), 0.0));
             } else {
-                l3::dsyrk(if up { Uplo::Upper } else { Uplo::Lower }, Trans::NoTrans, n, k, 0.001, a, n, 0.5, c, n, ws(&mut s.work, l3::dsyrk_work(Trans::NoTrans, n, k), 0.0)).unwrap();
+                l3::dsyrk_sweep(up, 0.001, n, k, a, n, 0.5, c, n);
             }
             c[0] + c[(n - 1) * n + n - 1] + c[if up { (n - 1) * n } else { n - 1 }]
         }
@@ -1860,7 +1860,7 @@ pub extern "C" fn run_syrk_shape(ty: usize, n: usize, k: usize, upper: usize, pa
             if packed != 0 {
                 l3::ssyrk_packed(up, 0.001, n, k, a, n, 0.5, c, n, ws(&mut s.work32, l3::ssyrk_packed_work(n, k), 0.0));
             } else {
-                l3::ssyrk(if up { Uplo::Upper } else { Uplo::Lower }, Trans::NoTrans, n, k, 0.001, a, n, 0.5, c, n, ws(&mut s.work32, l3::ssyrk_work(Trans::NoTrans, n, k), 0.0)).unwrap();
+                l3::ssyrk_sweep(up, 0.001, n, k, a, n, 0.5, c, n);
             }
             (c[0] + c[(n - 1) * n + n - 1] + c[if up { (n - 1) * n } else { n - 1 }]) as f64
         }
@@ -1885,15 +1885,17 @@ pub extern "C" fn run_tri_shape(ty: usize, routine: usize, side: usize, m: usize
     // leading dimension, so the solves stay bounded
     let lda = s.n;
     let (up, un) = (upper != 0, unit != 0);
-    let (sd, ul, dg) = (if side == 0 { Side::Left } else { Side::Right }, if up { Uplo::Upper } else { Uplo::Lower }, if un { Diag::Unit } else { Diag::NonUnit });
+    let _ = (Uplo::Upper, Diag::Unit); // the sweeps and candidates take the flags as booleans
     match ty {
         0 => {
             let a = &s.tri[..];
             let b = &mut s.b[..m * n];
             b.copy_from_slice(&s.sym[..m * n]);
             match (routine, side, packed) {
-                (0, _, 0) => l3::dtrmm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, lda, b, m, ws(&mut s.work, l3::dtrmm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
-                (1, _, 0) => l3::dtrsm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, lda, b, m, ws(&mut s.work, l3::dtrsm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                (0, 0, 0) => l3::dtrmm_left_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (0, 1, 0) => l3::dtrmm_right_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (1, 0, 0) => l3::dtrsm_left_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (1, 1, 0) => l3::dtrsm_right_sweep(up, un, 1.0, m, n, a, lda, b, m),
                 (0, 0, _) => l3::dtrmm_left_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work, l3::dtrmm_left_packed_work(m, n), 0.0)),
                 (1, 0, _) => l3::dtrsm_left_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work, l3::dtrsm_left_packed_work(m, n), 0.0)),
                 (0, 1, _) => l3::dtrmm_right_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work, l3::dtrmm_right_packed_work(m, n), 0.0)),
@@ -1907,8 +1909,10 @@ pub extern "C" fn run_tri_shape(ty: usize, routine: usize, side: usize, m: usize
             let b = &mut s.b32[..m * n];
             b.copy_from_slice(&s.sym32[..m * n]);
             match (routine, side, packed) {
-                (0, _, 0) => l3::strmm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, lda, b, m, ws(&mut s.work32, l3::strmm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
-                (1, _, 0) => l3::strsm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, lda, b, m, ws(&mut s.work32, l3::strsm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                (0, 0, 0) => l3::strmm_left_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (0, 1, 0) => l3::strmm_right_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (1, 0, 0) => l3::strsm_left_sweep(up, un, 1.0, m, n, a, lda, b, m),
+                (1, 1, 0) => l3::strsm_right_sweep(up, un, 1.0, m, n, a, lda, b, m),
                 (0, 0, _) => l3::strmm_left_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work32, l3::strmm_left_packed_work(m, n), 0.0)),
                 (1, 0, _) => l3::strsm_left_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work32, l3::strsm_left_packed_work(m, n), 0.0)),
                 (0, 1, _) => l3::strmm_right_packed(up, un, 1.0, m, n, a, lda, b, m, ws(&mut s.work32, l3::strmm_right_packed_work(m, n), 0.0)),

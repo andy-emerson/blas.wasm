@@ -84,16 +84,16 @@ pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: 
 
 pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_copy_op, dgemm_copy_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed, dgemm_packed_bcast};
 pub use dsymm::dsymm;
-pub use dsyrk::{dsyrk, dsyrk_work, dsyrk_packed, dsyrk_packed_work};
+pub use dsyrk::{dsyrk, dsyrk_work, dsyrk_packed, dsyrk_packed_work, dsyrk_sweep};
 pub use dsyr2k::{dsyr2k, dsyr2k_work};
-pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrmm_left_packed, dtrmm_left_packed_work, dtrmm_right_packed, dtrmm_right_packed_work};
-pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream, dtrsm_left_packed, dtrsm_left_packed_work, dtrsm_right_packed, dtrsm_right_packed_work};
+pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrmm_left_packed, dtrmm_left_packed_work, dtrmm_right_packed, dtrmm_right_packed_work, dtrmm_left_sweep, dtrmm_right_sweep};
+pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream, dtrsm_left_packed, dtrsm_left_packed_work, dtrsm_right_packed, dtrsm_right_packed_work, dtrsm_left_sweep, dtrsm_right_sweep};
 pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed, sgemm_packed_bcast};
 pub use ssymm::ssymm;
-pub use ssyrk::{ssyrk, ssyrk_work, ssyrk_packed, ssyrk_packed_work};
+pub use ssyrk::{ssyrk, ssyrk_work, ssyrk_packed, ssyrk_packed_work, ssyrk_sweep};
 pub use ssyr2k::{ssyr2k, ssyr2k_work};
-pub use strmm::{strmm, strmm_work, strmm_copy, strmm_copy_work, strmm_stream, strmm_left_packed, strmm_left_packed_work, strmm_right_packed, strmm_right_packed_work};
-pub use strsm::{strsm, strsm_work, strsm_copy, strsm_copy_work, strsm_stream, strsm_left_packed, strsm_left_packed_work, strsm_right_packed, strsm_right_packed_work};
+pub use strmm::{strmm, strmm_work, strmm_copy, strmm_copy_work, strmm_stream, strmm_left_packed, strmm_left_packed_work, strmm_right_packed, strmm_right_packed_work, strmm_left_sweep, strmm_right_sweep};
+pub use strsm::{strsm, strsm_work, strsm_copy, strsm_copy_work, strsm_stream, strsm_left_packed, strsm_left_packed_work, strsm_right_packed, strsm_right_packed_work, strsm_left_sweep, strsm_right_sweep};
 pub use zgemm::{zgemm, zgemm_work, zgemm_packed_work, zgemm_packed_op, zgemm_packed_op_work, zgemm_copy_op, zgemm_copy_op_work, zgemm_colaxpy, zgemm_col4, zgemm_packed};
 pub use zhemm::zhemm;
 pub use zherk::{zherk, zherk_work};
