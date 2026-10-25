@@ -20,6 +20,7 @@ Last updated 2026-10-25.
 | `cargo test --release` (native, 199 tests: L1 64, L2 53, L3 77, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S2 |
 | 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S2 |
 | `bench.yml` tri-race and gemm-t-race (two draws each, candidates called directly, workspaces outside the timed call) | every fold identical; verdicts and tables in `bench/README.md` | runs 40212210771, 40212213162, 40212214964, 40212217524 |
+| `bench.yml` b0 (two draws: OpenBLAS, BLIS, blas.wasm on one runner, one thread) | rows in `bench/README.md` | runs 40213117656, 40213120395 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test, binary audit, the book with warnings denied | run 21, head `40782a0`, github.com/andy-emerson/blas.wasm/actions/runs/40210413099 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
@@ -144,9 +145,11 @@ warnings denied.
   (`bench/README.md`, D3 in `DESIGN.md`), winners routed, losers
   exported. Not built: trmm/trsm on the packing layer (a lever
   below).
-- [ ] **B0 — Early sanity rows: OpenBLAS, BLIS, XNNPACK
-  single-threaded**, to inform D11. Evidence: same engine, same
-  machine, two draws; configurations recorded. (2–3)
+- [x] **B0 — Early sanity rows: OpenBLAS, BLIS single-threaded**,
+  two draws on the reference runner (`bench/README.md`): gemm at
+  17–28% of the native libraries, the triangular and rank-k routines
+  at 17–20%. XNNPACK is not packaged for the runner and was not
+  built; its row is open if D11 wants it.
 - [x] **S2 — Level 2 op flags: transposed trmv and trsv.** Done on
   this branch: dot-fold reductions, replayed bit for bit (`tests/L2`),
   probed native versus wasm; no routine reports `Unsupported` any

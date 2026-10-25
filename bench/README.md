@@ -197,6 +197,41 @@ both draws) and the `copy` for a B-only transposed operand, which lost
 every c32 row in both draws (0.90–0.99); below the threshold every
 type copies ahead of the register tile.
 
+### B0 — the native libraries on the same machine (single-threaded)
+
+The sanity rows D11 asked for (`STATUS.md`): OpenBLAS and BLIS from
+the Ubuntu packages, pinned to one thread, native on the reference
+runner, beside this module on Node on the same runner and the same
+shapes (`bench/b0/b0.c`, `bench/b0-rows.mjs`, the `b0` suite of
+`bench.yml`; runs 40213117656 / 40213120395, GFLOP/s, the range across
+the two draws; flop counts gemm 2n³, symm 2n³, syrk/trmm/trsm n³,
+complex ×4). The native libraries run AVX2 or AVX-512 with fused
+multiply-add; this module runs 128-bit lanes without it, so the
+instruction set alone caps it at roughly a quarter of their peak per
+core (see "What's measured how").
+
+| op | OpenBLAS | BLIS | blas.wasm | blas.wasm ÷ OpenBLAS |
+|---|---|---|---|---|
+| dgemm 512³ | 42.9–43.5 | 43.5–43.9 | 8.3 | 0.19 |
+| sgemm 512³ | 92.2–92.5 | 91.2–91.8 | 15.6–16.6 | 0.17–0.18 |
+| zgemm 512³ | 47.6–47.7 | 45.9–46.2 | 12.1–13.3 | 0.25–0.28 |
+| cgemm 512³ | 93.8–94.2 | 94.2 | 26.0–26.1 | 0.28 |
+| dgemm 1024³ | 44.5 | 44.0–44.8 | 8.3 | 0.19 |
+| sgemm 1024³ | 93.7–94.7 | 93.0–93.4 | 16.6–16.7 | 0.18 |
+| zgemm 1024³ | 47.6–47.7 | 46.0–46.1 | 12.0–13.3 | 0.25–0.28 |
+| cgemm 1024³ | 95.3–95.5 | 94.6–94.9 | 26.2–26.7 | 0.27–0.28 |
+| dsymm left 512 | 42.9–43.3 | 44.4–44.5 | 12.3 | 0.28 |
+| dsyrk 512 | 36.7–37.5 | 36.4 | 6.5–6.6 | 0.17–0.18 |
+| dtrmm left 512 | 37.0–37.1 | 40.9–41.5 | 6.8–6.9 | 0.18–0.19 |
+| dtrsm left 512 | 34.0–34.8 | 40.4–40.9 | 6.9–7.0 | 0.20 |
+
+What it says for D11: gemm sits at 17–28% of the native libraries,
+close to the instruction-set ratio for the complex types and about
+three quarters of it for the real ones; the triangular and rank-k
+routines sit at 17–20%, below gemm's own share, so they are the
+larger lever if a Level 3 campaign is opened. XNNPACK is not packaged
+for the runner and has no row.
+
 ## Running a roofline (per level, per type)
 
 ```sh
