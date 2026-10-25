@@ -50,7 +50,7 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
 	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
 	crate::error::work(R, 14, work.len(), dgemm_work(m, n, k))?;
-	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	dgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }
 
@@ -58,8 +58,19 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 /// the size at which the packed-panel shape is routed, the two panel
 /// buffers above it.
 pub fn dgemm_work(m: usize, n: usize, k: usize) -> usize {
+	if packed_route(m, k) {
+		dgemm_packed_work(m, n, k)
+	} else {
+		0
+	}
+}
+
+/// Elements of scratch [`dgemm_packed`] needs for these dimensions:
+/// the B panel (`KC` rows of the `n − n % 4` packed columns) and the
+/// A panel (`MC × KC`); zero when the packed loops have nothing to do.
+pub fn dgemm_packed_work(m: usize, n: usize, k: usize) -> usize {
 	let n4 = n - n % 4;
-	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+	if k == 0 || n4 == 0 || m < MR {
 		0
 	} else {
 		KC * n4 + MC * KC
@@ -94,6 +105,7 @@ pub(crate) fn dgemm_k(
 	beta: f64,
 	c: &mut [f64],
 	ccs: usize,
+	work: &mut [f64],
 ) {
 	// measured crossover between n=384 (A ≈ 1.2 MB: tiled) and n=512
 	// (A = 2 MB) on both reference draws and the container. Above it,
@@ -105,7 +117,7 @@ pub(crate) fn dgemm_k(
 	if m * k * 8 <= TILED_MAX_A_BYTES {
 		dgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
-		dgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
+		dgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 	}
 }
 
@@ -295,10 +307,13 @@ pub fn dgemm_packed(
 	beta: f64,
 	c: &mut [f64],
 	ccs: usize,
+	work: &mut [f64],
 ) {
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
+	let need = dgemm_packed_work(m, n, k);
+	assert!(work.len() >= need, "dgemm_packed: workspace shorter than dgemm_packed_work");
 	// Panel sizes: Ap = MC·KC·8 = 256 KB (an L2-resident block), one
 	// Bp column-group strip = KC·4·8 = 8 KB (L1-resident). First-guess
 	// parameters — the race measures the shape, a later sweep can tune
@@ -313,8 +328,10 @@ pub fn dgemm_packed(
 	let n4 = n - n % 4;
 	let m_mr = m - m % MR;
 	if n4 > 0 && m_mr > 0 {
-		let mut bp = alloc::vec![0.0f64; KC * n4];
-		let mut ap = alloc::vec![0.0f64; MC * KC];
+		// the caller's workspace, split into the two panels; every
+		// element the microkernel reads is packed first, so the
+		// slice's prior contents never reach C (tested with a NaN fill)
+		let (bp, ap) = work[..need].split_at_mut(KC * n4);
 		let mut pc = 0usize;
 		while pc < k {
 			let kc = KC.min(k - pc);

@@ -127,7 +127,10 @@ fn gemm_packed_bit_identical_to_colaxpy() {
 			let mut c1 = c0.clone();
 			dgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut c2 = c0.clone();
-			dgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			// a NaN-filled workspace of exactly the queried size: any read of
+			// scratch the packer did not write would poison C
+			let mut work = vec![f64::NAN; dgemm_packed_work(m, n, k)];
+			dgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs, &mut work);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(

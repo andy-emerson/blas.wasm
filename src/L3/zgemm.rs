@@ -54,7 +54,7 @@ pub fn zgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
 	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
 	crate::error::work(R, 14, work.len(), zgemm_work(m, n, k))?;
-	zgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	zgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }
 
@@ -62,8 +62,20 @@ pub fn zgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 /// the size at which the packed-panel shape is routed, the two panel
 /// buffers above it.
 pub fn zgemm_work(m: usize, n: usize, k: usize) -> usize {
+	if packed_route(m, k) {
+		zgemm_packed_work(m, n, k)
+	} else {
+		0
+	}
+}
+
+/// Elements of scratch [`zgemm_packed`] needs for these dimensions:
+/// the expanded B panel (`KC` rows of the `n − n % 4` packed columns,
+/// 2 complexes per element) and the A panel (`MC × KC`); zero when
+/// the packed loops have nothing to do.
+pub fn zgemm_packed_work(m: usize, n: usize, k: usize) -> usize {
 	let n4 = n - n % 4;
-	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+	if k == 0 || n4 == 0 || m < MR {
 		0
 	} else {
 		KC * n4 * 2 + MC * KC
@@ -91,6 +103,7 @@ pub(crate) fn zgemm_k(
 	beta: C64,
 	c: &mut [C64],
 	ccs: usize,
+	work: &mut [C64],
 ) {
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
@@ -100,7 +113,7 @@ pub(crate) fn zgemm_k(
 	// smallest measured point) up to 1.33x at 1024³. Below 1 MB of A is
 	// unmeasured — col4 keeps it.
 	if m * k * 16 >= PACKED_MIN_A_BYTES {
-		return zgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
+		return zgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 	}
 	let mut j = 0usize;
 	while j + 4 <= n {
@@ -168,10 +181,13 @@ pub fn zgemm_packed(
 	beta: C64,
 	c: &mut [C64],
 	ccs: usize,
+	work: &mut [C64],
 ) {
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
+	let need = zgemm_packed_work(m, n, k);
+	assert!(work.len() >= need, "zgemm_packed: workspace shorter than zgemm_packed_work");
 	// Ap = MC·KC complexes = 256 KB (L2-resident); one Bp column-group
 	// strip = KC·16 f64 = 32 KB (L1-resident).
 	if k == 0 {
@@ -189,9 +205,12 @@ pub fn zgemm_packed(
 	}
 	if n4 > 0 && m_mr > 0 {
 		// bp holds, per (l, column u): [t.re, t.re, −t.im, t.im] with
-		// t = α·b already rounded — 4 f64 per element
-		let mut bp = alloc::vec![0.0f64; KC * n4 * 4];
-		let mut ap = alloc::vec![C64::ZERO; MC * KC];
+		// t = α·b already rounded — 4 f64, stored as two C64 of the
+		// caller's workspace (`repr(C)` pairs, read by the kernel as
+		// f64 lanes). Every element the kernel reads is packed first,
+		// so the slice's prior contents never reach C (tested with a
+		// NaN fill).
+		let (bp, ap) = work[..need].split_at_mut(KC * n4 * 2);
 		let mut pc = 0usize;
 		while pc < k {
 			let kc = KC.min(k - pc);
@@ -199,11 +218,9 @@ pub fn zgemm_packed(
 				for l in 0..kc {
 					for u in 0..4 {
 						let t = alpha * b[(jg * 4 + u) * bcs + pc + l];
-						let o = jg * kc * 16 + l * 16 + u * 4;
-						bp[o] = t.re;
-						bp[o + 1] = t.re;
-						bp[o + 2] = -t.im;
-						bp[o + 3] = t.im;
+						let o = jg * kc * 8 + l * 8 + u * 2;
+						bp[o] = C64::new(t.re, t.re);
+						bp[o + 1] = C64::new(-t.im, t.im);
 					}
 				}
 			}
@@ -224,7 +241,7 @@ pub fn zgemm_packed(
 							ztile_2x4_packed(
 								kc,
 								ap.as_ptr().add(g * kc * MR) as *const f64,
-								bp.as_ptr().add(jg * kc * 16),
+								bp.as_ptr().add(jg * kc * 8) as *const f64,
 								c.as_mut_ptr().add(jg * 4 * ccs + ic + g * MR),
 								ccs,
 							);

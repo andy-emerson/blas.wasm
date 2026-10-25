@@ -142,7 +142,10 @@ fn cgemm_packed_bit_identical_to_colaxpy() {
 			let mut c1 = c0.clone();
 			cgemm_colaxpy(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c1, ccs);
 			let mut c2 = c0.clone();
-			cgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs);
+			// a NaN-filled workspace of exactly the queried size: any read of
+			// scratch the packer did not write would poison C
+			let mut work = vec![C32::new(f32::NAN, f32::NAN); cgemm_packed_work(m, n, k)];
+			cgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs, &mut work);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(

@@ -46,12 +46,6 @@
 //! open decisions and the latest check results.
 #![no_std]
 
-// The four gemm dispatchers allocate two pack buffers above their
-// packed threshold (and the `*gemm_packed` shapes always do); nothing
-// else allocates. Link a global allocator if you call gemm. Removing
-// this is STATUS.md todo S4.
-extern crate alloc;
-
 pub mod book;
 pub mod error;
 pub mod flags;

@@ -51,7 +51,7 @@ pub fn sgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
 	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
 	crate::error::work(R, 14, work.len(), sgemm_work(m, n, k))?;
-	sgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc);
+	sgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }
 
@@ -59,8 +59,19 @@ pub fn sgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 /// the size at which the packed-panel shape is routed, the two panel
 /// buffers above it.
 pub fn sgemm_work(m: usize, n: usize, k: usize) -> usize {
+	if packed_route(m, k) {
+		sgemm_packed_work(m, n, k)
+	} else {
+		0
+	}
+}
+
+/// Elements of scratch [`sgemm_packed`] needs for these dimensions:
+/// the B panel (`KC` rows of the `n − n % 4` packed columns) and the
+/// A panel (`MC × KC`); zero when the packed loops have nothing to do.
+pub fn sgemm_packed_work(m: usize, n: usize, k: usize) -> usize {
 	let n4 = n - n % 4;
-	if k == 0 || n4 == 0 || m < MR || !packed_route(m, k) {
+	if k == 0 || n4 == 0 || m < MR {
 		0
 	} else {
 		KC * n4 + MC * KC
@@ -93,6 +104,7 @@ pub(crate) fn sgemm_k(
 	beta: f32,
 	c: &mut [f32],
 	ccs: usize,
+	work: &mut [f32],
 ) {
 	// f32 crossover from the campaign record step-10 runner draws (which rule over the
 	// container, where col4 led from n=512): tiled wins unanimously
@@ -105,7 +117,7 @@ pub(crate) fn sgemm_k(
 	if m * k * 4 <= TILED_MAX_A_BYTES {
 		sgemm_tiled(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
 	} else {
-		sgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs);
+		sgemm_packed(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 	}
 }
 
@@ -284,10 +296,13 @@ pub fn sgemm_packed(
 	beta: f32,
 	c: &mut [f32],
 	ccs: usize,
+	work: &mut [f32],
 ) {
 	check_mat(a.len(), m, k, acs);
 	check_mat(b.len(), k, n, bcs);
 	check_mat(c.len(), m, n, ccs);
+	let need = sgemm_packed_work(m, n, k);
+	assert!(work.len() >= need, "sgemm_packed: workspace shorter than sgemm_packed_work");
 	// Ap = MC·KC·4 = 128 KB (L2-resident), one Bp strip = KC·4·4 = 4 KB
 	if k == 0 {
 		for j in 0..n {
@@ -298,8 +313,10 @@ pub fn sgemm_packed(
 	let n4 = n - n % 4;
 	let m_mr = m - m % MR;
 	if n4 > 0 && m_mr > 0 {
-		let mut bp = alloc::vec![0.0f32; KC * n4];
-		let mut ap = alloc::vec![0.0f32; MC * KC];
+		// the caller's workspace, split into the two panels; every
+		// element the microkernel reads is packed first, so the
+		// slice's prior contents never reach C (tested with a NaN fill)
+		let (bp, ap) = work[..need].split_at_mut(KC * n4);
 		let mut pc = 0usize;
 		while pc < k {
 			let kc = KC.min(k - pc);

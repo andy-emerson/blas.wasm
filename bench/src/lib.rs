@@ -1600,7 +1600,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.b[..k * n];
             let c = &mut s.sym[..m * n];
             if packed {
-                l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m);
+                l3::dgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_packed_work(m, n, k)]);
             } else {
                 l3::dgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f64; l3::dgemm_work(m, n, k)]).unwrap();
             }
@@ -1611,7 +1611,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.b32[..k * n];
             let c = &mut s.sym32[..m * n];
             if packed {
-                l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m);
+                l3::sgemm_packed(0.001, m, n, k, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_packed_work(m, n, k)]);
             } else {
                 l3::sgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, 0.001, a, m, b, k, 0.5, c, m, &mut vec![0.0f32; l3::sgemm_work(m, n, k)]).unwrap();
             }
@@ -1624,7 +1624,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.bz[..k * n];
             let c = &mut s.symz[..m * n];
             if packed {
-                l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m);
+                l3::zgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_packed_work(m, n, k)]);
             } else {
                 l3::zgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C64::ZERO; l3::zgemm_work(m, n, k)]).unwrap();
             }
@@ -1637,7 +1637,7 @@ fn gemm_rect(ty: usize, m: usize, k: usize, n: usize, packed: bool) -> f64 {
             let b = &s.bc[..k * n];
             let c = &mut s.symc[..m * n];
             if packed {
-                l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m);
+                l3::cgemm_packed(al, m, n, k, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_packed_work(m, n, k)]);
             } else {
                 l3::cgemm(Trans::NoTrans, Trans::NoTrans, m, n, k, al, a, m, b, k, be, c, m, &mut vec![C32::ZERO; l3::cgemm_work(m, n, k)]).unwrap();
             }
