@@ -131,12 +131,22 @@ fn gemm_packed_bit_identical_to_colaxpy() {
 			// scratch the packer did not write would poison C
 			let mut work = vec![f32::NAN; sgemm_packed_work(m, n, k)];
 			sgemm_packed(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c2, ccs, &mut work);
+			// the K2 candidate: α folded into the B panel, B broadcast by lane
+			// shuffles — the same per-element sequence, so the same bits
+			let mut c3 = c0.clone();
+			let mut work3 = vec![f32::NAN; sgemm_packed_work(m, n, k)];
+			sgemm_packed_bcast(alpha, m, n, k, &a, acs, &b, bcs, beta, &mut c3, ccs, &mut work3);
 			for j in 0..n {
 				for i in 0..m {
 					assert_eq!(
 						c1[j * ccs + i].to_bits(),
 						c2[j * ccs + i].to_bits(),
 						"packed vs column-saxpy {m}x{k}x{n} ({i},{j})"
+					);
+					assert_eq!(
+						c1[j * ccs + i].to_bits(),
+						c3[j * ccs + i].to_bits(),
+						"packed_bcast vs column-saxpy {m}x{k}x{n} ({i},{j})"
 					);
 				}
 			}

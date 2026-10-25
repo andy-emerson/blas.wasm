@@ -304,6 +304,18 @@ mod imp32 {
 		pub unsafe fn dup_even(self) -> Self {
 			Self(i32x4_shuffle::<0, 0, 2, 2>(self.0, self.0))
 		}
+		/// Lane `i` broadcast to all four lanes (the B-value broadcast of
+		/// the gemm micro-kernel).
+		#[inline]
+		#[target_feature(enable = "simd128")]
+		pub unsafe fn bcast<const I: usize>(self) -> Self {
+			match I {
+				0 => Self(i32x4_shuffle::<0, 0, 0, 0>(self.0, self.0)),
+				1 => Self(i32x4_shuffle::<1, 1, 1, 1>(self.0, self.0)),
+				2 => Self(i32x4_shuffle::<2, 2, 2, 2>(self.0, self.0)),
+				_ => Self(i32x4_shuffle::<3, 3, 3, 3>(self.0, self.0)),
+			}
+		}
 		#[inline]
 		#[target_feature(enable = "simd128")]
 		pub unsafe fn dup_odd(self) -> Self {
@@ -410,6 +422,11 @@ mod imp32 {
 		#[inline(always)]
 		pub unsafe fn dup_even(self) -> Self {
 			Self([self.0[0], self.0[0], self.0[2], self.0[2]])
+		}
+		/// Lane `i` broadcast to all four lanes.
+		#[inline(always)]
+		pub unsafe fn bcast<const I: usize>(self) -> Self {
+			Self([self.0[I]; 4])
 		}
 		#[inline(always)]
 		pub unsafe fn dup_odd(self) -> Self {

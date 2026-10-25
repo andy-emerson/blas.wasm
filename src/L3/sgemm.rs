@@ -21,6 +21,12 @@ use crate::L2::sgemv_k;
 // dispatcher, the packed shape and the workspace query.
 const KC: usize = 256;
 const MC: usize = 128;
+/// The K2 candidate's block sizes: swept over KC 120–256 and MC 64–256
+/// in the dev container with no measurable difference, so they stay at
+/// the shipping values; never above KC/MC so [`sgemm_packed_work`]
+/// covers both shapes.
+const KC2: usize = KC;
+const MC2: usize = MC;
 const MR: usize = 8;
 const TILED_MAX_A_BYTES: usize = 3 << 20; // 3 MB
 
@@ -401,6 +407,157 @@ pub fn sgemm_packed(
 		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
 	}
 }
+
+/// The K2 candidate: [`sgemm_packed`]'s blocking and panels with
+/// OpenBLAS's wasm micro-kernel mechanics — α is folded into the B
+/// panel once at pack time, and the k loop loads the four B values of
+/// a column group as one vector and broadcasts each lane with a
+/// shuffle, so the loop holds no scalar loads, scalar multiplies or
+/// scalar-to-vector moves. Per-element rounding sequence identical to
+/// [`sgemm_packed`] (βC, then ascending k adds of (α·b)·a): bit-for-bit
+/// interchangeable, tested. Raced against [`sgemm_packed`] and against
+/// OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn sgemm_packed_bcast(
+	alpha: f32,
+	m: usize,
+	n: usize,
+	k: usize,
+	a: &[f32],
+	acs: usize,
+	b: &[f32],
+	bcs: usize,
+	beta: f32,
+	c: &mut [f32],
+	ccs: usize,
+	work: &mut [f32],
+) {
+	check_mat(a.len(), m, k, acs);
+	check_mat(b.len(), k, n, bcs);
+	check_mat(c.len(), m, n, ccs);
+	let need = sgemm_packed_work(m, n, k);
+	assert!(work.len() >= need, "sgemm_packed_bcast: workspace shorter than sgemm_packed_work");
+	// Ap = MC·KC·4 = 128 KB (L2-resident), one Bp strip = KC·4·4 = 4 KB
+	if k == 0 {
+		for j in 0..n {
+			crate::L2::sscale_y(beta, &mut c[j * ccs..j * ccs + m]);
+		}
+		return;
+	}
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	if n4 > 0 && m_mr > 0 {
+		// the caller's workspace, split into the two panels; every
+		// element the microkernel reads is packed first, so the
+		// slice's prior contents never reach C (tested with a NaN fill)
+		let (bp, ap) = work[..need].split_at_mut(KC2 * n4);
+		let mut pc = 0usize;
+		while pc < k {
+			let kc = KC2.min(k - pc);
+			for jg in 0..n4 / 4 {
+				let dst = &mut bp[jg * kc * 4..(jg + 1) * kc * 4];
+				let j = jg * 4;
+				for l in 0..kc {
+					for u in 0..4 {
+						dst[l * 4 + u] = alpha * b[(j + u) * bcs + pc + l]; // α folded in once
+					}
+				}
+			}
+			let first = pc == 0;
+			let mut ic = 0usize;
+			while ic < m_mr {
+				let mc = MC2.min(m_mr - ic); // both multiples of MR
+				for g in 0..mc / MR {
+					let base = g * kc * MR;
+					for l in 0..kc {
+						let src = (pc + l) * acs + ic + g * MR;
+						ap[base + l * MR..base + l * MR + MR]
+							.copy_from_slice(&a[src..src + MR]);
+					}
+				}
+				for jg in 0..n4 / 4 {
+					for g in 0..mc / MR {
+						unsafe {
+							tile_8x4_packed_bcast(
+								kc,
+								ap.as_ptr().add(g * kc * MR),
+								bp.as_ptr().add(jg * kc * 4),
+								beta,
+								first,
+								c.as_mut_ptr().add(jg * 4 * ccs + ic + g * MR),
+								ccs,
+							);
+						}
+					}
+				}
+				ic += mc;
+			}
+			pc += kc;
+		}
+	}
+	if m_mr < m {
+		for j in 0..n4 {
+			let seg = &mut c[j * ccs + m_mr..j * ccs + m];
+			crate::L2::sscale_y(beta, seg);
+			for l in 0..k {
+				crate::L1::saxpy_k(alpha * b[j * bcs + l], &a[l * acs + m_mr..l * acs + m], seg);
+			}
+		}
+	}
+	for j in n4..n {
+		sgemv_k(alpha, m, k, a, acs, &b[j * bcs..j * bcs + k], beta, &mut c[j * ccs..j * ccs + m]);
+	}
+}
+
+/// The 8×4 microkernel of [`sgemm_packed_bcast`]: `bp` holds α·B already;
+/// each k step is two loads of A, one load of B, four lane broadcasts,
+/// eight multiplies and eight adds.
+/// # Safety
+/// As [`tile_8x4_packed`].
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+#[allow(clippy::too_many_arguments)]
+unsafe fn tile_8x4_packed_bcast(
+	kc: usize,
+	ap: *const f32,
+	bp: *const f32,
+	beta: f32,
+	first: bool,
+	cp: *mut f32,
+	ccs: usize,
+) {
+	use crate::lanes::F32x4;
+	let zero = F32x4::splat(0.0);
+	let mut acc = [[zero; 2]; 4];
+	if first {
+		if beta != 0.0 {
+			let vb = F32x4::splat(beta);
+			for (u, au) in acc.iter_mut().enumerate() {
+				au[0] = F32x4::load(cp.add(u * ccs)).mul(vb);
+				au[1] = F32x4::load(cp.add(u * ccs + 4)).mul(vb);
+			}
+		}
+	} else {
+		for (u, au) in acc.iter_mut().enumerate() {
+			au[0] = F32x4::load(cp.add(u * ccs));
+			au[1] = F32x4::load(cp.add(u * ccs + 4));
+		}
+	}
+	for l in 0..kc {
+		let a0 = F32x4::load(ap.add(l * 8));
+		let a1 = F32x4::load(ap.add(l * 8 + 4));
+		let b = F32x4::load(bp.add(l * 4));
+		let t = [b.bcast::<0>(), b.bcast::<1>(), b.bcast::<2>(), b.bcast::<3>()];
+		for (u, au) in acc.iter_mut().enumerate() {
+			au[0] = au[0].add(a0.mul(t[u]));
+			au[1] = au[1].add(a1.mul(t[u]));
+		}
+	}
+	for (u, au) in acc.iter().enumerate() {
+		au[0].store(cp.add(u * ccs));
+		au[1].store(cp.add(u * ccs + 4));
+	}
+}
+
 
 /// One 8×4 microkernel step over PACKED panels: `ap` walks MR=8
 /// contiguous row values per k step, `bp` walks 4 contiguous column

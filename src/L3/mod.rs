@@ -82,13 +82,13 @@ pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: 
 	}
 }
 
-pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_copy_op, dgemm_copy_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed};
+pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_copy_op, dgemm_copy_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed, dgemm_packed_bcast};
 pub use dsymm::dsymm;
 pub use dsyrk::{dsyrk, dsyrk_work};
 pub use dsyr2k::{dsyr2k, dsyr2k_work};
 pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream};
 pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream};
-pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed};
+pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed, sgemm_packed_bcast};
 pub use ssymm::ssymm;
 pub use ssyrk::{ssyrk, ssyrk_work};
 pub use ssyr2k::{ssyr2k, ssyr2k_work};
