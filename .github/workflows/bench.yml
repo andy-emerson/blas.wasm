@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "rooflines | packed-race | both"
+        description: "rooflines | packed-race | tri-race | both"
         required: false
         default: "rooflines"
 
@@ -53,6 +53,13 @@ jobs:
         run: |
           cd bench
           node packed-gemm-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
+            | tee -a ../bench-results.log
+
+      - name: Transposed trmm/trsm race (copy vs stream, all types)
+        if: ${{ inputs.suite == 'tri-race' || inputs.suite == 'both' }}
+        run: |
+          cd bench
+          node tri-t-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
             | tee -a ../bench-results.log
 
       - uses: actions/upload-artifact@v4

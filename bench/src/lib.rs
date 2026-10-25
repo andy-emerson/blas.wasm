@@ -1656,3 +1656,76 @@ pub extern "C" fn run_gemm_rect_incumbent(ty: usize, m: usize, k: usize, n: usiz
 pub extern "C" fn run_gemm_rect_packed(ty: usize, m: usize, k: usize, n: usize) -> f64 {
     gemm_rect(ty, m, k, n, true)
 }
+
+/// Transposed trmm/trsm race (STATUS.md, decision D3): the two
+/// candidates for op(A) = Aᵀ (Aᴴ for complex), `copy` (transpose into
+/// workspace, existing kernel) and `stream` (no copy; transposed
+/// accessor on the right, column-reduction kernels on the left).
+/// `routine` 0 = trmm, 1 = trsm; `side` 0 = left, 1 = right; `cand`
+/// 0 = copy, 1 = stream. A is the diagonally dominant `tri` buffer at
+/// the setup leading dimension, so the solves stay bounded; B is
+/// refilled from `b` before every call (same cost on both sides) so
+/// repeated multiplies cannot overflow. Returns a fold of B; the two
+/// candidates are bit-identical by construction, so the race script
+/// asserts the folds match before timing.
+fn tri_t(ty: usize, routine: usize, side: usize, upper: bool, m: usize, n: usize, cand: usize) -> f64 {
+    use blas_wasm::L3 as l3;
+    let s = state_mut();
+    let na = if side == 0 { m } else { n };
+    assert!(na <= s.n && m * n <= s.n * s.n, "tri_t: setup too small");
+    let lda = s.n;
+    let sd = if side == 0 { Side::Left } else { Side::Right };
+    let up = if upper { Uplo::Upper } else { Uplo::Lower };
+    let dg = Diag::NonUnit;
+    macro_rules! run {
+        ($a:expr, $b:expr, $src:expr, $one:expr, $ta:expr, $zero:expr, $trmm:ident, $trmm_copy:ident, $trmm_copy_work:ident, $trmm_stream:ident, $trsm:ident, $trsm_copy:ident, $trsm_copy_work:ident, $trsm_stream:ident) => {{
+            let a = &$a[..];
+            let b = &mut $b[..m * n];
+            b.copy_from_slice(&$src[..m * n]);
+            let alpha = $one;
+            match (routine, cand) {
+                (0, 0) => {
+                    let mut w = vec![$zero; l3::$trmm_copy_work(sd, m, n)];
+                    l3::$trmm_copy(sd, up, $ta, dg, m, n, alpha, a, lda, b, m, &mut w);
+                }
+                (0, _) => l3::$trmm_stream(sd, up, $ta, dg, m, n, alpha, a, lda, b, m),
+                (_, 0) => {
+                    let mut w = vec![$zero; l3::$trsm_copy_work(sd, m, n)];
+                    l3::$trsm_copy(sd, up, $ta, dg, m, n, alpha, a, lda, b, m, &mut w);
+                }
+                (_, _) => l3::$trsm_stream(sd, up, $ta, dg, m, n, alpha, a, lda, b, m),
+            }
+            let _ = l3::$trmm; // the netlib wrapper is not raced here
+            let _ = l3::$trsm;
+            b
+        }};
+    }
+    match ty {
+        0 => {
+            let b = run!(s.tri, s.sym, s.b, 1.0f64, Trans::Trans, 0.0f64, dtrmm, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrsm, dtrsm_copy, dtrsm_copy_work, dtrsm_stream);
+            b[0] + b[m * n - 1]
+        }
+        1 => {
+            let b = run!(s.tri32, s.sym32, s.b32, 1.0f32, Trans::Trans, 0.0f32, strmm, strmm_copy, strmm_copy_work, strmm_stream, strsm, strsm_copy, strsm_copy_work, strsm_stream);
+            (b[0] + b[m * n - 1]) as f64
+        }
+        2 => {
+            let b = run!(s.triz, s.symz, s.bz, C64::ONE, Trans::ConjTrans, C64::ZERO, ztrmm, ztrmm_copy, ztrmm_copy_work, ztrmm_stream, ztrsm, ztrsm_copy, ztrsm_copy_work, ztrsm_stream);
+            b[0].re + b[0].im + b[m * n - 1].re + b[m * n - 1].im
+        }
+        _ => {
+            let b = run!(s.tric, s.symc, s.bc, C32::ONE, Trans::ConjTrans, C32::ZERO, ctrmm, ctrmm_copy, ctrmm_copy_work, ctrmm_stream, ctrsm, ctrsm_copy, ctrsm_copy_work, ctrsm_stream);
+            (b[0].re + b[0].im + b[m * n - 1].re + b[m * n - 1].im) as f64
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn run_tri_t_copy(ty: usize, routine: usize, side: usize, upper: usize, m: usize, n: usize) -> f64 {
+    tri_t(ty, routine, side, upper != 0, m, n, 0)
+}
+
+#[no_mangle]
+pub extern "C" fn run_tri_t_stream(ty: usize, routine: usize, side: usize, upper: usize, m: usize, n: usize) -> f64 {
+    tri_t(ty, routine, side, upper != 0, m, n, 1)
+}
