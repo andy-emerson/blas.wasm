@@ -1,6 +1,2 @@
 # build artifacts (any crate level)
 target/
-# book build output, and the two mermaid assets `mdbook-mermaid install book` drops in
-book/book/
-book/mermaid.min.js
-book/mermaid-init.js

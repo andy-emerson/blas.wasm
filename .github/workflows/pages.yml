@@ -1,8 +1,9 @@
-# Deploys the book (book/) to GitHub Pages on every push to main. The
-# repository's Pages source must be set to "GitHub Actions" once, by a
-# human, in Settings → Pages. The gate workflow is what tests the book
-# (include check, build, mdbook test); this workflow only builds and
-# publishes it.
+# Publishes the crate documentation, which is the book, to GitHub Pages
+# on every push to main: `cargo doc` with the KaTeX/Mermaid header, a
+# root redirect to the crate page, upload, deploy. The repository's
+# Pages source must be set to "GitHub Actions" once, by a human, in
+# Settings → Pages. The gate is what checks the documentation (warnings
+# denied); this workflow only builds and publishes it.
 name: pages
 on:
   push:
@@ -25,22 +26,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
 
-      - name: Book tooling (pinned)
-        run: cargo install --locked mdbook@0.5.4 mdbook-katex@0.10.0 mdbook-mermaid@0.17.1
-
-      - name: Build the book
+      - name: Build the documentation
         run: |
-          node book/check-includes.mjs
-          mdbook-mermaid install book
-          mdbook build book
+          RUSTDOCFLAGS="--html-in-header rustdoc/header.html -D warnings" cargo doc --no-deps
+          echo '<meta http-equiv="refresh" content="0; url=blas_wasm/index.html">' > target/doc/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: book/book
+          path: target/doc
 
   deploy:
     needs: build

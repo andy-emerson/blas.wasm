@@ -1,7 +1,7 @@
 # The gate: every push to main and every pull request must pass the
 # test suite, clippy on host and wasm, the cross-target determinism
 # probes, the C-ABI module build with its smoke test and binary audit,
-# and the book (includes resolve, it builds, its examples run).
+# and the crate documentation (rustdoc, warnings denied).
 name: gate
 on:
   push:
@@ -67,15 +67,5 @@ jobs:
           node audit.mjs --self-test
           node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --imports 0 --exports 119
 
-      - name: Book tooling (pinned)
-        run: cargo install --locked mdbook@0.5.4 mdbook-katex@0.10.0 mdbook-mermaid@0.17.1
-
-      - name: Book (includes resolve, builds, examples compile and run against the crate)
-        run: |
-          node book/check-includes.mjs
-          mdbook-mermaid install book
-          mdbook build book
-          # A dedicated target dir: clippy's .rmeta beside the test build's
-          # .rlib in target/release/deps gives rustdoc two candidates (E0464).
-          cargo build --release --lib --target-dir target/book
-          mdbook test book -L target/book/release/deps
+      - name: Crate documentation (the book; broken links and bad doc markup fail)
+        run: RUSTDOCFLAGS="--html-in-header rustdoc/header.html -D warnings" cargo doc --no-deps

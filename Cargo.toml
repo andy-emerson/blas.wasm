@@ -15,6 +15,11 @@ publish = false
 # verbatim.
 [dependencies]
 
+# docs.rs (if the crate is ever published there) renders the
+# mathematics and diagrams with the same header the Pages site uses.
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "rustdoc/header.html"]
+
 [dev-dependencies]
 # reference for the bit-for-bit cross-check tests of the vendored math
 # (tests/math.rs) — never linked into the shipped crate
