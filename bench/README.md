@@ -196,42 +196,48 @@ both draws) and the `copy` for a B-only transposed operand, which lost
 every c32 row in both draws (0.90–0.99); below the threshold every
 type copies ahead of the register tile.
 
-### B0 — the native libraries on the same machine (single-threaded)
+### B0 — OpenBLAS and BLIS compiled to WebAssembly, same engine, same machine
 
-The sanity rows D11 asked for (`STATUS.md`): OpenBLAS and BLIS from
-the Ubuntu packages, pinned to one thread, native on the reference
-runner, beside this module on Node on the same runner and the same
-shapes (`bench/b0/b0.c`, `bench/b0-rows.mjs`, the `b0` suite of
-`bench.yml`; runs 40213117656 / 40213120395, GFLOP/s, the range across
-the two draws; flop counts gemm 2n³, symm 2n³, syrk/trmm/trsm n³,
-complex ×4; the blas.wasm gemm rows were taken with the workspace
-allocated inside the timed call, since hoisted, a cost under 1% of a
-512³ call). The native libraries run AVX2 or AVX-512 with fused
-multiply-add; this module runs 128-bit lanes without it, so the
-instruction set alone caps it at roughly a quarter of their peak per
-core (see "What's measured how").
+The rows D11 asked for (`STATUS.md`): OpenBLAS and BLIS built to
+wasm and run in the same Node as this module, on the same runner and
+the same shapes, single-threaded, no relaxed SIMD anywhere
+(`bench/b0/build-wasm.sh`, `bench/b0/b0.c`, `bench/b0-rows.mjs`, the
+`b0` suite of `bench.yml`). OpenBLAS is its own `WASM128_GENERIC`
+target (hand-written simd128 gemm kernels; develop at `5bab605`);
+BLIS is its generic C configuration autovectorized by clang under
+`-msimd128` (master at `a8037cf`). Milliseconds per call, min over
+the iterations and over the two interleaved rounds of a run, the
+range across the two runs (40220022112 / 40220778110); the ratio
+columns are this module's time over theirs, so above 1 means this
+module is slower.
 
-| op | OpenBLAS | BLIS | blas.wasm | blas.wasm ÷ OpenBLAS |
-|---|---|---|---|---|
-| dgemm 512³ | 42.9–43.5 | 43.5–43.9 | 8.3 | 0.19 |
-| sgemm 512³ | 92.2–92.5 | 91.2–91.8 | 15.6–16.6 | 0.17–0.18 |
-| zgemm 512³ | 47.6–47.7 | 45.9–46.2 | 12.1–13.3 | 0.25–0.28 |
-| cgemm 512³ | 93.8–94.2 | 94.2 | 26.0–26.1 | 0.28 |
-| dgemm 1024³ | 44.5 | 44.0–44.8 | 8.3 | 0.19 |
-| sgemm 1024³ | 93.7–94.7 | 93.0–93.4 | 16.6–16.7 | 0.18 |
-| zgemm 1024³ | 47.6–47.7 | 46.0–46.1 | 12.0–13.3 | 0.25–0.28 |
-| cgemm 1024³ | 95.3–95.5 | 94.6–94.9 | 26.2–26.7 | 0.27–0.28 |
-| dsymm left 512 | 42.9–43.3 | 44.4–44.5 | 12.3 | 0.28 |
-| dsyrk 512 | 36.7–37.5 | 36.4 | 6.5–6.6 | 0.17–0.18 |
-| dtrmm left 512 | 37.0–37.1 | 40.9–41.5 | 6.8–6.9 | 0.18–0.19 |
-| dtrsm left 512 | 34.0–34.8 | 40.4–40.9 | 6.9–7.0 | 0.20 |
+| op | blas.wasm | OpenBLAS-wasm | BLIS-wasm | ours ÷ OpenBLAS | ours ÷ BLIS |
+|---|---|---|---|---|---|
+| dgemm 512³ | 32.3–37.9 | 17.2–17.5 | 30.9–37.1 | 1.87–2.17 | 1.02–1.04 |
+| sgemm 512³ | 16.1–16.2 | 7.7–7.8 | 13.0 | 2.07–2.08 | 1.24 |
+| zgemm 512³ | 74.8–75.3 | 83.4–83.5 | 82.1–82.2 | 0.90 | 0.91–0.92 |
+| cgemm 512³ | 41.5 | 63.3 | 138.3–138.7 | 0.66 | 0.30 |
+| dsymm left 512 | 23.3–23.7 | 17.5–17.6 | 37.1–37.2 | 1.32–1.35 | 0.63–0.64 |
+| dsyrk 512 | 18.1–18.2 | 9.2 | 16.5 | 1.97–1.98 | 1.10 |
+| dtrmm left 512 | 19.8–20.1 | 8.9 | 14.1 | 2.22–2.26 | 1.40–1.43 |
+| dtrsm left 512 | 19.7–20.0 | 9.8 | 16.9 | 2.01–2.04 | 1.16–1.18 |
+| dgemm 1024³ | 257.2–321.1 | 139.3–139.5 | 297.1–297.5 | 1.85–2.30 | 0.87–1.08 |
+| sgemm 1024³ | 128.2–128.4 | 61.6–61.8 | 104.0–104.1 | 2.08 | 1.23 |
+| zgemm 1024³ | 595.2–596.4 | 665.0–665.4 | 655.0–655.3 | 0.89–0.90 | 0.91 |
+| cgemm 1024³ | 321.9–370.1 | 503.8–503.9 | 1104.0–1108.8 | 0.64–0.73 | 0.29–0.33 |
 
-What it says for D11: gemm sits at 17–28% of the native libraries,
-close to the instruction-set ratio for the complex types and about
-three quarters of it for the real ones; the triangular and rank-k
-routines sit at 17–20%, below gemm's own share, so they are the
-larger lever if a Level 3 campaign is opened. XNNPACK is not packaged
-for the runner and has no row.
+Verdict, unanimous across both draws: OpenBLAS's wasm port is
+1.9–2.3× faster than this module on every f64 and f32 Level 3 row
+(dsymm 1.3×); this module is 1.1× faster on zgemm and 1.4–1.5× on
+cgemm. Against BLIS this module ties dgemm, loses sgemm (1.24×),
+dsyrk (1.1×), dtrmm (1.4×) and dtrsm (1.2×), and wins dsymm (1.6×),
+zgemm (1.1×) and cgemm (3.3×). The claim "faster than OpenBLAS and
+BLIS in the browser" is therefore false today for the real types and
+true for the complex types; what it means for the plan is decision
+D11 in `STATUS.md`. XNNPACK is not built. The earlier native rows
+(OpenBLAS and BLIS as Ubuntu packages, AVX2/AVX-512 with fused
+multiply-add, runs 40213117656 / 40213120395) measured a different
+question and are not kept.
 
 ## Running a roofline (per level, per type)
 

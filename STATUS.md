@@ -33,7 +33,11 @@ binary audit is in the gate (`abi/audit.mjs`); the thread-count part
 is untested (no threaded artifact yet). *Dependency-free* is
 true: zero imports, verified by the smoke test instantiating with no
 import object. *Faster than OpenBLAS and BLIS in the browser* is
-plausible and unmeasured (todo B).
+measured single-threaded (B0, `bench/README.md`, two runner draws):
+true for zgemm and cgemm, false for every f64 and f32 Level 3 row,
+where OpenBLAS's wasm port is 1.9–2.3× faster than this module and
+BLIS's generic build 1.1–1.4× faster on sgemm, syrk, trmm and trsm.
+The multi-threaded part is untested (todo B).
 
 ## Open decisions
 
@@ -126,23 +130,26 @@ names its options, the recommendation, and what it gates.
   sit at 55–57% of the measured arithmetic peak and the syrk family
   and trmm/trsm at 38–50% in f64 (`bench/README.md`); XNNPACK runs
   near the fused-multiply-add peak, twice ours, so "within 2×" is at
-  risk as written. B0 is measured (two draws, `bench/README.md`):
-  single-threaded on the runner, blas.wasm sits at 17–28% of native
-  OpenBLAS and BLIS on every Level 3 row — gemm near the quarter the
-  instruction set alone allows (128-bit lanes without fused
-  multiply-add against AVX-512 with it) for the complex types and
-  about three quarters of it for the real ones, the triangular and
-  rank-k routines at 17–20%, below gemm's own share. Those are native
-  rows; the browser rows of Step B, where the competitors also lose
-  the fused multiply-add, are the only measurement that can speak to
-  "within 2×". Options now: (1) two campaigns before B — K1 moves the
-  syrk family and trmm/trsm onto the packing layer, K2 is a gemm
-  micro-kernel campaign, both raced two draws; (2) no kernel work,
-  weaken the claim to the measurement. Recommendation: 1, K1 first,
-  since the triangular and rank-k routines are the larger lever on
-  this evidence. Either way: never write success for a miss; the
-  claim is weakened before Step B if the campaigns are declined or
-  lose.
+  risk as written. B0 is measured the way the plan asked, OpenBLAS
+  and BLIS compiled to wasm in the same Node on the same runner, two
+  draws (`bench/README.md`): OpenBLAS's own wasm target, with
+  hand-written simd128 gemm kernels and no relaxed SIMD, is 1.9–2.3×
+  faster than this module on every f64 and f32 Level 3 row (dgemm,
+  sgemm, dsyrk, dtrmm, dtrsm; dsymm 1.3×), and this module is 1.1×
+  faster on zgemm and 1.4–1.5× on cgemm; BLIS's generic build ties
+  dgemm, is 1.1–1.4× faster on sgemm, dsyrk, dtrmm and dtrsm, and is
+  slower on dsymm, zgemm and cgemm. So "faster than OpenBLAS and
+  BLIS" is false today for the real types, by a factor of two against
+  OpenBLAS, and the gap is not the instruction set: OpenBLAS reaches
+  it with the same simd128 lanes. Options now: (1) the campaigns
+  before B — K2 first (the gemm micro-kernel, which OpenBLAS's wasm
+  kernels show has 2× left on this instruction set) and K1 (the syrk
+  family and trmm/trsm onto the packing layer), each raced two draws
+  against OpenBLAS-wasm as the bar, not only against our own shapes;
+  (2) no kernel work, weaken the claim to "faster on the complex
+  types, within 2.3× of OpenBLAS on the real ones". Recommendation:
+  1. Either way: never write success for a miss; the claim is weakened
+  now in `DESIGN.md` and stays weakened until a race earns it back.
 
 ## Todos, by milestone
 
@@ -176,9 +183,10 @@ warnings denied.
 Done on this branch except S3: every flag form in four types with the
 D3 race's winners routed (S0, S4, S1, S2), the reference alpha, beta,
 dimension and NaN rules, the complex symmetric family and `zrot`/`crot`
-(S5), the module error slot (S6), and the B0 rows (gemm at 17–28% of
-native OpenBLAS and BLIS, the triangular and rank-k routines at
-17–20%; XNNPACK is not packaged for the runner and has no row). What
+(S5), the module error slot (S6), and the B0 rows (OpenBLAS and BLIS
+compiled to wasm in the same Node: OpenBLAS 1.9–2.3× faster than this
+module on the real types, this module faster on the complex ones;
+XNNPACK is not built). What
 is built is in `README.md` and `DESIGN.md`, the numbers in
 `bench/README.md`, the evidence in the commit log and the checks
 above.
@@ -254,9 +262,13 @@ current numbers.
   so the complex lane form is the obvious next candidate.
 - trmm/trsm rebuilt on the packing layer (D3's third candidate, the
   K1 campaign's shape), which would also change the no-transpose
-  shapes; the B0 rows put the triangular and rank-k routines at
-  17–20% of the native libraries, below gemm's 17–28%, which is the
-  motivation D11 asked for.
+  shapes; the B0 rows put OpenBLAS-wasm 2–2.3× ahead on dsyrk, dtrmm
+  and dtrsm, which is the motivation D11 asked for.
+- The gemm micro-kernel (K2): OpenBLAS's `WASM128_GENERIC` dgemm and
+  sgemm kernels are 1.9–2.1× faster than ours on the same simd128
+  lanes without relaxed SIMD, so the register blocking, broadcast and
+  unroll of that kernel are the first thing to read before the
+  campaign.
 - The f32 left transposed trmm/trsm ascending-walk cases (trmm upper,
   trsm lower) sit at 0.85–1.0 of the copy on 1024² while the
   descending walks win 1.3×; the asymmetry is unexplained.

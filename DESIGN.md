@@ -21,12 +21,17 @@ Inference runtimes (ONNX Runtime Web, TensorFlow.js and their
 relatives) are not consumers; the reasoning is under "Decisions
 closed".
 
-**Competitors.** OpenBLAS and BLIS as deployed in the browser:
-compiled to wasm via Emscripten, generic C kernels, little SIMD. The
-product claim is: **reproducible by construction, verified by test,
-faster than everything else that is reproducible, and within 2× of
-the fastest thing that is not.** It is not "the fastest gemm on the
-web" (see XNNPACK under "Claims").
+**Competitors.** OpenBLAS and BLIS as deployed in the browser,
+compiled to wasm via Emscripten. OpenBLAS has a wasm target of its
+own (`WASM128_GENERIC`: hand-written simd128 gemm kernels, relaxed
+SIMD opt-in); BLIS compiles its generic C kernels, autovectorized.
+The product claim is: **reproducible by construction, verified by
+test, faster than everything else that is reproducible, and within
+2× of the fastest thing that is not.** It is not "the fastest gemm on
+the web" (see XNNPACK under "Claims"). Measured against both in the
+same engine (B0, `bench/README.md`), the "faster" part holds today
+for the complex types only; decision D11 in `STATUS.md` decides what
+is done about the real types.
 
 **Two products, nothing else.**
 
@@ -162,7 +167,7 @@ not pretend otherwise.
 |---|---|
 | **Reproducible.** Finite results bit-identical across engines, targets, and thread counts (a NaN's sign and payload bits are outside the promise), tested, and auditable from the binary. | per-routine bitwise replays and native ↔ wasm probes on Node (`tests/README.md`), held for other engines by the wasm specification's deterministic float semantics; the p=1 vs p=N bitwise test per routine (todo T5, the thread-count part is a target until then); the relaxed-opcode scan in the gate (`abi/audit.mjs`) |
 | **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | the import-count assertion in the gate; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
-| **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded |
+| **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded. The single-threaded B0 rows (`bench/README.md`) stand today: true for zgemm and cgemm; false for f64 and f32 Level 3, where OpenBLAS's wasm port is 1.9–2.3× faster and BLIS 1.1–1.4× on sgemm, syrk, trmm and trsm |
 
 How far each claim currently stands is tracked in `STATUS.md`.
 
@@ -750,7 +755,8 @@ trigger where one is worth keeping. Open decisions are in
 - **"Fastest on the web" is not the claim.** Not true on f32 gemm
   against fused-multiply-add kernels while bit-identity holds; the
   claim is reproducibility, zero dependencies, and faster than the
-  two named competitors in the browser.
+  two named competitors in the browser, the last of which is measured
+  false today for the real types (B0 in `bench/README.md`; D11).
 - **Banded and packed storage forms are not planned.** No consumer
   demand.
 

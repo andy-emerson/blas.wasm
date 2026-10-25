@@ -1,8 +1,9 @@
-/* B0 sanity rows (STATUS.md): the same Level 3 shapes the roofline
- * scores, timed through a native CBLAS library on the same runner,
- * single-threaded. Built once against OpenBLAS and once against BLIS
- * by the bench workflow's `b0` suite; prints `library,op,n,ms,gflops` per row, min over
- * the iterations. The matrices are LCG-filled like the bench's. */
+/* B0 rows (STATUS.md): the same Level 3 shapes the roofline scores,
+ * timed through a CBLAS library compiled to WebAssembly and run in
+ * Node on the same runner as this module, single-threaded. Linked
+ * once against OpenBLAS and once against BLIS by bench/b0/build-wasm.sh;
+ * prints `library,op,n,ms,gflops` per row, min over the iterations.
+ * The matrices are LCG-filled like the bench's. */
 #include <cblas.h>
 #include <complex.h>
 #include <stdio.h>
