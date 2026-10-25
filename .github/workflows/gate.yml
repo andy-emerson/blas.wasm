@@ -59,3 +59,9 @@ jobs:
           cd abi
           cargo build --release --target wasm32-unknown-unknown
           node check.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm
+
+      - name: Binary audit (no relaxed-SIMD opcodes, zero imports, export count)
+        run: |
+          cd abi
+          node audit.mjs --self-test
+          node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --imports 0 --exports 119
