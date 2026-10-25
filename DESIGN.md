@@ -360,11 +360,26 @@ diagonals end exactly real.
   identical and results stay bit-identical to the unit-stride call on
   a gathered copy. Negative strides per reference semantics. How the
   stride appears in the Rust signatures is decision D7.
-- **Workspace.** Packed gemm's panel buffers become caller-provided,
-  with a query form that returns the size; afterwards the crate never
-  allocates and `alloc` is dropped (constraint 7, required by
-  threading: no allocator inside a shared memory). Scope (D3) and
-  shape (D8) are open.
+- **Workspace.** Scratch is a caller-provided slice, `work: &mut
+  [T]`, on every routine that needs it, beside a per-routine size
+  query (`dgemm_work(m, k, n) -> usize`). Below the packed threshold
+  the query returns zero, so small calls pass an empty slice; a slice
+  shorter than the query is an argument error, never a silent slower
+  path. Afterwards the crate never allocates and `alloc` is dropped
+  (constraint 7, required by threading: no allocator inside a shared
+  memory). This shape is settled by constraint 7 together with the
+  no-silent-miss rule rather than by a separate ruling: an optional
+  workspace would hide a performance cliff, an owning value would
+  need to allocate or be the same slice underneath, and exported
+  block constants push the arithmetic onto every consumer. In the
+  module, whose CBLAS signatures carry no workspace argument, the
+  host registers a scratch region once per instance through an
+  exported `set_workspace(ptr, bytes)` and reads the same size
+  queries as exports; a wrapper whose registered region is too small
+  writes the error slot and returns. Per-instance registration is a
+  mutable global, which wasm already makes per instance, so threads
+  need no synchronization. Which routines take scratch is decision
+  D3.
 - **Reference semantics.** Quick returns, `beta == 0` not reading C,
   zero dimensions, NaN propagation as reference BLAS; the complex
   symmetric (non-Hermitian) symm/syrk/syr2k; `zrot`/`crot`.
@@ -375,8 +390,12 @@ diagonals end exactly real.
   returns without computing, mirroring reference BLAS's
   xerbla-then-return; the JavaScript layer reads it and throws.
   *Recorded decision:* a zero-import module cannot call a host error
-  handler, so the slot replaces the callback. The Rust crate's own
-  convention is decision D4.
+  handler, so the slot replaces the callback. In the crate every
+  routine returns `Result<(), Error>`; `Error` names the routine and
+  the position of the offending argument, so it maps one to one onto
+  xerbla and onto the slot. Every checkable precondition returns
+  `Err`, a slice shorter than the declared dimensions included; the
+  crate never panics on input (D4, under "Decisions closed").
 
 The testing contract carries over unchanged for every new form:
 bitwise replay against the same-order scalar definition, bounds
@@ -543,6 +562,17 @@ trigger where one is worth keeping. Open decisions are in
   roadmap that mixes design, todo and chronology; GitHub Issues as
   living status (allowed by the agreement, but it moves open work off
   the clone).
+- **D4 — The Rust crate's error convention.** `Result<(), Error>` on
+  every routine, the error carrying the routine and the argument
+  position, with every checkable precondition reported and no panic
+  on input. Rejected: keeping panics in the crate and reporting only
+  at the module boundary (the crate alone would not be a complete
+  BLAS under constraint 6, and a panic kills a wasm instance);
+  validated view types (a product-layer vocabulary, not a BLAS one;
+  it can be layered on top later); `debug_assert` only (silent wrong
+  answers in release). Reopen trigger for adding `unsafe`
+  unchecked twins: a consumer measures the argument checks as a cost
+  on small calls.
 - **D2 — Publishing to the registries.** Nothing is published to npm
   or crates.io for now; the package names are placeholders. The
   crates.io publish is out of the housekeeping step, `publish =
