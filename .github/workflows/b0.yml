@@ -1,0 +1,56 @@
+# B0 sanity rows (STATUS.md): OpenBLAS and BLIS, single-threaded, native
+# on the reference runner, beside our wasm module on the same shapes and
+# the same machine. Manual: two draws make a verdict. XNNPACK is not
+# packaged for the runner and is not built here.
+name: b0
+on:
+  workflow_dispatch:
+
+jobs:
+  b0:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install OpenBLAS and BLIS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libopenblas-dev libblis-dev
+          dpkg -l | grep -E "libopenblas|libblis" | awk '{print $2, $3}'
+          nproc; lscpu | grep -E "Model name|MHz" | head -3
+
+      - name: Native rows (OpenBLAS, 1 thread)
+        run: |
+          cd bench/b0
+          gcc -O2 -o b0-openblas b0.c -I/usr/include/x86_64-linux-gnu/openblas-pthread -I/usr/include/x86_64-linux-gnu -I/usr/include/openblas -lopenblas
+          OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 ./b0-openblas openblas | tee ../../b0-results.log
+
+      - name: Native rows (BLIS, 1 thread)
+        run: |
+          cd bench/b0
+          # the Ubuntu BLIS package ships its CBLAS header under blis/; a
+          # build that cannot find it is reported, not fatal, so the
+          # OpenBLAS and blas.wasm rows still land
+          if gcc -O2 -o b0-blis b0.c -I/usr/include/blis -I/usr/include/x86_64-linux-gnu/blis -lblis -lm -lpthread; then
+            BLIS_NUM_THREADS=1 OMP_NUM_THREADS=1 ./b0-blis blis | tee -a ../../b0-results.log
+          else
+            echo "blis,unavailable,0,0,0 (CBLAS header or library not found)" | tee -a ../../b0-results.log
+          fi
+
+      - name: Our rows (blas.wasm on Node)
+        run: |
+          cd bench
+          cargo build --release --target wasm32-unknown-unknown --lib
+          node b0-rows.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm | tee -a ../b0-results.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: b0-results
+          path: b0-results.log
