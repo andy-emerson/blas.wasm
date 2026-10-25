@@ -21,6 +21,7 @@
 //! (`bench/README.md`).
 
 use super::check_mat;
+use super::dgemm::{tile_4x4_packed_bcast, KC, MC, MR};
 use crate::{Diag, Error, Side, Trans, Uplo};
 use crate::kernels::daxpy4;
 use crate::L1::{daxpy_k, dscal};
@@ -629,5 +630,185 @@ fn dtrsm_left_t1(m: usize, a: &[f64], acs: usize, upper: bool, unit: bool, x: &m
 			}
 			x[l] = acc;
 		}
+	}
+}
+
+/// The K1 candidate for the left side: `B ← α·A⁻¹·B` on the packing
+/// layer, in place. B is scaled by α first, as the sweep does. The
+/// k-blocks run in the elimination's direction (ascending for lower,
+/// descending for upper); inside a k-block the row blocks are solved in
+/// that direction too: a tile first takes the block's rows past the
+/// already-solved rows of this k-block (their negated solutions sit in
+/// the right panel, appended as each block is solved), then a scalar
+/// routine solves the MR×MR diagonal block in the sweep's order, then
+/// the new rows are negated into the panel; once the k-block is solved
+/// the remaining row blocks take the whole panel with the tile. The
+/// `m % MR` tail rows are solved by the plain sweep (after the main loop
+/// for lower, before it for upper, where they feed the first panel);
+/// the `n % 4` column tail runs `dtrsv` per column. Per-element rounding
+/// sequence identical to the shipping sweep (α·b, then the subtractions
+/// in elimination order as `(−x_l)·a_il`, then the division):
+/// bit-for-bit interchangeable, tested. Raced against the shipping
+/// sweep and against OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn dtrsm_left_packed(upper: bool, unit: bool, alpha: f64, m: usize, n: usize, a: &[f64], acs: usize, b: &mut [f64], bcs: usize, work: &mut [f64]) {
+	check_mat(a.len(), m, m, acs);
+	check_mat(b.len(), m, n, bcs);
+	let need = dtrsm_left_packed_work(m, n);
+	assert!(work.len() >= need, "dtrsm_left_packed: workspace shorter than dtrsm_left_packed_work");
+	if m == 0 || n == 0 {
+		return;
+	}
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	for j in n4..n {
+		let col = &mut b[j * bcs..j * bcs + m];
+		if alpha != 1.0 {
+			dscal(alpha, col);
+		}
+		dtrsv_k(m, a, acs, upper, unit, col);
+	}
+	if n4 == 0 {
+		return;
+	}
+	if alpha != 1.0 {
+		for j in 0..n4 {
+			dscal(alpha, &mut b[j * bcs..j * bcs + m]);
+		}
+	}
+	let at = |i: usize, l: usize| a[l * acs + i];
+	// the tail rows by the plain sweep: lower after the main loop (they
+	// read every solved row above), upper before it (they are the first
+	// unknowns and feed the first panel)
+	let row_tail = |b: &mut [f64]| {
+		for j in 0..n4 {
+			for step in 0..m - m_mr {
+				let r = if upper { m - 1 - step } else { m_mr + step };
+				let bj = &b[j * bcs..j * bcs + m];
+				let mut acc = bj[r];
+				if upper {
+					for (l, &v) in bj.iter().enumerate().skip(r + 1).rev() {
+						acc += -v * at(r, l);
+					}
+				} else {
+					for (l, &v) in bj.iter().enumerate().take(r) {
+						acc += -v * at(r, l);
+					}
+				}
+				b[j * bcs + r] = if unit { acc } else { acc / at(r, r) };
+			}
+		}
+	};
+	if upper {
+		row_tail(b);
+	}
+	if m_mr > 0 {
+		let kcm = KC.min(m);
+		let (bp, ap) = work[..need].split_at_mut(kcm * n4);
+		let nblk = m.div_ceil(KC);
+		// a row's slot in the (reversed for upper) panel of its k-block
+		let slot = |l: usize, pc: usize, kc: usize| -> usize { if upper { pc + kc - 1 - l } else { l - pc } };
+		// negate a solved row into the panel of every column group
+		let append = |bp: &mut [f64], b: &[f64], l: usize, pc: usize, kc: usize| {
+			let t = slot(l, pc, kc);
+			for jg in 0..n4 / 4 {
+				for u in 0..4 {
+					bp[jg * kc * 4 + t * 4 + u] = -b[(jg * 4 + u) * bcs + l];
+				}
+			}
+		};
+		for bi in 0..nblk {
+			let blk = if upper { nblk - 1 - bi } else { bi };
+			let pc = blk * KC;
+			let kc = KC.min(m - pc);
+			// the tail rows, already solved, belong to the top k-block's panel
+			if upper {
+				for l in m_mr.max(pc)..pc + kc {
+					append(bp, b, l, pc, kc);
+				}
+			}
+			// the row blocks of this k-block, in elimination order
+			let blocks_here = (pc..(pc + kc).min(m_mr)).step_by(MR).count();
+			for bj in 0..blocks_here {
+				let r0 = if upper { pc + (blocks_here - 1 - bj) * MR } else { pc + bj * MR };
+				// (a) the solved rows of this k-block so far
+				let solved = if upper { pc + kc - (r0 + MR) } else { r0 - pc };
+				if solved > 0 {
+					let base = 0;
+					for t in 0..solved {
+						let l = if upper { pc + kc - 1 - t } else { pc + t };
+						let src = l * acs + r0;
+						ap[base + t * MR..base + t * MR + MR].copy_from_slice(&a[src..src + MR]);
+					}
+					for jg in 0..n4 / 4 {
+						unsafe {
+							tile_4x4_packed_bcast(solved, ap.as_ptr(), bp.as_ptr().add(jg * kc * 4), 1.0, false, b.as_mut_ptr().add(jg * 4 * bcs + r0), bcs);
+						}
+					}
+				}
+				// (b) the diagonal block, in the sweep's order
+				for j in 0..n4 {
+					let bj = &mut b[j * bcs..j * bcs + m];
+					for s in 0..MR {
+						let i = if upper { r0 + MR - 1 - s } else { r0 + s };
+						let mut acc = bj[i];
+						if upper {
+							for (l, &v) in bj.iter().enumerate().take(r0 + MR).skip(i + 1).rev() {
+								acc += -v * at(i, l);
+							}
+						} else {
+							for (l, &v) in bj.iter().enumerate().take(i).skip(r0) {
+								acc += -v * at(i, l);
+							}
+						}
+						bj[i] = if unit { acc } else { acc / at(i, i) };
+					}
+				}
+				// (c) into the panel
+				for l in r0..r0 + MR {
+					append(bp, b, l, pc, kc);
+				}
+			}
+			// the row blocks past this k-block take the whole panel
+			let mut ic = 0usize;
+			while ic < m_mr {
+				let mc = MC.min(m_mr - ic);
+				for g in 0..mc / MR {
+					let r0 = ic + g * MR;
+					let past = if upper { r0 + MR <= pc } else { r0 >= pc + kc };
+					if !past {
+						continue;
+					}
+					let base = g * kc * MR;
+					for t in 0..kc {
+						let l = if upper { pc + kc - 1 - t } else { pc + t };
+						let src = l * acs + r0;
+						ap[base + t * MR..base + t * MR + MR].copy_from_slice(&a[src..src + MR]);
+					}
+					for jg in 0..n4 / 4 {
+						unsafe {
+							tile_4x4_packed_bcast(kc, ap.as_ptr().add(base), bp.as_ptr().add(jg * kc * 4), 1.0, false, b.as_mut_ptr().add(jg * 4 * bcs + r0), bcs);
+						}
+					}
+				}
+				ic += mc;
+			}
+		}
+	}
+	if !upper {
+		row_tail(b);
+	}
+}
+
+/// Elements of scratch [`dtrsm_left_packed`] needs: the right panel and
+/// the left panel; zero when the packed loops have nothing to do.
+pub fn dtrsm_left_packed_work(m: usize, n: usize) -> usize {
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	if m_mr == 0 || n4 == 0 {
+		0
+	} else {
+		let kc = KC.min(m);
+		kc * n4 + MC.min(m_mr) * kc
 	}
 }

@@ -86,8 +86,8 @@ pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_pac
 pub use dsymm::dsymm;
 pub use dsyrk::{dsyrk, dsyrk_work, dsyrk_packed, dsyrk_packed_work};
 pub use dsyr2k::{dsyr2k, dsyr2k_work};
-pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream};
-pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream};
+pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrmm_left_packed, dtrmm_left_packed_work};
+pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream, dtrsm_left_packed, dtrsm_left_packed_work};
 pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed, sgemm_packed_bcast};
 pub use ssymm::ssymm;
 pub use ssyrk::{ssyrk, ssyrk_work, ssyrk_packed, ssyrk_packed_work};

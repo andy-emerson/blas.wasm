@@ -1868,6 +1868,50 @@ pub extern "C" fn run_syrk_shape(ty: usize, n: usize, k: usize, upper: usize, pa
     }
 }
 
+/// K1: the triangular routines at m×n (A is m×m on the left, n×n on
+/// the right), the shipping kernel (`packed` = 0) or the packed
+/// candidate (1); `routine` 0 = trmm, 1 = trsm; `side` 0 = left, 1 =
+/// right. B is refreshed from the setup state's source buffer each
+/// call; α = 1; the workspace from the setup state. NaN where no
+/// candidate exists yet.
+#[no_mangle]
+pub extern "C" fn run_tri_shape(ty: usize, routine: usize, side: usize, m: usize, n: usize, upper: usize, unit: usize, packed: usize) -> f64 {
+    use blas_wasm::L3 as l3;
+    let s = state_mut();
+    let cap = s.n * s.n;
+    let na = if side == 0 { m } else { n };
+    assert!(na * na <= cap && m * n <= cap, "run_tri_shape: setup too small");
+    let (up, un) = (upper != 0, unit != 0);
+    let (sd, ul, dg) = (if side == 0 { Side::Left } else { Side::Right }, if up { Uplo::Upper } else { Uplo::Lower }, if un { Diag::Unit } else { Diag::NonUnit });
+    match ty {
+        0 => {
+            let a = &s.tri[..na * na];
+            let b = &mut s.b[..m * n];
+            b.copy_from_slice(&s.sym[..m * n]);
+            match (routine, side, packed) {
+                (0, _, 0) => l3::dtrmm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, na, b, m, ws(&mut s.work, l3::dtrmm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                (1, _, 0) => l3::dtrsm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, na, b, m, ws(&mut s.work, l3::dtrsm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                (0, 0, _) => l3::dtrmm_left_packed(up, un, 1.0, m, n, a, na, b, m, ws(&mut s.work, l3::dtrmm_left_packed_work(m, n), 0.0)),
+                (1, 0, _) => l3::dtrsm_left_packed(up, un, 1.0, m, n, a, na, b, m, ws(&mut s.work, l3::dtrsm_left_packed_work(m, n), 0.0)),
+                _ => return f64::NAN,
+            }
+            b[0] + b[m * n - 1]
+        }
+        1 => {
+            let a = &s.tri32[..na * na];
+            let b = &mut s.b32[..m * n];
+            b.copy_from_slice(&s.sym32[..m * n]);
+            match (routine, side, packed) {
+                (0, _, 0) => l3::strmm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, na, b, m, ws(&mut s.work32, l3::strmm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                (1, _, 0) => l3::strsm(sd, ul, Trans::NoTrans, dg, m, n, 1.0, a, na, b, m, ws(&mut s.work32, l3::strsm_work(sd, Trans::NoTrans, m, n), 0.0)).unwrap(),
+                _ => return f64::NAN,
+            }
+            (b[0] + b[m * n - 1]) as f64
+        }
+        _ => f64::NAN,
+    }
+}
+
 /// The K2 candidate (real types only).
 #[no_mangle]
 pub extern "C" fn run_gemm_rect_packed_bcast(ty: usize, m: usize, k: usize, n: usize) -> f64 {

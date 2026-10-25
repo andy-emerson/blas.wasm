@@ -40,5 +40,32 @@ for (const [tname, ty] of TYPES) {
 		}
 	}
 }
+// the triangular routines: the shipping kernel vs the packed candidate
+const TRI = [['trmm', 0], ['trsm', 1]];
+const SIDES = [['left', 0], ['right', 1]];
+const TSHAPES = [[256, 256], [512, 512], [1024, 1024], [512, 64]];
+for (const [tname, ty] of TYPES) {
+	for (const [rname, routine] of TRI) {
+		for (const [sname, side] of SIDES) {
+			for (const [m, n] of TSHAPES) {
+				for (const [uname, up] of [['upper', 1], ['lower', 0]]) {
+					const inc = () => e.run_tri_shape(ty, routine, side, m, n, up, 0, 0);
+					const cand = () => e.run_tri_shape(ty, routine, side, m, n, up, 0, 1);
+					const f2 = cand();
+					if (Number.isNaN(f2)) continue; // no candidate yet
+					const f1 = inc();
+					const na = side === 0 ? m : n;
+					const flop = na * m * n;
+					const probe = timeOnce(inc) + timeOnce(cand);
+					const iters = probe > 2000 ? 3 : probe > 500 ? 5 : probe > 100 ? 9 : 15;
+					let ti = Infinity, tc = Infinity;
+					for (let r = 0; r < iters; r++) { ti = Math.min(ti, timeOnce(inc)); tc = Math.min(tc, timeOnce(cand)); }
+					console.log(`[${tname} ${rname} ${sname} ${uname} ${m}x${n}] sweep=${ti.toFixed(2)}ms packed=${tc.toFixed(2)}ms packed_speedup=${(ti / tc).toFixed(3)}x (${(flop / tc / 1e6).toFixed(2)} vs ${(flop / ti / 1e6).toFixed(2)} GFLOP/s) iters=${iters}`);
+					if (!Object.is(f1, f2)) { failed++; console.log(`[${tname} ${rname} ${sname} ${uname} ${m}x${n}] fold MISMATCH ${f1} != ${f2}`); }
+				}
+			}
+		}
+	}
+}
 console.log(failed ? `${failed} FAILED` : 'folds identical on every shape');
 process.exit(failed ? 1 : 0);
