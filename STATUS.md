@@ -34,40 +34,14 @@ plausible and unmeasured (todo B).
 
 ## Open decisions
 
-Only the Human closes these. D4 and D8 are closed and recorded in
+Only the Human closes these. D3, D4 and D8 are closed and recorded in
 `DESIGN.md`; D8 turned out to be settled by constraint 7 rather than
-by a ruling. Each names its options, the
+by a ruling, and D3 is a race, not a pick. Each names its options, the
 recommendation, and what it gates; the fuller framing (user and
 developer points of view) is in the plan the Human approved on
 2026-10-25 and is reproduced here in brief so the repository, not a
 chat log, holds it.
 
-- **D3 — Scratch space and the transposed triangular forms.** Gates
-  S4's API, S1's size, T1. S1 gets transposes through packing, which
-  exists for gemm and the syrk family but not for trmm/trsm. Options:
-  (1) workspace on every routine that needs scratch, and transposed
-  trmm/trsm by a transposed copy into it — bit-identical to the
-  definition by construction, zero new kernels, O(n²) workspace on
-  the triangular Level 3 routines; (2) workspace on gemm only, and
-  new transposed kernels for trmm/trsm — a tuning campaign per type.
-  The fork is decided by performance, not preference. Measured
-  2026-10-25 in the dev container (iteration grade, not a runner
-  verdict): dtrsm_left and dtrmm_left on an n×n A in wasm, against
-  the same call preceded by an 8×8-blocked transposed copy of A into
-  scratch, min of five trials, Node 22. The copy costs 9.0% of the
-  kernel at n=64 (4 µs against 41 µs), 4–5% at 128, 3.1% at 256,
-  2.2% at 512 and 1.5% at 1024 (2.8 ms against 178 ms); at n ≥ 256
-  the whole transposed call is within noise of the untransposed one
-  (ratios 0.98–1.06). A naive, unblocked copy is 2–3× slower than
-  the blocked one above n=128 and would double those fractions. The
-  copy here moves the full matrix; the stored triangle alone halves
-  it. For option 2 no kernel exists to measure; the nearest evidence
-  is the Level 2 scoreboard, where the reduction-stream shape those
-  kernels would take runs slower than the fan-in shape (dgemv_t
-  43–52% against dgemv 57–64% of the stream ceiling), a gap larger
-  than the copy's cost at every n ≥ 128. Spike source: the
-  `d3-spike` crate in the session scratchpad; rerun on the reference
-  runners before treating the numbers as a verdict.
 - **D5 — Allocation in the threaded artifact.** Gates C's export
   list, T1, the J1 loader. The allocator's state would live in the
   shared memory, unsynchronized across instances. Options: (1) no
@@ -143,14 +117,17 @@ Done on this branch except the human action below.
   routine (D4); workspace slices and size queries where scratch is
   needed (D3 decides which).** Evidence: the existing 156 tests pass
   unchanged through the new signatures; a short workspace and a bad
-  argument each return `Err` with the right position. Gated by D3.
-  (1–2)
+  argument each return `Err` with the right position. (1–2)
 - [ ] **S4 — The crate never allocates.** Evidence: no `alloc` in
-  the crate; packed-gemm probe values unchanged. Gated by D3. (1–2)
+  the crate; packed-gemm probe values unchanged. (1–2)
 - [ ] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,
   four types.** Evidence: the flagged call equals the unflagged call
   on an explicitly transposed copy, bitwise, every combination; each
-  new form raced against the existing one, two draws. (15–28)
+  new form raced against the existing one, two draws. For trmm and
+  trsm all three candidate implementations are built and raced per
+  D3 (copy into workspace; row-streaming kernels; packed trmm/trsm),
+  the winner routed, the losers recorded with their numbers. (28 plus
+  the packed-trmm/trsm campaign, 10–20)
 - [ ] **B0 — Early sanity rows: OpenBLAS, BLIS, XNNPACK
   single-threaded**, to inform D11. Evidence: same engine, same
   machine, two draws; configurations recorded. (2–3)

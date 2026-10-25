@@ -546,6 +546,18 @@ the product layer: a resident buffer handle for callers who chain
 operations (copy in once, compute many, copy out once); the full
 residency/handle API belongs to the deferred product layer.
 
+## Verification
+
+Every code pass is verified by an independent reviewer briefed to
+find where the work is wrong, not to confirm that it builds: results
+are checked against the reference definitions (bitwise where the
+rounding order is deterministic, bounded where it is not), and
+performance against the machine's measured ceiling, by someone who
+did not write the code. A check that only proves a build succeeded is
+not evidence for a claim about what the code computes. Convention set
+by the Human on 2026-10-25 after the book was reported done on the
+strength of its build log while its rendered pages were wrong.
+
 ## Decisions closed
 
 Each entry: the ruling, the alternative that lost, and the reopen
@@ -562,6 +574,17 @@ trigger where one is worth keeping. Open decisions are in
   roadmap that mixes design, todo and chronology; GitHub Issues as
   living status (allowed by the agreement, but it moves open work off
   the clone).
+- **D3 — The transposed triangular forms are chosen by a race, not
+  by argument.** All candidate implementations are built and raced on
+  the reference runners with two draws: the transposed copy into
+  caller workspace feeding the existing kernels, new row-streaming
+  kernels, and trmm/trsm rebuilt on the packing layer so the
+  transposed forms ride the packer as gemm's do. The winner is
+  routed; the losers stay in the record with their numbers, as the
+  existing kernels' losers do. Rejected: ruling on a dev-container
+  measurement of one candidate against an inference about the
+  others. Every routine that needs scratch takes the workspace slice
+  described under "Completing the surface".
 - **D4 — The Rust crate's error convention.** `Result<(), Error>` on
   every routine, the error carrying the routine and the argument
   position, with every checkable precondition reported and no panic
