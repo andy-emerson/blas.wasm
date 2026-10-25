@@ -19,7 +19,7 @@ Last updated 2026-10-25.
 |---|---|---|
 | `cargo test --release` (native, 199 tests: L1 64, L2 53, L3 77, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S2 |
 | 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S2 |
-| `bench.yml` tri-race and gemm-t-race (two draws each) | every fold identical; verdicts in `bench/README.md` | runs 40208127781, 40208130046, 40208724791, 40208727304 |
+| `bench.yml` tri-race and gemm-t-race (two draws each, candidates called directly, workspaces outside the timed call) | every fold identical; verdicts and tables in `bench/README.md` | runs 40212210771, 40212213162, 40212214964, 40212217524 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test, binary audit, the book with warnings denied | run 21, head `40782a0`, github.com/andy-emerson/blas.wasm/actions/runs/40210413099 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |

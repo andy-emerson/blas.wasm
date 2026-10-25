@@ -131,56 +131,71 @@ definition (the no-transpose call on an explicit transpose), raced on
 the runners with two draws each; the netlib wrappers route the winner
 and the loser stays exported. Figures are `stream ÷ copy` (trmm/trsm)
 or `pack ÷ copy` (gemm) wall time, min-of-iters, the range across the
-two draws; `copy` is op(A) transposed into the workspace ahead of the
-existing kernel.
+two draws; `copy` is the operand transposed into the workspace ahead
+of the existing kernel. Both candidates are called directly and take
+their workspace from the bench's setup state, grown on the warmup
+call, so no allocation lands inside a timed call (an earlier pair of
+draws, runs 40208127781/40208130046 and 40208724791/40208727304, had
+charged the copy a zero-filling allocation and, for gemm, raced the
+wrapper after it already routed the pack; they are superseded, and
+every routing they chose survived the re-run except c32 gemm's B-only
+form).
 
-**trmm/trsm** (`tri-t-ab.mjs`, runs 40208127781 / 40208130046;
+**trmm/trsm** (`tri-t-ab.mjs`, runs 40212210771 / 40212213162;
 `stream` = the no-copy candidate: a transposed accessor on the right,
 column-reduction kernels on the left; A at a 1024 leading dimension, B
 refilled per call):
 
 | side, shape | f64 trmm | f64 trsm | f32 trmm | f32 trsm | c64 trmm | c64 trsm | c32 trmm | c32 trsm |
 |---|---|---|---|---|---|---|---|---|
-| left 256² (U / L) | 1.32–1.56 / 1.65–1.88 | 1.91–1.99 / 1.34–1.49 | 0.99 / 1.14–1.21 | 1.36–1.37 / 0.95–0.98 | 0.63–0.74 / 0.49–0.58 | 0.55–0.62 / 0.50–0.52 | 0.32–0.37 / 0.29–0.32 | 0.28–0.32 / 0.28–0.30 |
-| left 1024² (U / L) | 1.40–1.49 / 1.83–1.86 | 1.93–1.99 / 1.45–1.46 | 0.91–0.94 / 1.04–1.17 | 1.30–1.37 / 0.85–0.93 | — | — | — | — |
-| left 1024×16 (U / L) | 2.05–2.11 / 2.64–2.66 | 2.77–2.79 / 2.07–2.32 | 1.55–1.68 / 1.99–2.05 | 2.35–2.39 / 1.59–1.63 | 1.07–1.14 / 0.93 | 0.91–1.00 / 0.83–0.89 | 0.47–0.58 / 0.43–0.51 | 0.45–0.49 / 0.39–0.45 |
-| left 1024×128 (U / L) | 1.52–1.57 / 1.94–2.08 | 2.10–2.16 / 1.50–1.66 | 1.00–1.03 / 1.15–1.28 | 1.42–1.47 / 0.93–0.99 | 0.64–0.76 / 0.56–0.66 | 0.57–0.64 / 0.56–0.59 | 0.31–0.39 / 0.28–0.33 | 0.28–0.33 / 0.26–0.30 |
-| right 256² (U / L) | 1.03–1.05 / 1.03–1.04 | 1.06–1.08 / 1.06–1.07 | 1.04 / 1.04 | 1.04–1.05 / 1.04 | 1.02–1.04 / 1.03–1.04 | 1.03–1.11 / 1.03–1.09 | 1.04–1.05 / 1.04–1.05 | 1.04 / 1.04 |
-| right 1024² (U / L) | 1.02 / 1.02–1.03 | 1.02–1.03 / 1.02–1.03 | 1.02 / 1.02–1.03 | 1.02 / 1.02 | — | — | — | — |
-| right 16×1024 (U / L) | 1.31 / 1.31–1.34 | 1.35 / 1.32–1.46 | 1.31–1.43 / 1.30–1.46 | 1.32–1.43 / 1.28–1.43 | 1.45–1.53 / 1.38–1.49 | 1.44–1.56 / 1.40–1.60 | 1.36–1.40 / 1.34–1.40 | 1.40–1.50 / 1.38–1.41 |
-| right 128×1024 (U / L) | 1.10 / 1.08 | 1.12 / 1.12–1.15 | 1.13 / 1.13–1.15 | 1.12–1.14 / 1.12–1.16 | 1.09–1.10 / 1.08–1.13 | 1.10–1.14 / 1.08–1.14 | 1.10–1.12 / 1.09–1.11 | 1.09–1.11 / 1.09–1.12 |
+| left 256² (U / L) | 1.34–1.54 / 1.61–1.93 | 1.88–2.04 / 1.29–1.45 | 0.98–1.01 / 1.14–1.23 | 1.34–1.37 / 0.93–0.97 | 0.60–0.80 / 0.48–0.60 | 0.54–0.63 / 0.45–0.51 | 0.31–0.40 / 0.29–0.34 | 0.28–0.34 / 0.28–0.34 |
+| left 1024² (U / L) | 1.38–1.48 / 1.75–1.85 | 1.94–1.97 / 1.40–1.47 | 0.94–0.95 / 1.04–1.18 | 1.33–1.36 / 0.85–0.91 | — | — | — | — |
+| left 1024×16 (U / L) | 2.04–2.35 / 2.51–2.75 | 2.69–3.38 / 2.00–2.14 | 1.59–1.68 / 2.06–2.08 | 2.29–2.33 / 1.49–1.56 | 0.90–1.28 / 0.79–1.10 | 0.82–1.10 / 0.88–0.94 | 0.48–0.72 / 0.43–0.69 | 0.46–0.66 / 0.44–0.63 |
+| left 1024×128 (U / L) | 1.52–1.56 / 1.92–1.95 | 2.08–2.19 / 1.53–1.54 | 1.01–1.04 / 1.16–1.27 | 1.44–1.45 / 0.95–0.98 | 0.63–0.78 / 0.55–0.68 | 0.53–0.64 / 0.50–0.52 | 0.32–0.41 / 0.28–0.33 | 0.28–0.36 / 0.27–0.31 |
+| right 256² (U / L) | 1.03–1.05 / 1.02–1.04 | 1.06–1.07 / 1.03–1.07 | 1.04 / 1.04 | 1.04 / 1.04 | 0.98–1.07 / 1.05–1.06 | 1.04–1.05 / 0.99–1.11 | 1.04–1.07 / 1.05–1.06 | 1.05–1.06 / 1.04–1.07 |
+| right 1024² (U / L) | 1.02 / 1.02 | 1.03 / 1.03 | 1.03 / 1.02–1.03 | 1.02–1.03 / 1.03 | — | — | — | — |
+| right 16×1024 (U / L) | 1.22–1.49 / 1.21–1.42 | 1.30–1.46 / 1.29–1.47 | 1.30–1.49 / 1.30–1.52 | 1.23–1.52 / 1.29–1.44 | 1.37–1.73 / 1.30–1.64 | 1.42–1.50 / 1.43–1.75 | 1.40–1.66 / 1.35–1.58 | 1.42–1.64 / 1.47–1.60 |
+| right 128×1024 (U / L) | 1.11–1.19 / 1.09–1.17 | 1.11–1.22 / 1.10–1.22 | 1.11–1.22 / 1.11–1.21 | 1.10–1.20 / 1.09–1.19 | 1.11–1.14 / 1.10–1.13 | 1.12 / 1.10–1.11 | 1.12–1.22 / 1.12–1.20 | 1.09–1.22 / 1.13–1.22 |
 
-Verdict and routing: `stream` on the right in every type (never below
-1.02, up to 1.6 where B is skinny); `stream` on the left for f64 and
-f32 (f64 never below 1.3 from 256², f32 wins the skinny shapes 1.6–2.4×
-and sits at 0.85–1.0 on the largest square ascending-walk cases); the
-`copy` on the left for c64 and c32, where the scalar complex reduction
-kernel loses at every size (0.26–0.76; 0.9–1.1 only at 1024×16 c64).
-The 64² rows (0.65–1.9, mixed) are too small to be verdicts. A lane
-version of the complex left kernel is a recorded lever (`STATUS.md`).
+Verdict and routing: `stream` on the right in every type (f64, f32 and
+c32 never below 1.02; c64 0.98–0.99 on two 256² rows in one draw each,
+≥ 1.03 everywhere else; up to 1.75 where B is skinny); `stream` on the
+left for f64 (1.29–3.38, every row) and f32 (23 of 32 rows ≥ 1, the
+skinny shapes 1.5–2.3×; the ascending-walk cases — trmm upper, trsm
+lower — sit at 0.85–1.0 on 256² and 1024²); the `copy` on the left for
+c64 and c32, where the scalar complex reduction kernel loses every
+256² and 1024×128 row in both draws (0.45–0.80 c64, 0.27–0.41 c32) and
+wins only some c64 1024×16 rows in one draw. The 64² rows (f64
+0.67–1.97, f32 0.64–1.57, c64 0.36–1.05, c32 0.24–1.23) are too small
+to be verdicts. A lane version of the complex left kernel is a
+recorded lever (`STATUS.md`).
 
-**gemm** (`gemm-t-ab.mjs`, runs 40208724791 / 40208727304; `pack` =
+**gemm** (`gemm-t-ab.mjs`, runs 40212214964 / 40212217524; `pack` =
 `*gemm_packed_op`, the packed shape packing from a transposed read;
-every shape is above the type's packed threshold, β = 0, the flags
-with a transposed operand — T stands for C on the complex types):
+`copy` = `*gemm_copy_op`; every shape is above the type's packed
+threshold, β = 0, the flags with a transposed operand — T stands for C
+on the complex types):
 
 | m×k×n | f64 TN / NT / TT | f32 TN / NT / TT | c64 CN / NC / CC | c32 CN / NC / CC |
 |---|---|---|---|---|
-| 256³ | — | — | 1.02–1.03 / 1.01–1.02 / 1.04 | — |
-| 512³ | 1.02–1.26 / 1.01–1.26 / 1.03–1.28 | — | 1.01–1.02 / 1.00 / 1.01–1.02 | — |
-| 1024³ | 1.01–1.26 / 1.01–1.26 / 1.02–1.27 | 1.02–1.12 / 1.02–1.12 / 1.02–1.13 | — | — |
-| 1024×1024×256 | — | — | — | 1.05–1.07 / 1.01–1.02 / 1.05–1.06 |
-| 1024×1024×8 (c64: 512×512×8; f32: 2048×1024×8) | 1.75–2.04 / 1.05–1.26 / 1.79–1.97 | 1.76–1.80 / 1.06–1.14 / 1.67–1.88 | 1.55–1.59 / 1.09–1.16 / 1.55–1.58 | 1.61–1.63 / 1.04–1.10 / 1.60–1.62 |
-| 1024×1024×64 (c64: 512×512×64) | 1.13–1.41 / 1.01–1.25 / 1.14–1.40 | 1.15–1.22 / 1.02–1.12 / 1.15–1.23 | 1.08–1.13 / 1.03 / 1.09–1.15 | 1.13–1.18 / 1.03 / 1.10–1.19 |
-| 512×2048×16 (f32, c32: 1024×2048×16; c64: 256×1024×16) | 1.39–1.72 / 1.03–1.24 / 1.40–1.76 | 1.50–1.51 / 1.04–1.12 / 1.51 | 1.30–1.32 / 1.06–1.07 / 1.32–1.34 | 1.44–1.53 / 1.03–1.06 / 1.42–1.61 |
+| 256³ | — | — | 1.02 / 1.01 / 1.02–1.03 | — |
+| 512³ | 1.02–1.10 / 1.01–1.25 / 1.01–1.26 | — | 1.01 / 1.00 / 1.01–1.02 | — |
+| 1024³ | 1.01–1.26 / 1.00–1.26 / 1.01–1.27 | 0.90–1.01 / 0.91–1.01 / 0.90–1.01 | — | — |
+| 1024×1024×256 | — | — | — | 0.94 / 0.90–0.96 / 0.93–1.00 |
+| 1024×1024×8 (c64: 512×512×8; f32: 2048×1024×8) | 1.35–1.89 / 1.06–1.24 / 1.30–2.16 | 1.26–1.72 / 0.95–1.05 / 1.28–1.71 | 1.43–1.47 / 1.05–1.13 / 1.38–1.57 | 1.38–1.42 / 0.97–0.99 / 1.37–1.54 |
+| 1024×1024×64 (c64: 512×512×64) | 1.08–1.34 / 1.02–1.25 / 1.08–1.39 | 0.96–1.13 / 0.91–1.01 / 0.96–1.13 | 1.07–1.08 / 1.01–1.03 / 1.09–1.10 | 0.98–1.04 / 0.91–0.96 / 1.00–1.08 |
+| 512×2048×16 (f32, c32: 1024×2048×16; c64: 256×1024×16) | 1.29–1.65 / 1.02–1.24 / 1.31–1.75 | 1.14–1.47 / 0.90–1.03 / 1.14–1.48 | 1.12–1.22 / 1.03–1.07 / 1.19–1.31 | 1.32–1.43 / 0.92–0.97 / 1.31–1.49 |
 
-Verdict and routing: `pack` wins or ties every row (lowest 0.996–1.00
-on c64 NC 512³, highest 2.04 on f64 TN 1024×1024×8), so the wrappers
-route it whenever the dispatcher takes the packed shape and a flag is
-set; below the threshold the operand is transposed into the workspace
-ahead of the register tile (the two candidates coincide there). The
-whole-operand copy's cost shows exactly where expected: large when A
-is transposed and n is small, within noise when only B is.
+Verdict and routing: f64 and c64 route `pack` for any transposed
+operand (f64 1.00–2.16, never a loss; c64 1.00–1.57, the one 0.997 a
+tie). f32 routes `pack` as a tie on the square shapes — draw 1 had it
+at 0.90–0.96 on five rows, draw 2 at ≥ 1.01 on every row, the two
+draws having landed on runners of different speed — and a win of
+1.1–1.7× where A is transposed and n is small. c32 routes `pack` only
+when A is transposed (1.3–1.5× at n = 8 and 16, 0.94 at n = 256 in
+both draws) and the `copy` for a B-only transposed operand, which lost
+every c32 row in both draws (0.90–0.99); below the threshold every
+type copies ahead of the register tile.
 
 ## Running a roofline (per level, per type)
 
