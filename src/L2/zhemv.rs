@@ -36,6 +36,11 @@ pub fn zhemv(uplo: Uplo, n: usize, alpha: C64, a: &[C64], lda: usize, x: &[C64],
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		// reference: y ← βy without reading A or x
+		crate::L2::zscale_y(beta, &mut y[..n]);
+		return Ok(());
+	}
 	zhemv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
 	Ok(())
 }

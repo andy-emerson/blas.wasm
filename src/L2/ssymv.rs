@@ -32,6 +32,11 @@ pub fn ssymv(uplo: Uplo, n: usize, alpha: f32, a: &[f32], lda: usize, x: &[f32],
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		// reference: y ← βy without reading A or x
+		crate::L2::sscale_y(beta, &mut y[..n]);
+		return Ok(());
+	}
 	ssymv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
 	Ok(())
 }

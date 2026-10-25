@@ -21,6 +21,9 @@ pub fn sger(m: usize, n: usize, alpha: f32, x: &[f32], y: &[f32], a: &mut [f32],
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	sger_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

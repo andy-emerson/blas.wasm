@@ -7,8 +7,8 @@
 //! bit-exactly), one scalar rescan finds its first index.
 //!
 //! Semantics contract (exact, tested): 0-based index of the FIRST
-//! occurrence of the maximum |re| + |im|; 0 for an empty slice; NaN
-//! behavior unspecified.
+//! occurrence of the maximum |re| + |im|; 0 for an empty slice; NaN as
+//! idamax: a NaN first element wins, any other NaN is skipped (tested).
 
 use crate::c32::C32;
 use crate::lanes::F32x4;
@@ -16,6 +16,12 @@ use crate::lanes::F32x4;
 /// Returns the 0-based index of the first element with maximum
 /// |re| + |im| (0 if `x` is empty).
 pub fn icamax(x: &[C32]) -> usize {
+	// reference rule: a NaN first element is the running maximum nothing
+	// exceeds, so index 0 is returned; a NaN anywhere else is skipped
+	// (the lane maxima never select it), which the scan below does by itself
+	if !x.is_empty() && (x[0].re.is_nan() || x[0].im.is_nan()) {
+		return 0;
+	}
 	unsafe { imp(x.as_ptr(), x.len()) }
 }
 

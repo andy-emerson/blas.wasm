@@ -15,6 +15,9 @@ use crate::Error;
 /// Errors: `x` and `y` differ in length (argument 3).
 pub fn saxpy(alpha: f32, x: &[f32], y: &mut [f32]) -> Result<(), Error> {
 	crate::error::same_len("saxpy", 3, x.len(), y.len())?;
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	saxpy_k(alpha, x, y);
 	Ok(())
 }

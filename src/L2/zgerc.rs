@@ -23,6 +23,9 @@ pub fn zgerc(m: usize, n: usize, alpha: C64, x: &[C64], y: &[C64], a: &mut [C64]
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		return Ok(()); // reference: nothing is read or written
+	}
 	zgerc_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

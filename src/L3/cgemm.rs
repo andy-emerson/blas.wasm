@@ -52,9 +52,10 @@ pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
-	if k == 0 {
-		// a product of empty operands: C ← βC, the same per-column
-		// scaling every shape applies before accumulating
+	if k == 0 || alpha == C32::ZERO {
+		// reference: C ← βC without reading A or B (β = 1 leaves C as
+		// is, β = 0 writes zeros), the same per-column scaling every
+		// shape applies before accumulating
 		for j in 0..n {
 			crate::L2::cscale_y(beta, &mut c[j * ldc..j * ldc + m]);
 		}

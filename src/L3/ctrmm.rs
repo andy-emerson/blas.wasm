@@ -45,6 +45,13 @@ pub fn ctrmm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C32::ZERO {
+		// reference: B ← 0 without reading A or B
+		for j in 0..n {
+			b[j * ldb..j * ldb + m].fill(C32::ZERO);
+		}
+		return Ok(());
+	}
 	match (side, transa) {
 		(Side::Left, Trans::NoTrans) => ctrmm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
 		(Side::Right, Trans::NoTrans) => ctrmm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb, Trans::NoTrans),

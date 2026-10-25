@@ -26,6 +26,9 @@ pub fn zher2(uplo: Uplo, n: usize, alpha: C64, x: &[C64], y: &[C64], a: &mut [C6
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		return Ok(()); // reference: nothing is read or written
+	}
 	zher2_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], &y[..n]);
 	Ok(())
 }

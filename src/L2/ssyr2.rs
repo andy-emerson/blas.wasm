@@ -22,6 +22,9 @@ pub fn ssyr2(uplo: Uplo, n: usize, alpha: f32, x: &[f32], y: &[f32], a: &mut [f3
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	ssyr2_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], &y[..n]);
 	Ok(())
 }

@@ -15,6 +15,9 @@ use crate::lanes::F32x4;
 /// Errors: `x` and `y` differ in length (argument 3).
 pub fn caxpy(alpha: C32, x: &[C32], y: &mut [C32]) -> Result<(), Error> {
 	crate::error::same_len("caxpy", 3, x.len(), y.len())?;
+	if alpha == C32::ZERO {
+		return Ok(()); // reference: nothing is read or written
+	}
 	caxpy_k(alpha, x, y);
 	Ok(())
 }

@@ -10,15 +10,21 @@
 //!
 //! Semantics contract (exact, tested): returns the 0-based index of the
 //! first occurrence of the maximum |xᵢ| — BLAS's tie-breaking rule.
-//! Returns 0 for an empty slice. Behavior on NaN input is unspecified
-//! (wasm `pmax` is not NaN-propagating; reference BLAS is quirky here
-//! too).
+//! Returns 0 for an empty slice. NaN follows reference BLAS: a NaN
+//! first element wins (index 0), any other NaN is skipped (`pmax` never
+//! selects it; tested).
 
 use crate::lanes::F32x4;
 
 /// Returns the 0-based index of the first element with maximum |xᵢ|
 /// (0 if `x` is empty).
 pub fn isamax(x: &[f32]) -> usize {
+	// reference rule: a NaN first element is the running maximum nothing
+	// exceeds, so index 0 is returned; a NaN anywhere else is skipped
+	// (the lane maxima never select it), which the scan below does by itself
+	if !x.is_empty() && (x[0].is_nan()) {
+		return 0;
+	}
 	unsafe { imp(x.as_ptr(), x.len()) }
 }
 

@@ -31,6 +31,13 @@ pub fn dsymm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: f64, a: &[f64], 
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		// reference: C ← βC without reading A or B
+		for j in 0..n {
+			crate::L2::dscale_y(beta, &mut c[j * ldc..j * ldc + m]);
+		}
+		return Ok(());
+	}
 	match side {
 		Side::Left => dsymm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
 		Side::Right => dsymm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),

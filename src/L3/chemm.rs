@@ -33,6 +33,13 @@ pub fn chemm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: C32, a: &[C32], 
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C32::ZERO {
+		// reference: C ← βC without reading A or B
+		for j in 0..n {
+			crate::L2::cscale_y(beta, &mut c[j * ldc..j * ldc + m]);
+		}
+		return Ok(());
+	}
 	match side {
 		Side::Left => chemm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
 		Side::Right => chemm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),

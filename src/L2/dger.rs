@@ -21,6 +21,9 @@ pub fn dger(m: usize, n: usize, alpha: f64, x: &[f64], y: &[f64], a: &mut [f64],
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	dger_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

@@ -33,6 +33,13 @@ pub fn zhemm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: C64, a: &[C64], 
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		// reference: C ← βC without reading A or B
+		for j in 0..n {
+			crate::L2::zscale_y(beta, &mut c[j * ldc..j * ldc + m]);
+		}
+		return Ok(());
+	}
 	match side {
 		Side::Left => zhemm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
 		Side::Right => zhemm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),

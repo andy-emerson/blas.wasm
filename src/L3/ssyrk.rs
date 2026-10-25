@@ -37,6 +37,14 @@ pub fn ssyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32]
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 || k == 0 {
+		// reference: the stored triangle of C ← βC without reading A
+		for j in 0..n {
+			let (lo, hi) = if uplo.is_upper() { (0, j + 1) } else { (j, n) };
+			crate::L2::sscale_y(beta, &mut c[j * ldc + lo..j * ldc + hi]);
+		}
+		return Ok(());
+	}
 	// op(A) is materialized in the workspace ahead of the
 	// no-transpose kernel, so the transposed form is bit-identical to
 	// the unflagged call on an explicit copy (tested)

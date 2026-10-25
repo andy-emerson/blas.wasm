@@ -48,6 +48,13 @@ pub fn ztrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		// reference: B ← 0 without reading A or B
+		for j in 0..n {
+			b[j * ldb..j * ldb + m].fill(C64::ZERO);
+		}
+		return Ok(());
+	}
 	match (side, transa) {
 		(Side::Left, Trans::NoTrans) => ztrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
 		(Side::Right, Trans::NoTrans) => ztrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb, Trans::NoTrans),

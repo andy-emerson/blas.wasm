@@ -24,6 +24,9 @@ pub fn cher(uplo: Uplo, n: usize, alpha: f32, x: &[C32], a: &mut [C32], lda: usi
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	cher_k(alpha, n, a, lda, uplo.is_upper(), &x[..n]);
 	Ok(())
 }

@@ -53,6 +53,13 @@ pub fn dtrmm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		// reference: B ← 0 without reading A or B
+		for j in 0..n {
+			b[j * ldb..j * ldb + m].fill(0.0);
+		}
+		return Ok(());
+	}
 	match (side, transa) {
 		(Side::Left, Trans::NoTrans) => dtrmm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
 		(Side::Right, Trans::NoTrans) => dtrmm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb, Trans::NoTrans),

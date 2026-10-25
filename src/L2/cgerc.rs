@@ -23,6 +23,9 @@ pub fn cgerc(m: usize, n: usize, alpha: C32, x: &[C32], y: &[C32], a: &mut [C32]
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C32::ZERO {
+		return Ok(()); // reference: nothing is read or written
+	}
 	cgerc_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

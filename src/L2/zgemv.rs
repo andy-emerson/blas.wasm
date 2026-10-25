@@ -32,6 +32,11 @@ pub fn zgemv(trans: Trans, m: usize, n: usize, alpha: C64, a: &[C64], lda: usize
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == C64::ZERO {
+		// reference: y ← βy without reading A or x (β = 1 leaves y as is)
+		crate::L2::zscale_y(beta, &mut y[..yn]);
+		return Ok(());
+	}
 	let (x, y) = (&x[..xn], &mut y[..yn]);
 	match trans {
 		Trans::NoTrans => zgemv_k(alpha, m, n, a, lda, x, beta, y),

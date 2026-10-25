@@ -24,6 +24,9 @@ pub fn zher(uplo: Uplo, n: usize, alpha: f64, x: &[C64], a: &mut [C64], lda: usi
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	zher_k(alpha, n, a, lda, uplo.is_upper(), &x[..n]);
 	Ok(())
 }

@@ -22,6 +22,9 @@ pub fn dsyr2(uplo: Uplo, n: usize, alpha: f64, x: &[f64], y: &[f64], a: &mut [f6
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		return Ok(()); // reference: nothing is read or written
+	}
 	dsyr2_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], &y[..n]);
 	Ok(())
 }

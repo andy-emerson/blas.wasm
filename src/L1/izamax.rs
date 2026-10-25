@@ -11,8 +11,8 @@
 //! (campaign record step 9) — not re-tried here without new evidence.
 //!
 //! Semantics contract (exact, tested): 0-based index of the FIRST
-//! occurrence of the maximum |re| + |im|; 0 for an empty slice; NaN
-//! behavior unspecified (as idamax).
+//! occurrence of the maximum |re| + |im|; 0 for an empty slice; NaN as
+//! idamax: a NaN first element wins, any other NaN is skipped (tested).
 
 use crate::c64::C64;
 use crate::lanes::F64x2;
@@ -20,6 +20,12 @@ use crate::lanes::F64x2;
 /// Returns the 0-based index of the first element with maximum
 /// |re| + |im| (0 if `x` is empty).
 pub fn izamax(x: &[C64]) -> usize {
+	// reference rule: a NaN first element is the running maximum nothing
+	// exceeds, so index 0 is returned; a NaN anywhere else is skipped
+	// (the lane maxima never select it), which the scan below does by itself
+	if !x.is_empty() && (x[0].re.is_nan() || x[0].im.is_nan()) {
+		return 0;
+	}
 	unsafe { imp(x.as_ptr(), x.len()) }
 }
 

@@ -35,6 +35,11 @@ pub fn dgemv(trans: Trans, m: usize, n: usize, alpha: f64, a: &[f64], lda: usize
 	if m == 0 || n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		// reference: y ← βy without reading A or x (β = 1 leaves y as is)
+		crate::L2::dscale_y(beta, &mut y[..yn]);
+		return Ok(());
+	}
 	let (x, y) = (&x[..xn], &mut y[..yn]);
 	match trans {
 		Trans::NoTrans => dgemv_k(alpha, m, n, a, lda, x, beta, y),

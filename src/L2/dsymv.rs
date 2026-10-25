@@ -32,6 +32,11 @@ pub fn dsymv(uplo: Uplo, n: usize, alpha: f64, a: &[f64], lda: usize, x: &[f64],
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == 0.0 {
+		// reference: y ← βy without reading A or x
+		crate::L2::dscale_y(beta, &mut y[..n]);
+		return Ok(());
+	}
 	dsymv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
 	Ok(())
 }

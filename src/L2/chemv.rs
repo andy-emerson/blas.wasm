@@ -33,6 +33,11 @@ pub fn chemv(uplo: Uplo, n: usize, alpha: C32, a: &[C32], lda: usize, x: &[C32],
 	if n == 0 {
 		return Ok(());
 	}
+	if alpha == C32::ZERO {
+		// reference: y ← βy without reading A or x
+		crate::L2::cscale_y(beta, &mut y[..n]);
+		return Ok(());
+	}
 	chemv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
 	Ok(())
 }
