@@ -1,6 +1,7 @@
 # The gate: every push to main and every pull request must pass the
 # test suite, clippy on host and wasm, the cross-target determinism
-# probes, and the C-ABI module build with its smoke test.
+# probes, the C-ABI module build with its smoke test and binary audit,
+# and the book (includes resolve, it builds, its examples run).
 name: gate
 on:
   push:
@@ -65,3 +66,13 @@ jobs:
           cd abi
           node audit.mjs --self-test
           node audit.mjs target/wasm32-unknown-unknown/release/blas_wasm_abi.wasm --imports 0 --exports 119
+
+      - name: Book tooling (pinned)
+        run: cargo install --locked mdbook@0.5.4 mdbook-katex@0.10.0 mdbook-mermaid@0.17.1
+
+      - name: Book (includes resolve, builds, examples compile and run against the crate)
+        run: |
+          node book/check-includes.mjs
+          mdbook-mermaid install book
+          mdbook build book
+          mdbook test book -L target/release/deps
