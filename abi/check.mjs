@@ -94,5 +94,26 @@ function alloc32(values) {
 	check('dtrsv', JSON.stringify(Array.from(f64(x, 2))), JSON.stringify([2, 3]));
 }
 
+// ---- the error slot: an argument error is reported, not trapped, and
+// the output is untouched; a valid call afterwards leaves the slot clear
+{
+	check('error slot starts clear', e.error_arg(), 0);
+	const a = alloc64([1, 2, 3, 4]);
+	const x = alloc64([1, 1]);
+	const y = alloc64([7, 7]);
+	e.dgemv(1, 2, 2, a, 1, x, 0, y); // cs = 1 below the 2 rows: argument 6, invalid value
+	check('error_arg after a bad lda', e.error_arg(), 6);
+	check('error_kind after a bad lda', e.error_kind(), 1);
+	const buf = e.wasm_alloc(16);
+	const len = e.error_routine(buf, 16);
+	check('error_routine name', new TextDecoder().decode(new Uint8Array(e.memory.buffer, buf, len)), 'dgemv');
+	check('y untouched by the rejected call', JSON.stringify(Array.from(f64(y, 2))), JSON.stringify([7, 7]));
+	e.error_clear();
+	check('error_clear', e.error_arg() + e.error_kind() + e.error_routine(buf, 16), 0);
+	e.dgemv(1, 2, 2, a, 2, x, 0, y); // valid: y = A·x = [4, 6]
+	check('valid call after clear computes', JSON.stringify(Array.from(f64(y, 2))), JSON.stringify([4, 6]));
+	check('valid call leaves the slot clear', e.error_arg(), 0);
+}
+
 console.log(failed ? `\n${failed} FAILED` : '\nall smoke checks passed');
 process.exit(failed ? 1 : 0);
