@@ -83,17 +83,10 @@ pub fn sgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) ->
 	if m == 0 || n == 0 || k == 0 {
 		return 0; // the quick returns compute nothing
 	}
-	let flagged = transa != Trans::NoTrans || transb != Trans::NoTrans;
-	if packed_route(m, k) {
-		if flagged {
-			sgemm_packed_op_work(transa, transb, m, n, k)
-		} else {
-			sgemm_packed_work(m, n, k)
-		}
+	if packed_route(m, k) && (transa != Trans::NoTrans || transb != Trans::NoTrans) {
+		sgemm_packed_op_work(transa, transb, m, n, k)
 	} else {
-		let ta = if transa == Trans::NoTrans { 0 } else { m * k };
-		let tb = if transb == Trans::NoTrans { 0 } else { k * n };
-		ta + tb
+		sgemm_copy_op_work(transa, transb, m, n, k)
 	}
 }
 

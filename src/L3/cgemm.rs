@@ -62,14 +62,15 @@ pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 		}
 		return Ok(());
 	}
-	// Above the packed threshold a transposed operand is packed straight
-	// from a transposed read (`cgemm_packed_op`, the race's winner:
-	// `bench/README.md`); below it the operand is transposed into the
-	// workspace ahead of the register-tile shape (`cgemm_copy_op`,
-	// the other candidate). Both are bit-identical to the unflagged call
-	// on an explicit copy (tested); conjugation is an exact sign flip in
-	// either.
-	if (transa != Trans::NoTrans || transb != Trans::NoTrans) && packed_route(m, k) {
+	// Above the packed threshold a transposed A is packed straight from a
+	// transposed read (`cgemm_packed_op`, the race's winner there:
+	// `bench/README.md`); a transposed B alone is copied into the
+	// workspace first (`cgemm_copy_op`), which beat the transposed pack
+	// on every c32 row in both draws (0.90–0.99), as does every form below
+	// the threshold. Both candidates are bit-identical to the unflagged
+	// call on an explicit copy (tested); conjugation is an exact sign flip
+	// in either.
+	if transa != Trans::NoTrans && packed_route(m, k) {
 		cgemm_packed_op(transa, transb, alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 		return Ok(());
 	}
@@ -86,17 +87,10 @@ pub fn cgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) ->
 	if m == 0 || n == 0 || k == 0 {
 		return 0; // the quick returns compute nothing
 	}
-	let flagged = transa != Trans::NoTrans || transb != Trans::NoTrans;
-	if packed_route(m, k) {
-		if flagged {
-			cgemm_packed_op_work(transa, transb, m, n, k)
-		} else {
-			cgemm_packed_work(m, n, k)
-		}
+	if packed_route(m, k) && transa != Trans::NoTrans {
+		cgemm_packed_op_work(transa, transb, m, n, k)
 	} else {
-		let ta = if transa == Trans::NoTrans { 0 } else { m * k };
-		let tb = if transb == Trans::NoTrans { 0 } else { k * n };
-		ta + tb
+		cgemm_copy_op_work(transa, transb, m, n, k)
 	}
 }
 
