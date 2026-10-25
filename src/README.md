@@ -116,7 +116,11 @@ The names are netlib's; the signatures are ours (documented per file):
   complex register tile. The alternates take `(alpha, m, n, k, a, lda,
   b, ldb, beta, c, ldc)`, no flags, and assert rather than return
   errors: they are kernels, exported so the tests and the benchmarks
-  can race them.
+  can race them. The transposed-form candidates follow the same rule:
+  `*gemm_packed_op` (flags, then the kernel arguments, then `work`),
+  `*trmm_copy`/`*trsm_copy` (the netlib arguments plus `work`, sized
+  by `*_copy_work`) and `*trmm_stream`/`*trsm_stream` (the netlib
+  arguments, no workspace).
 
 Everything else about a routine — what it computes, its rounding
 contract, which tuned loop shape it ships and why — lives in its own

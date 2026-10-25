@@ -55,6 +55,14 @@ review (`AGENTS.md`) judges it against that reader.
   type. Every tuned shape is bit-identical to its plain column-axpy
   reference except where an elimination order forbids it; those two
   cases are documented in their files and mirrored by their tests.
+- **Every Level 3 flag form**: `transa`/`transb` on gemm, `trans` on
+  the syrk family, `transa` on trmm and trsm, each bit-identical to the
+  no-transpose call on an explicit transpose and each the winner of a
+  two-draw runner race between candidates (`bench/README.md`): large
+  gemm packs the transposed operand from a transposed read, trmm/trsm
+  read the stored matrix through transposed kernels on the right and
+  in the real types on the left, and the complex left side and the
+  rest copy the operand into the caller's workspace first.
 - **Zero runtime dependencies, zero allocation.** `no_std` without
   `alloc`: the one routine family that needs scratch (gemm above its
   packed threshold) takes it from the caller, sized by a query. The
@@ -82,8 +90,7 @@ review (`AGENTS.md`) judges it against that reader.
 
 Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
 and sequenced in `STATUS.md`: the transposed and conjugate-transposed
-forms of gemm, trmv, trsv, trmm and trsm; the transposed forms of
-syrk/syr2k/herk/her2k (the flags exist and return
+forms of trmv and trsv (the flags exist and return
 `ErrorKind::Unsupported`); vector strides (`incx`/`incy`); the complex
 symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
 `zrot`/`crot`; the `alpha == 0` / `beta == 1` quick returns and the
@@ -124,7 +131,7 @@ L1::daxpy(2.0, &x, &mut y)?;             // y ← 2x + y = [6, 9, 12]
 let a = [1.0, 3.0, 2.0, 4.0];            // [[1, 2], [3, 4]]
 let b = [5.0, 7.0, 6.0, 8.0];            // [[5, 6], [7, 8]]
 let mut c = [0.0; 4];
-let mut work = vec![0.0; L3::dgemm_work(2, 2, 2)]; // 0 below the packed threshold
+let mut work = vec![0.0; L3::dgemm_work(Trans::NoTrans, Trans::NoTrans, 2, 2, 2)]; // 0 here
 L3::dgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 2, 1.0, &a, 2, &b, 2, 0.0, &mut c, 2, &mut work)?;
 assert_eq!(c, [19.0, 43.0, 22.0, 50.0]); // [[19, 22], [43, 50]]
 ```
@@ -132,10 +139,11 @@ assert_eq!(c, [19.0, 43.0, 22.0, 50.0]); // [[19, 22], [43, 50]]
 The `dgemm` argument order is netlib's, `(transa, transb, m, n, k,
 alpha, a, lda, b, ldb, beta, c, ldc)`, plus the trailing `work`; each
 routine's own signature, error positions and rounding contract are in
-its module documentation. The transposed forms of gemm, trmv, trsv,
-trmm, trsm and the syrk family, and the conjugate-transposed Hermitian
-rank updates, return `ErrorKind::Unsupported` until todos S1 and S2
-land (`STATUS.md`).
+its module documentation. Every Level 3 flag form is built; a
+transposed form is bit-identical to the no-transpose call on an
+explicit transpose, and the work query counts whatever scratch the
+form routed needs. The transposed trmv and trsv return
+`ErrorKind::Unsupported` until todo S2 lands (`STATUS.md`).
 
 **From JavaScript, with the raw module.** `blas.wasm` has no imports,
 so it instantiates with an empty import object. Arguments are flat

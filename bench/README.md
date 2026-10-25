@@ -159,6 +159,29 @@ kernel loses at every size (0.26–0.76; 0.9–1.1 only at 1024×16 c64).
 The 64² rows (0.65–1.9, mixed) are too small to be verdicts. A lane
 version of the complex left kernel is a recorded lever (`STATUS.md`).
 
+**gemm** (`gemm-t-ab.mjs`, runs 40208724791 / 40208727304; `pack` =
+`*gemm_packed_op`, the packed shape packing from a transposed read;
+every shape is above the type's packed threshold, β = 0, the flags
+with a transposed operand — T stands for C on the complex types):
+
+| m×k×n | f64 TN / NT / TT | f32 TN / NT / TT | c64 CN / NC / CC | c32 CN / NC / CC |
+|---|---|---|---|---|
+| 256³ | — | — | 1.02–1.03 / 1.01–1.02 / 1.04 | — |
+| 512³ | 1.02–1.26 / 1.01–1.26 / 1.03–1.28 | — | 1.01–1.02 / 1.00 / 1.01–1.02 | — |
+| 1024³ | 1.01–1.26 / 1.01–1.26 / 1.02–1.27 | 1.02–1.12 / 1.02–1.12 / 1.02–1.13 | — | — |
+| 1024×1024×256 | — | — | — | 1.05–1.07 / 1.01–1.02 / 1.05–1.06 |
+| 1024×1024×8 (c64: 512×512×8; f32: 2048×1024×8) | 1.75–2.04 / 1.05–1.26 / 1.79–1.97 | 1.76–1.80 / 1.06–1.14 / 1.67–1.88 | 1.55–1.59 / 1.09–1.16 / 1.55–1.58 | 1.61–1.63 / 1.04–1.10 / 1.60–1.62 |
+| 1024×1024×64 (c64: 512×512×64) | 1.13–1.41 / 1.01–1.25 / 1.14–1.40 | 1.15–1.22 / 1.02–1.12 / 1.15–1.23 | 1.08–1.13 / 1.03 / 1.09–1.15 | 1.13–1.18 / 1.03 / 1.10–1.19 |
+| 512×2048×16 (f32, c32: 1024×2048×16; c64: 256×1024×16) | 1.39–1.72 / 1.03–1.24 / 1.40–1.76 | 1.50–1.51 / 1.04–1.12 / 1.51 | 1.30–1.32 / 1.06–1.07 / 1.32–1.34 | 1.44–1.53 / 1.03–1.06 / 1.42–1.61 |
+
+Verdict and routing: `pack` wins or ties every row (lowest 0.996–1.00
+on c64 NC 512³, highest 2.04 on f64 TN 1024×1024×8), so the wrappers
+route it whenever the dispatcher takes the packed shape and a flag is
+set; below the threshold the operand is transposed into the workspace
+ahead of the register tile (the two candidates coincide there). The
+whole-operand copy's cost shows exactly where expected: large when A
+is transposed and n is small, within noise when only B is.
+
 ## Running a roofline (per level, per type)
 
 ```sh

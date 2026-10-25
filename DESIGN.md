@@ -342,16 +342,25 @@ diagonals end exactly real.
 
 ### Completing the surface (todo group S)
 
-- **Level 3 op flags through packing.** The transposed or conjugated
-  operand is packed into the same panel format from a transposed
-  read; the kernel is unchanged and never knows. Conjugation is an
-  exact sign flip. Below the packed threshold the transposed read is
-  a strided gather into a small scratch, then the existing shape.
-  The test is the definition: `gemm(T, N)` equals `gemm(N, N)` on an
-  explicitly transposed copy, bitwise, for every flag combination.
-  This covers gemm and the syrk/syr2k/herk/her2k family. trmm and
-  trsm have no packed path; how their transposed forms are built is
-  decision D3.
+- **Level 3 op flags.** The test is the definition: a flagged call
+  equals the no-transpose call on an explicitly transposed (and
+  conjugated — an exact sign flip) copy, bitwise, for every flag
+  combination; every form is bit-identical to it by construction,
+  because each one performs the same per-element arithmetic sequence
+  as the no-transpose kernel. Above the packed threshold gemm packs
+  the transposed operand into the panel format from a transposed read
+  (op(A)'s row is a stored column; the three tails that read operands
+  directly are gathered into the workspace, and a transposed A's
+  column tail rides a zero-padded fourth column group); below it, and
+  for the syrk family, the operand is transposed into the caller's
+  workspace ahead of the existing shape (a cost of order mk against
+  mnk of arithmetic). trmm and trsm route per side between the same
+  copy and no-copy kernels: a transposed accessor on the right (the
+  right-side kernels only ever read A as scalars) and, on the left,
+  column-reduction kernels that walk op(A)'s rows as stored columns,
+  lanes across four right-hand sides. Which candidate each form
+  routes to is the verdict of decision D3's race; the losers stay
+  exported and tested.
 - **Level 2 op flags.** gemv already has N/T/C as separate entry
   points. The transposed trmv and trsv are the `gemv_t`-shaped
   reduction stream per column: new kernels, same contract.
@@ -573,14 +582,23 @@ trigger where one is worth keeping. Open decisions are in
   roadmap that mixes design, todo and chronology; GitHub Issues as
   living status (allowed by the agreement, but it moves open work off
   the clone).
-- **D3 — The transposed triangular forms are chosen by a race, not
-  by argument.** All candidate implementations are built and raced on
-  the reference runners with two draws: the transposed copy into
-  caller workspace feeding the existing kernels, new row-streaming
-  kernels, and trmm/trsm rebuilt on the packing layer so the
-  transposed forms ride the packer as gemm's do. The winner is
-  routed; the losers stay in the record with their numbers, as the
-  existing kernels' losers do. Rejected: ruling on a dev-container
+- **D3 — The transposed forms are chosen by a race, not by
+  argument.** Candidates are built, each bit-identical to the
+  explicit-transpose definition, and raced on the reference runners
+  with two draws; the winner is routed and the losers stay in the
+  record with their numbers, as the existing kernels' losers do.
+  Verdicts (`bench/README.md`): for gemm above the packed threshold
+  the transposed pack beat the whole-operand copy on every row
+  (1.0–1.3× square, 1.5–2.0× where A is transposed and n is small);
+  for trmm/trsm the no-copy kernels won the right side in every type
+  (1.02–1.6×) and the left side in f64 and f32 (f64 1.3–2.8× from
+  256², f32 1.0–2.4× with its largest ascending-walk squares at
+  0.85–1.0), while the scalar complex left kernel lost to the copy
+  at every size (0.26–0.76) and the copy is routed there. Not built:
+  trmm/trsm rebuilt on the packing layer — the race's margins were
+  already settled by the copy's cost and the kernels' load ratios,
+  and a packed trmm/trsm would change the no-transpose shapes too; it
+  is a lever (`STATUS.md`). Rejected: ruling on a dev-container
   measurement of one candidate against an inference about the
   others. Every routine that needs scratch takes the workspace slice
   described under "Completing the surface".

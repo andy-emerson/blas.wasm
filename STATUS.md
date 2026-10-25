@@ -17,7 +17,8 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 166 tests: L1 64, L2 44, L3 53, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S4 and the zero-dimension fix |
+| `cargo test --release` (native, 190 tests: L1 64, L2 44, L3 77, vendored math 4, one doctest) | all pass | local, 2026-10-25, after S1 |
+| `bench.yml` tri-race and gemm-t-race (two draws each) | every fold identical; verdicts in `bench/README.md` | runs 40208127781, 40208130046, 40208724791, 40208727304 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
@@ -126,14 +127,13 @@ warnings denied.
 - [x] **S4 — The crate never allocates.** Done on this branch:
   `extern crate alloc` is gone (the build is the check), the packed
   gemm shapes run on the caller's slice, probe bit patterns unchanged.
-- [ ] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,
-  four types.** Evidence: the flagged call equals the unflagged call
-  on an explicitly transposed copy, bitwise, every combination; each
-  new form raced against the existing one, two draws. For trmm and
-  trsm all three candidate implementations are built and raced per
-  D3 (copy into workspace; row-streaming kernels; packed trmm/trsm),
-  the winner routed, the losers recorded with their numbers. (28 plus
-  the packed-trmm/trsm campaign, 10–20)
+- [x] **S1 — Level 3 op flags on gemm, the syrk family, trmm, trsm,
+  four types.** Done on this branch: every flagged call equals the
+  unflagged call on an explicitly transposed copy, bitwise, every
+  combination (`tests/L3`); the candidates raced on two runner draws
+  (`bench/README.md`, D3 in `DESIGN.md`), winners routed, losers
+  exported. Not built: trmm/trsm on the packing layer (a lever
+  below).
 - [ ] **B0 — Early sanity rows: OpenBLAS, BLIS, XNNPACK
   single-threaded**, to inform D11. Evidence: same engine, same
   machine, two draws; configurations recorded. (2–3)
@@ -212,6 +212,16 @@ current numbers.
   shape; c32 between 2 MB and 8 MB of A.
 - The c32 `hemv` grouping lost (~2%, both draws); `chemv` keeps the
   single-column pass. Re-race only if the lane product form changes.
+- A lane version of the complex left transposed trmm/trsm kernels
+  (`ztrmm_left_t_k` and twins): the scalar one lost its race to the
+  copy 0.26–0.76× (both draws); the real-type lane kernels won 1.3–2.8×,
+  so the complex lane form is the obvious next candidate.
+- trmm/trsm rebuilt on the packing layer (D3's third candidate), which
+  would also change the no-transpose shapes; motivated only if the
+  B0 rows show the triangular routines far from the ceiling.
+- The f32 left transposed trmm/trsm ascending-walk cases (trmm upper,
+  trsm lower) sit at 0.85–1.0 of the copy on 1024² while the
+  descending walks win 1.3×; the asymmetry is unexplained.
 
 ## Bugs
 

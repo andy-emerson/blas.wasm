@@ -38,9 +38,9 @@ forms them).
 | rotg | defining identities + reference edge cases + subnormal smoke |
 | gemv, ger, syr, syr2, trmv, trsv | **bit-for-bit same-order scalar replay** + independent bounds (trsv also residual-verified) |
 | symv | error-bounded (the fused pass legitimately re-folds its reduction) |
-| gemm, syrk, syr2k | **bit-for-bit replay** + bounds; gemm's four shapes (colaxpy / tile / col4 / packed) cross-checked bit-identical — the packed replay crosses the KC/MC/MR block boundaries and a dispatch-zone replay routes above the packed threshold — so the size dispatch is invisible |
+| gemm, syrk, syr2k | **bit-for-bit replay** + bounds; gemm's four shapes (colaxpy / tile / col4 / packed) cross-checked bit-identical — the packed replay crosses the KC/MC/MR block boundaries and a dispatch-zone replay routes above the packed threshold — so the size dispatch is invisible; every `trans` form **bit-identical to the no-transpose call on an explicit transpose**, all flag pairs, below and above the packed threshold, both gemm candidates, workspace NaN-filled |
 | symm | left: bounds (rides symv); right: **bit-for-bit replay** |
-| trmm, trsm | **bit-for-bit replay** both sides + bounds/residuals — the two elimination-order reorders (trmm_right-upper, trsm_right-lower) are documented in their files and the replays mirror them; the other triangles replay the PLAIN order, proving the blocked shapes bit-identical to it |
+| trmm, trsm | **bit-for-bit replay** both sides + bounds/residuals — the two elimination-order reorders (trmm_right-upper, trsm_right-lower) are documented in their files and the replays mirror them; the other triangles replay the PLAIN order, proving the blocked shapes bit-identical to it; the `transa` forms: both candidates and the routed wrapper **bit-identical to the no-transpose call on an explicit transpose**, every side/triangle/diagonal, shapes off the block sizes |
 | zaxpy, zscal, zdscal, zcopy, zswap, zdrot | **bit-for-bit** vs the scalar `C64` definition (the SIMD product form is a bit-exact rewrite of it) |
 | zdotu, zdotc | error-bounded vs a component-wise compensated reference; plus `zdotc(x,y) == zdotu(conj x, y)` **bitwise** (the conjugation folds into lane signs exactly) |
 | dznrm2, dzasum | error-bounded (delegations to the d-streams; nrm2 guard cases at 1e±300) |
@@ -51,7 +51,7 @@ forms them).
 | zher, zher2 | **bit-for-bit replay** + diagonal ends exactly real (+0.0 imag, the Hermitian invariant) |
 | zgemm | **bit-for-bit replay** + bounds; col4 AND packed (the complex register tile) vs colaxpy cross-checked bit-identical, plus the dispatch-zone replay |
 | zhemm | left: bounds (rides zhemv); right: **bit-for-bit replay** through the conjugating triangle lookup |
-| zherk, zher2k | **bit-for-bit replay** incl. the real-β component scale and the exactly-real diagonals |
+| zherk, zher2k | **bit-for-bit replay** incl. the real-β component scale and the exactly-real diagonals; the `ConjTrans` forms **bit-identical to the no-transpose call on an explicit conjugate transpose** |
 | ztrmm, ztrsm | **bit-for-bit replay** both sides — same reorder disclosures as the real twins, replays mirror them; residuals for ztrsm |
 | the c-routines (c32) | the z-suite cloned one-for-one at the two-complexes-per-register lane geometry: same replays bit-for-bit, bounds vs f64-accumulated references, crotg identities in f32 at 1e±15/±30 extremes, the same conjugation cross-checks and Hermitian-diagonal invariants |
 
