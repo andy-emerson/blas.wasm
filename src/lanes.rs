@@ -114,6 +114,12 @@ mod imp {
 		pub unsafe fn neg1(self) -> Self {
 			Self(v128_xor(self.0, f64x2(0.0, -0.0)))
 		}
+		/// Both lanes negated (a sign-bit flip, exact for every value).
+		#[inline]
+		#[target_feature(enable = "simd128")]
+		pub unsafe fn neg(self) -> Self {
+			Self(f64x2_neg(self.0))
+		}
 	}
 }
 
@@ -206,6 +212,11 @@ mod imp {
 		#[inline(always)]
 		pub unsafe fn neg1(self) -> Self {
 			Self([self.0[0], -self.0[1]])
+		}
+		/// Both lanes negated.
+		#[inline(always)]
+		pub unsafe fn neg(self) -> Self {
+			Self([-self.0[0], -self.0[1]])
 		}
 	}
 }
@@ -331,6 +342,12 @@ mod imp32 {
 		pub unsafe fn neg_odd(self) -> Self {
 			Self(v128_xor(self.0, f32x4(0.0, -0.0, 0.0, -0.0)))
 		}
+		/// All four lanes negated (a sign-bit flip, exact for every value).
+		#[inline]
+		#[target_feature(enable = "simd128")]
+		pub unsafe fn neg(self) -> Self {
+			Self(f32x4_neg(self.0))
+		}
 	}
 }
 
@@ -439,6 +456,11 @@ mod imp32 {
 		#[inline(always)]
 		pub unsafe fn neg_odd(self) -> Self {
 			Self([self.0[0], -self.0[1], self.0[2], -self.0[3]])
+		}
+		/// All four lanes negated.
+		#[inline(always)]
+		pub unsafe fn neg(self) -> Self {
+			Self([-self.0[0], -self.0[1], -self.0[2], -self.0[3]])
 		}
 	}
 }

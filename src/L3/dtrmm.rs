@@ -819,3 +819,179 @@ unsafe fn diag_block_rows(upper: bool, unit: bool, r0: usize, pc: usize, kc: usi
 		*b.add(3 * bcs + i) = hi.lane1();
 	}
 }
+
+// ---- the K1 candidates for the right side ----------------------------
+//
+// Both run the sweep's column grouping exactly (start-aligned groups of
+// four for the ascending direction, end-aligned for the descending one,
+// the same tail columns) and the sweep's per-element term order; what
+// changes is that the out-of-group terms, a gemm over the already-final
+// or original columns, run through the packed tile instead of a column
+// fan-out.
+
+/// B's rows packed as the left panels of every k-block over `n`
+/// columns: per k-block, per MR-row block, k-major ×MR. Returns the
+/// panel base of a k-block.
+pub(crate) fn right_panel_base(blk: usize, n: usize, m_mr: usize) -> usize {
+	let mut base = 0usize;
+	for b in 0..blk {
+		base += KC.min(n - b * KC) * m_mr;
+	}
+	base
+}
+
+/// The K1 candidate for the right side: `B ← α·B·A` on the packing
+/// layer. B's packed-row copy serves as the left panels (m·n elements,
+/// a cost of order mn against mn² of arithmetic); each group of four
+/// columns first takes its in-group terms with the sweep's own column
+/// code (the diagonal product and the in-group adds in the sweep's
+/// order), then the out-of-group terms arrive through the tile in
+/// ascending k from the right panel `α·A[k, group]`; the `m % MR` tail
+/// rows take the same out-of-group terms from a copy of their original
+/// values; the tail columns run the sweep. Per-element rounding
+/// sequence identical to the shipping sweep: bit-for-bit
+/// interchangeable, tested. Raced against the shipping sweep and
+/// against OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn dtrmm_right_packed(upper: bool, unit: bool, alpha: f64, m: usize, n: usize, a: &[f64], acs: usize, b: &mut [f64], bcs: usize, work: &mut [f64]) {
+	check_mat(a.len(), n, n, acs);
+	check_mat(b.len(), m, n, bcs);
+	let need = dtrmm_right_packed_work(m, n);
+	assert!(work.len() >= need, "dtrmm_right_packed: workspace shorter than dtrmm_right_packed_work");
+	if m == 0 || n == 0 {
+		return;
+	}
+	let at = |row: usize, col: usize| a[col * acs + row];
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	let mt = m - m_mr;
+	// the sweep's grouping: upper descends over end-aligned groups with
+	// the tail columns 0..off first in the matrix (done last); lower
+	// ascends over start-aligned groups with the tail at the end
+	let off = if upper { n % 4 } else { 0 };
+	let bp = b.as_mut_ptr();
+	let col_mut = |idx: usize| unsafe { core::slice::from_raw_parts_mut(bp.add(idx * bcs), m) };
+	let col_ref = |idx: usize| unsafe { core::slice::from_raw_parts(bp.add(idx * bcs) as *const f64, m) };
+	// tail columns: the plain column sweep (they read only each other)
+	let do_col = |j: usize| {
+		let diag = if unit { 1.0 } else { at(j, j) };
+		dscal(alpha * diag, col_mut(j));
+		let (lo, hi) = if upper { (0, j) } else { (j + 1, n) };
+		for k in lo..hi {
+			daxpy_k(alpha * at(k, j), col_ref(k), col_mut(j));
+		}
+	};
+	// tail columns run last, as the sweep does: the groups read them as
+	// original values, and they read only each other
+	let tail_cols = || {
+		if upper {
+			for j in (0..off).rev() {
+				do_col(j);
+			}
+		} else {
+			for j in n4..n {
+				do_col(j);
+			}
+		}
+	};
+	if n4 == 0 {
+		tail_cols();
+		return;
+	}
+	let (lp, rest) = work[..need].split_at_mut(m_mr * n);
+	let (tail, rp) = rest.split_at_mut(mt * n);
+	// the original B: rows < m_mr into the left panels of every k-block,
+	// the tail rows into their own copy (column-major, m - m_mr rows)
+	let nblk = n.div_ceil(KC);
+	for blk in 0..nblk {
+		let pc = blk * KC;
+		let kc = KC.min(n - pc);
+		let base = right_panel_base(blk, n, m_mr);
+		for g in 0..m_mr / MR {
+			let r0 = g * MR;
+			for t in 0..kc {
+				let src = (pc + t) * bcs + r0;
+				lp[base + g * kc * MR + t * MR..base + g * kc * MR + t * MR + MR].copy_from_slice(&b[src..src + MR]);
+			}
+		}
+	}
+	for k in 0..n {
+		tail[k * mt..k * mt + mt].copy_from_slice(&b[k * bcs + m_mr..k * bcs + m]);
+	}
+	// in-group pass, the sweep's own order (the diagonal product first)
+	for q in 0..n4 / 4 {
+		let gs = off + q * 4;
+		if upper {
+			for tc in (gs..gs + 4).rev() {
+				let diag = if unit { 1.0 } else { at(tc, tc) };
+				dscal(alpha * diag, col_mut(tc));
+				for k in gs..tc {
+					daxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
+				}
+			}
+		} else {
+			for tc in gs..gs + 4 {
+				let diag = if unit { 1.0 } else { at(tc, tc) };
+				dscal(alpha * diag, col_mut(tc));
+				for k in tc + 1..gs + 4 {
+					daxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
+				}
+			}
+		}
+	}
+	// out-of-group terms, ascending k: the tile over the packed rows, the
+	// tail rows by column-axpy from their copy
+	for blk in 0..nblk {
+		let pc = blk * KC;
+		let kc = KC.min(n - pc);
+		let base = right_panel_base(blk, n, m_mr);
+		for q in 0..n4 / 4 {
+			let gs = off + q * 4;
+			// this group's out-of-group k within the k-block
+			let (k0, k1) = if upper { (pc, gs.min(pc + kc)) } else { ((gs + 4).max(pc), pc + kc) };
+			if k0 >= k1 {
+				continue;
+			}
+			let dst = &mut rp[..(k1 - k0) * 4];
+			for (t, k) in (k0..k1).enumerate() {
+				for u in 0..4 {
+					dst[t * 4 + u] = alpha * at(k, gs + u);
+				}
+			}
+			for g in 0..m_mr / MR {
+				unsafe {
+					tile_4x4_packed_bcast(
+						k1 - k0,
+						lp.as_ptr().add(base + g * kc * MR + (k0 - pc) * MR),
+						dst.as_ptr(),
+						1.0,
+						false,
+						b.as_mut_ptr().add(gs * bcs + g * MR),
+						bcs,
+					);
+				}
+			}
+			if mt > 0 {
+				for (t, k) in (k0..k1).enumerate() {
+					for u in 0..4 {
+						daxpy_k(dst[t * 4 + u], &tail[k * mt..k * mt + mt], &mut b[(gs + u) * bcs + m_mr..(gs + u) * bcs + m]);
+					}
+				}
+			}
+		}
+	}
+	tail_cols();
+}
+
+/// Elements of scratch [`dtrmm_right_packed`] needs: B's packed rows,
+/// the tail rows' copy and one right panel.
+pub fn dtrmm_right_packed_work(m: usize, n: usize) -> usize {
+	let n4 = n - n % 4;
+	if m == 0 || n4 == 0 {
+		0
+	} else {
+		let m_mr = m - m % MR;
+		m_mr * n + (m - m_mr) * n + KC.min(n) * 4
+	}
+}
+

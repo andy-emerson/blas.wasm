@@ -746,22 +746,11 @@ pub fn dtrsm_left_packed(upper: bool, unit: bool, alpha: f64, m: usize, n: usize
 						}
 					}
 				}
-				// (b) the diagonal block, in the sweep's order
-				for j in 0..n4 {
-					let bj = &mut b[j * bcs..j * bcs + m];
-					for s in 0..MR {
-						let i = if upper { r0 + MR - 1 - s } else { r0 + s };
-						let mut acc = bj[i];
-						if upper {
-							for (l, &v) in bj.iter().enumerate().take(r0 + MR).skip(i + 1).rev() {
-								acc += -v * at(i, l);
-							}
-						} else {
-							for (l, &v) in bj.iter().enumerate().take(i).skip(r0) {
-								acc += -v * at(i, l);
-							}
-						}
-						bj[i] = if unit { acc } else { acc / at(i, i) };
+				// (b) the diagonal block, in the sweep's order, four columns per
+				// lane group
+				for jg in 0..n4 / 4 {
+					unsafe {
+						diag_solve_rows(upper, unit, r0, a, acs, b.as_mut_ptr().add(jg * 4 * bcs), bcs);
 					}
 				}
 				// (c) into the panel
@@ -810,5 +799,193 @@ pub fn dtrsm_left_packed_work(m: usize, n: usize) -> usize {
 	} else {
 		let kc = KC.min(m);
 		kc * n4 + MC.min(m_mr) * kc
+	}
+}
+
+/// The K1 candidate for the right side: `B ← α·B·A⁻¹` on the packing
+/// layer, in place. Groups of four columns are solved in the sweep's
+/// order; each group is scaled by α, takes the already-solved columns'
+/// terms through the tile in ascending k (their solutions sit in the
+/// left panels, appended as each group is solved; the `m % MR` tail
+/// rows take the same terms by column-axpy from the solved columns),
+/// then finishes with the sweep's own in-group elimination and the
+/// reciprocal scaling; the tail columns run the sweep last. Per-element
+/// rounding sequence identical to the shipping sweep: bit-for-bit
+/// interchangeable, tested. Raced against the shipping sweep and
+/// against OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn dtrsm_right_packed(upper: bool, unit: bool, alpha: f64, m: usize, n: usize, a: &[f64], acs: usize, b: &mut [f64], bcs: usize, work: &mut [f64]) {
+	check_mat(a.len(), n, n, acs);
+	check_mat(b.len(), m, n, bcs);
+	let need = dtrsm_right_packed_work(m, n);
+	assert!(work.len() >= need, "dtrsm_right_packed: workspace shorter than dtrsm_right_packed_work");
+	if m == 0 || n == 0 {
+		return;
+	}
+	let at = |row: usize, col: usize| a[col * acs + row];
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	let mt = m - m_mr;
+	// the sweep's grouping: upper ascends over start-aligned groups with
+	// the tail at the end; lower descends over end-aligned groups with
+	// the tail columns 0..off done last
+	let off = if upper { 0 } else { n % 4 };
+	let bp = b.as_mut_ptr();
+	let col_mut = |idx: usize| unsafe { core::slice::from_raw_parts_mut(bp.add(idx * bcs), m) };
+	let col_ref = |idx: usize| unsafe { core::slice::from_raw_parts(bp.add(idx * bcs) as *const f64, m) };
+	let do_col = |j: usize, lo: usize, hi: usize| {
+		if alpha != 1.0 {
+			dscal(alpha, col_mut(j));
+		}
+		for k in lo..hi {
+			daxpy_k(-at(k, j), col_ref(k), col_mut(j));
+		}
+		if !unit {
+			dscal(1.0 / at(j, j), col_mut(j));
+		}
+	};
+	if n4 > 0 {
+		let (lp, rp) = work[..need].split_at_mut(m_mr * n);
+		let nblk = n.div_ceil(KC);
+		let append = |lp: &mut [f64], b: &[f64], k: usize| {
+			let blk = k / KC;
+			let pc = blk * KC;
+			let kc = KC.min(n - pc);
+			let base = super::dtrmm::right_panel_base(blk, n, m_mr);
+			for g in 0..m_mr / MR {
+				let src = k * bcs + g * MR;
+				lp[base + g * kc * MR + (k - pc) * MR..base + g * kc * MR + (k - pc) * MR + MR].copy_from_slice(&b[src..src + MR]);
+			}
+		};
+		for q in 0..n4 / 4 {
+			let gs = if upper { q * 4 } else { off + (n4 / 4 - 1 - q) * 4 };
+			if alpha != 1.0 {
+				for u in 0..4 {
+					dscal(alpha, col_mut(gs + u));
+				}
+			}
+			// the solved columns' terms, ascending k
+			let (ka, kb) = if upper { (0, gs) } else { (gs + 4, n) };
+			for blk in 0..nblk {
+				let pc = blk * KC;
+				let kc = KC.min(n - pc);
+				let (k0, k1) = (ka.max(pc), kb.min(pc + kc));
+				if k0 >= k1 {
+					continue;
+				}
+				let dst = &mut rp[..(k1 - k0) * 4];
+				for (t, k) in (k0..k1).enumerate() {
+					for u in 0..4 {
+						dst[t * 4 + u] = -at(k, gs + u);
+					}
+				}
+				let base = super::dtrmm::right_panel_base(blk, n, m_mr);
+				for g in 0..m_mr / MR {
+					unsafe {
+						tile_4x4_packed_bcast(
+							k1 - k0,
+							lp.as_ptr().add(base + g * kc * MR + (k0 - pc) * MR),
+							dst.as_ptr(),
+							1.0,
+							false,
+							b.as_mut_ptr().add(gs * bcs + g * MR),
+							bcs,
+						);
+					}
+				}
+				if mt > 0 {
+					for (t, k) in (k0..k1).enumerate() {
+						for u in 0..4 {
+							let (src, dstc) = unsafe { (core::slice::from_raw_parts(bp.add(k * bcs + m_mr) as *const f64, mt), core::slice::from_raw_parts_mut(bp.add((gs + u) * bcs + m_mr), mt)) };
+							daxpy_k(dst[t * 4 + u], src, dstc);
+						}
+					}
+				}
+			}
+			// in-group elimination, the sweep's order, then the reciprocal
+			if upper {
+				for tc in gs..gs + 4 {
+					for k in gs..tc {
+						daxpy_k(-at(k, tc), col_ref(k), col_mut(tc));
+					}
+					if !unit {
+						dscal(1.0 / at(tc, tc), col_mut(tc));
+					}
+				}
+			} else {
+				for tc in (gs..gs + 4).rev() {
+					for k in tc + 1..gs + 4 {
+						daxpy_k(-at(k, tc), col_ref(k), col_mut(tc));
+					}
+					if !unit {
+						dscal(1.0 / at(tc, tc), col_mut(tc));
+					}
+				}
+			}
+			for k in gs..gs + 4 {
+				append(lp, b, k);
+			}
+		}
+	}
+	// tail columns last: they read every solved column
+	if upper {
+		for j in n4..n {
+			do_col(j, 0, j);
+		}
+	} else {
+		for j in (0..off).rev() {
+			do_col(j, j + 1, n);
+		}
+	}
+}
+
+/// Elements of scratch [`dtrsm_right_packed`] needs: the solved
+/// columns' packed rows and one right panel.
+pub fn dtrsm_right_packed_work(m: usize, n: usize) -> usize {
+	let n4 = n - n % 4;
+	if m == 0 || n4 == 0 {
+		0
+	} else {
+		(m - m % MR) * n + KC.min(n) * 4
+	}
+}
+
+/// The diagonal MR×MR solve of the packed left trsm for one 4-column
+/// group: the block's rows in elimination order, each starting from its
+/// current partial `B[i,·]`, subtracting `(−x_l)·a_il` for the rows of
+/// the block already solved (in the sweep's order) and dividing by
+/// `a_ii` unless unit; the four columns ride two lane pairs and the
+/// solved rows stay in registers for the rows below them.
+/// # Safety
+/// `b` points at `B[0, j]` for the group's first column with stride
+/// `bcs`; rows `r0..r0 + MR` and four columns must be in bounds.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+unsafe fn diag_solve_rows(upper: bool, unit: bool, r0: usize, a: &[f64], acs: usize, b: *mut f64, bcs: usize) {
+	use crate::lanes::F64x2;
+	let zero = F64x2::splat(0.0);
+	let mut x = [[zero; 2]; MR];
+	for s in 0..MR {
+		let i = if upper { r0 + MR - 1 - s } else { r0 + s };
+		let (mut lo, mut hi) = (
+			F64x2::pair(*b.add(i), *b.add(bcs + i)),
+			F64x2::pair(*b.add(2 * bcs + i), *b.add(3 * bcs + i)),
+		);
+		// the rows solved before this one, in the sweep's order
+		for q in 0..s {
+			let l = if upper { r0 + MR - 1 - q } else { r0 + q };
+			let ail = F64x2::splat(a[l * acs + i]);
+			lo = lo.add(x[l - r0][0].neg().mul(ail));
+			hi = hi.add(x[l - r0][1].neg().mul(ail));
+		}
+		if !unit {
+			let d = F64x2::splat(a[i * acs + i]);
+			lo = lo.div(d);
+			hi = hi.div(d);
+		}
+		x[i - r0] = [lo, hi];
+		*b.add(i) = lo.lane0();
+		*b.add(bcs + i) = lo.lane1();
+		*b.add(2 * bcs + i) = hi.lane0();
+		*b.add(3 * bcs + i) = hi.lane1();
 	}
 }

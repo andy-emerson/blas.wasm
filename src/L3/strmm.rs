@@ -23,6 +23,8 @@
 //! (`bench/README.md`).
 
 use super::check_mat;
+use super::dtrmm::right_panel_base;
+use super::sgemm::{tile_8x4_packed_bcast, KC, MC, MR};
 use crate::{Diag, Error, Side, Trans, Uplo};
 use crate::kernels::saxpy4;
 use crate::L1::{saxpy_k, sscal};
@@ -571,3 +573,380 @@ fn strmm_left_t1(m: usize, a: &[f32], acs: usize, upper: bool, unit: bool, x: &m
 		}
 	}
 }
+
+/// The K1 candidate for the left side: `B ← α·A·B` on the packing
+/// layer, in place. The right panel is packed from B's rows at the
+/// start of each k-block, before any row of that block is overwritten
+/// (k-blocks ascend for upper, so only rows below the block have been
+/// written; they descend for lower, so only rows above it have), forward
+/// for an upper A and reversed for a lower one so the tile's ascending
+/// loop reproduces the sweep's descending l; the MR×MR
+/// diagonal block of each row block runs a scalar routine that starts
+/// each element at `B[i,j]·A[i,i]` and adds the in-block terms in the
+/// sweep's order; the tiles then continue from the stored partial. Row
+/// and column tails keep the sweep. Per-element rounding sequence
+/// identical to the shipping sweep (the diagonal product, the off-
+/// diagonal terms ascending for upper / descending for lower, then
+/// ×α): bit-for-bit interchangeable, tested. Raced against the shipping
+/// sweep and against OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn strmm_left_packed(upper: bool, unit: bool, alpha: f32, m: usize, n: usize, a: &[f32], acs: usize, b: &mut [f32], bcs: usize, work: &mut [f32]) {
+	check_mat(a.len(), m, m, acs);
+	check_mat(b.len(), m, n, bcs);
+	let need = strmm_left_packed_work(m, n);
+	assert!(work.len() >= need, "strmm_left_packed: workspace shorter than strmm_left_packed_work");
+	if m == 0 || n == 0 {
+		return;
+	}
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	// column tail: the plain sweep per column (independent of the rest)
+	for j in n4..n {
+		let col = &mut b[j * bcs..j * bcs + m];
+		strmv_k(m, a, acs, upper, unit, col);
+		if alpha != 1.0 {
+			sscal(alpha, col);
+		}
+	}
+	if n4 == 0 {
+		return;
+	}
+	let at = |i: usize, l: usize| a[l * acs + i];
+	// the row tail: rows m_mr..m, stored terms only, in the sweep's
+	// order. Upper reads only tail rows, so it runs after the main loop,
+	// whose last panel must still see the original tail rows; lower reads
+	// the rows above it, so it runs first, before any of them is
+	// overwritten (no one reads tail rows in the lower case)
+	let row_tail = |b: &mut [f32]| {
+		for j in 0..n4 {
+			// each tail row reads only rows on its far side (below for
+			// upper, above for lower), so the rows are visited away from
+			// that side and read before they are written
+			for step in 0..m - m_mr {
+				let r = if upper { m_mr + step } else { m - 1 - step };
+				let bj = &b[j * bcs..j * bcs + m];
+				let mut acc = if unit { bj[r] } else { bj[r] * at(r, r) };
+				if upper {
+					for (l, &v) in bj.iter().enumerate().skip(r + 1) {
+						acc += at(r, l) * v;
+					}
+				} else {
+					for (l, &v) in bj.iter().enumerate().take(r).rev() {
+						acc += at(r, l) * v;
+					}
+				}
+				b[j * bcs + r] = acc;
+			}
+		}
+	};
+	if !upper {
+		row_tail(b);
+	}
+	if m_mr > 0 {
+		let kcm = KC.min(m);
+		let (bp, ap) = work[..need].split_at_mut(kcm * n4);
+		// k-blocks: ascending for upper, descending (and reversed inside)
+		// for lower, so every element's off-block terms arrive in the
+		// sweep's order
+		let nblk = m.div_ceil(KC);
+		for bi in 0..nblk {
+			let blk = if upper { bi } else { nblk - 1 - bi };
+			let pc = blk * KC;
+			let kc = KC.min(m - pc);
+			// pack the right panel from B's rows pc..pc+kc, none of which has
+			// been overwritten yet (upper: only rows below pc have; lower:
+			// only rows from pc+kc up); per 4-column group, k-major ×4
+			for jg in 0..n4 / 4 {
+				let dst = &mut bp[jg * kc * 4..(jg + 1) * kc * 4];
+				for t in 0..kc {
+					let l = if upper { pc + t } else { pc + kc - 1 - t };
+					for u in 0..4 {
+						dst[t * 4 + u] = b[(jg * 4 + u) * bcs + l];
+					}
+				}
+			}
+			let mut ic = 0usize;
+			while ic < m_mr {
+				let mc = MC.min(m_mr - ic);
+				for g in 0..mc / MR {
+					let r0 = ic + g * MR;
+					if pc <= r0 && r0 < pc + kc {
+						// the diagonal MR×MR block, in the k-block that holds it:
+						// each element starts at B·A_ii and takes the in-block
+						// terms in the sweep's order, four columns per lane pair
+						// read straight from the panel
+						for jg in 0..n4 / 4 {
+							unsafe {
+								diag_block_rows(upper, unit, r0, pc, kc, a, acs, bp.as_ptr().add(jg * kc * 4), b.as_mut_ptr().add(jg * 4 * bcs), bcs);
+							}
+						}
+					}
+					// the panel range this row block multiplies: the l strictly
+					// past its diagonal block, within this k-block
+					let (t0, t1) = if upper {
+						if pc + kc <= r0 + MR {
+							continue;
+						}
+						((r0 + MR).max(pc) - pc, kc)
+					} else {
+						if pc >= r0 {
+							continue;
+						}
+						// reversed: t ↔ l = pc + kc − 1 − t; l < r0 ⇔ t > pc + kc − 1 − r0
+						((pc + kc).saturating_sub(r0), kc)
+					};
+					if t0 >= t1 {
+						continue;
+					}
+					let base = g * kc * MR;
+					for t in t0..t1 {
+						let l = if upper { pc + t } else { pc + kc - 1 - t };
+						let src = l * acs + r0;
+						ap[base + t * MR..base + t * MR + MR].copy_from_slice(&a[src..src + MR]);
+					}
+					for jg in 0..n4 / 4 {
+						unsafe {
+							tile_8x4_packed_bcast(
+								t1 - t0,
+								ap.as_ptr().add(base + t0 * MR),
+								bp.as_ptr().add(jg * kc * 4 + t0 * 4),
+								1.0,
+								false,
+								b.as_mut_ptr().add(jg * 4 * bcs + r0),
+								bcs,
+							);
+						}
+					}
+				}
+				ic += mc;
+			}
+		}
+	}
+	if upper {
+		row_tail(b);
+	}
+	if alpha != 1.0 {
+		for j in 0..n4 {
+			sscal(alpha, &mut b[j * bcs..j * bcs + m]);
+		}
+	}
+}
+
+/// Elements of scratch [`strmm_left_packed`] needs: the right panel and
+/// the left panel; zero when the packed loops have nothing to do.
+pub fn strmm_left_packed_work(m: usize, n: usize) -> usize {
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	if m_mr == 0 || n4 == 0 {
+		0
+	} else {
+		let kc = KC.min(m);
+		kc * n4 + MC.min(m_mr) * kc
+	}
+}
+
+/// The diagonal MR×MR block of the packed left trmm for one 4-column
+/// group: row `i` of the block starts at `B[i,·]·A[i,i]` (or `B[i,·]`
+/// when unit) and adds `A[i,l]·B[l,·]` for the in-block `l` in the
+/// sweep's order (ascending past the diagonal for upper, descending
+/// before it for lower), the four columns as one lane quad read from
+/// the packed right panel (`bp`, k-major ×4, forward for upper and
+/// reversed for lower); the result is stored into B's four columns.
+/// # Safety
+/// `bp` must hold the panel of this k-block for this column group; `b`
+/// points at `B[0, j]` for the group's first column with stride `bcs`
+/// and rows `r0..r0 + MR` in bounds.
+#[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
+#[allow(clippy::too_many_arguments)]
+unsafe fn diag_block_rows(upper: bool, unit: bool, r0: usize, pc: usize, kc: usize, a: &[f32], acs: usize, bp: *const f32, b: *mut f32, bcs: usize) {
+	use crate::lanes::F32x4;
+	let row = |l: usize| -> usize { if upper { l - pc } else { pc + kc - 1 - l } };
+	for i in r0..r0 + MR {
+		let mut v = F32x4::load(bp.add(row(i) * 4));
+		if !unit {
+			v = v.mul(F32x4::splat(a[i * acs + i]));
+		}
+		let mut step = |l: usize| {
+			v = v.add(F32x4::splat(a[l * acs + i]).mul(F32x4::load(bp.add(row(l) * 4))));
+		};
+		if upper {
+			for l in i + 1..r0 + MR {
+				step(l);
+			}
+		} else {
+			for l in (r0..i).rev() {
+				step(l);
+			}
+		}
+		*b.add(i) = v.lane0();
+		*b.add(bcs + i) = v.lane1();
+		*b.add(2 * bcs + i) = v.lane2();
+		*b.add(3 * bcs + i) = v.lane3();
+	}
+}
+
+// ---- the K1 candidates for the right side ----------------------------
+//
+// Both run the sweep's column grouping exactly (start-aligned groups of
+// four for the ascending direction, end-aligned for the descending one,
+// the same tail columns) and the sweep's per-element term order; what
+// changes is that the out-of-group terms, a gemm over the already-final
+// or original columns, run through the packed tile instead of a column
+// fan-out.
+
+
+/// The K1 candidate for the right side: `B ← α·B·A` on the packing
+/// layer. B's packed-row copy serves as the left panels (m·n elements,
+/// a cost of order mn against mn² of arithmetic); each group of four
+/// columns first takes its in-group terms with the sweep's own column
+/// code (the diagonal product and the in-group adds in the sweep's
+/// order), then the out-of-group terms arrive through the tile in
+/// ascending k from the right panel `α·A[k, group]`; the `m % MR` tail
+/// rows take the same out-of-group terms from a copy of their original
+/// values; the tail columns run the sweep. Per-element rounding
+/// sequence identical to the shipping sweep: bit-for-bit
+/// interchangeable, tested. Raced against the shipping sweep and
+/// against OpenBLAS compiled to wasm (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn strmm_right_packed(upper: bool, unit: bool, alpha: f32, m: usize, n: usize, a: &[f32], acs: usize, b: &mut [f32], bcs: usize, work: &mut [f32]) {
+	check_mat(a.len(), n, n, acs);
+	check_mat(b.len(), m, n, bcs);
+	let need = strmm_right_packed_work(m, n);
+	assert!(work.len() >= need, "strmm_right_packed: workspace shorter than strmm_right_packed_work");
+	if m == 0 || n == 0 {
+		return;
+	}
+	let at = |row: usize, col: usize| a[col * acs + row];
+	let n4 = n - n % 4;
+	let m_mr = m - m % MR;
+	let mt = m - m_mr;
+	// the sweep's grouping: upper descends over end-aligned groups with
+	// the tail columns 0..off first in the matrix (done last); lower
+	// ascends over start-aligned groups with the tail at the end
+	let off = if upper { n % 4 } else { 0 };
+	let bp = b.as_mut_ptr();
+	let col_mut = |idx: usize| unsafe { core::slice::from_raw_parts_mut(bp.add(idx * bcs), m) };
+	let col_ref = |idx: usize| unsafe { core::slice::from_raw_parts(bp.add(idx * bcs) as *const f32, m) };
+	// tail columns: the plain column sweep (they read only each other)
+	let do_col = |j: usize| {
+		let diag = if unit { 1.0 } else { at(j, j) };
+		sscal(alpha * diag, col_mut(j));
+		let (lo, hi) = if upper { (0, j) } else { (j + 1, n) };
+		for k in lo..hi {
+			saxpy_k(alpha * at(k, j), col_ref(k), col_mut(j));
+		}
+	};
+	// tail columns run last, as the sweep does: the groups read them as
+	// original values, and they read only each other
+	let tail_cols = || {
+		if upper {
+			for j in (0..off).rev() {
+				do_col(j);
+			}
+		} else {
+			for j in n4..n {
+				do_col(j);
+			}
+		}
+	};
+	if n4 == 0 {
+		tail_cols();
+		return;
+	}
+	let (lp, rest) = work[..need].split_at_mut(m_mr * n);
+	let (tail, rp) = rest.split_at_mut(mt * n);
+	// the original B: rows < m_mr into the left panels of every k-block,
+	// the tail rows into their own copy (column-major, m - m_mr rows)
+	let nblk = n.div_ceil(KC);
+	for blk in 0..nblk {
+		let pc = blk * KC;
+		let kc = KC.min(n - pc);
+		let base = right_panel_base(blk, n, m_mr);
+		for g in 0..m_mr / MR {
+			let r0 = g * MR;
+			for t in 0..kc {
+				let src = (pc + t) * bcs + r0;
+				lp[base + g * kc * MR + t * MR..base + g * kc * MR + t * MR + MR].copy_from_slice(&b[src..src + MR]);
+			}
+		}
+	}
+	for k in 0..n {
+		tail[k * mt..k * mt + mt].copy_from_slice(&b[k * bcs + m_mr..k * bcs + m]);
+	}
+	// in-group pass, the sweep's own order (the diagonal product first)
+	for q in 0..n4 / 4 {
+		let gs = off + q * 4;
+		if upper {
+			for tc in (gs..gs + 4).rev() {
+				let diag = if unit { 1.0 } else { at(tc, tc) };
+				sscal(alpha * diag, col_mut(tc));
+				for k in gs..tc {
+					saxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
+				}
+			}
+		} else {
+			for tc in gs..gs + 4 {
+				let diag = if unit { 1.0 } else { at(tc, tc) };
+				sscal(alpha * diag, col_mut(tc));
+				for k in tc + 1..gs + 4 {
+					saxpy_k(alpha * at(k, tc), col_ref(k), col_mut(tc));
+				}
+			}
+		}
+	}
+	// out-of-group terms, ascending k: the tile over the packed rows, the
+	// tail rows by column-axpy from their copy
+	for blk in 0..nblk {
+		let pc = blk * KC;
+		let kc = KC.min(n - pc);
+		let base = right_panel_base(blk, n, m_mr);
+		for q in 0..n4 / 4 {
+			let gs = off + q * 4;
+			// this group's out-of-group k within the k-block
+			let (k0, k1) = if upper { (pc, gs.min(pc + kc)) } else { ((gs + 4).max(pc), pc + kc) };
+			if k0 >= k1 {
+				continue;
+			}
+			let dst = &mut rp[..(k1 - k0) * 4];
+			for (t, k) in (k0..k1).enumerate() {
+				for u in 0..4 {
+					dst[t * 4 + u] = alpha * at(k, gs + u);
+				}
+			}
+			for g in 0..m_mr / MR {
+				unsafe {
+					tile_8x4_packed_bcast(
+						k1 - k0,
+						lp.as_ptr().add(base + g * kc * MR + (k0 - pc) * MR),
+						dst.as_ptr(),
+						1.0,
+						false,
+						b.as_mut_ptr().add(gs * bcs + g * MR),
+						bcs,
+					);
+				}
+			}
+			if mt > 0 {
+				for (t, k) in (k0..k1).enumerate() {
+					for u in 0..4 {
+						saxpy_k(dst[t * 4 + u], &tail[k * mt..k * mt + mt], &mut b[(gs + u) * bcs + m_mr..(gs + u) * bcs + m]);
+					}
+				}
+			}
+		}
+	}
+	tail_cols();
+}
+
+/// Elements of scratch [`strmm_right_packed`] needs: B's packed rows,
+/// the tail rows' copy and one right panel.
+pub fn strmm_right_packed_work(m: usize, n: usize) -> usize {
+	let n4 = n - n % 4;
+	if m == 0 || n4 == 0 {
+		0
+	} else {
+		let m_mr = m - m % MR;
+		m_mr * n + (m - m_mr) * n + KC.min(n) * 4
+	}
+}
+

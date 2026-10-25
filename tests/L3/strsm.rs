@@ -248,3 +248,87 @@ fn strsm_transposed_candidates_equal_the_explicit_transpose_bitwise() {
 		}
 	}
 }
+
+#[test]
+fn strsm_left_packed_bit_identical_to_the_sweep() {
+	// the K1 candidate against the shipping left sweep: m across the
+	// MR tails and the KC block edge, n across the 4-column tail, both
+	// triangles, unit and non-unit, α ≠ 1; A's unstored triangle is
+	// NaN-poisoned so a read of it would show
+	let mut rng = Lcg(0x7B11 + 6);
+	let shapes: Vec<(usize, usize)> = (1..14usize).map(|m| (m, 1 + (m * 7) % 11)).chain([(16, 4), (17, 9), (31, 12), (64, 64), (65, 33), (130, 20), (257, 8), (260, 12), (300, 5)]).collect();
+	for &(m, n) in &shapes {
+		for upper in [true, false] {
+			for unit in [false, true] {
+				let (acs, bcs) = (m + 1, m + 2);
+				let mut a = rng.mat_f32(m, m, acs);
+				for j in 0..m {
+					for i in 0..m {
+						if !(if upper { i <= j } else { i >= j }) {
+							a[j * acs + i] = f32::NAN;
+						}
+					}
+					a[j * acs + j] = 2.0 * m as f32 + 1.0; // diagonally dominant, as the solve tests use
+				}
+				let b0 = rng.mat_f32(m, n, bcs);
+				for alpha in [1.0, -0.7] {
+					let mut b1 = b0.clone();
+					strsm(Side::Left, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b1, bcs, &mut []).unwrap();
+					let mut b2 = b0.clone();
+					let mut work = vec![f32::NAN; strsm_left_packed_work(m, n)];
+					strsm_left_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);
+					for j in 0..n {
+						for i in 0..m {
+							// a unit-diagonal solve of this size overflows f32 to NaN; a NaN's
+							// sign and payload are outside the bit-identity promise
+							let (x, y) = (b1[j * bcs + i], b2[j * bcs + i]);
+							assert!(x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()), "strsm_left_packed vs sweep upper={upper} unit={unit} m={m} n={n} alpha={alpha} ({i},{j}): {x} vs {y}");
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn strsm_right_packed_bit_identical_to_the_sweep() {
+	// the K1 candidate against the shipping right sweep: n across the
+	// MR tails and the KC block edge, n across the 4-column tail, both
+	// triangles, unit and non-unit, α ≠ 1; A's unstored triangle is
+	// NaN-poisoned so a read of it would show
+	let mut rng = Lcg(0x7B11 + 8);
+	let shapes: Vec<(usize, usize)> = (1..14usize).map(|n| (1 + (n * 7) % 11, n)).chain([(4, 16), (9, 17), (12, 31), (64, 64), (33, 65), (20, 130), (8, 257), (12, 260), (5, 300)]).collect();
+	for &(m, n) in &shapes {
+		for upper in [true, false] {
+			for unit in [false, true] {
+				let (acs, bcs) = (n + 1, m + 2);
+				let mut a = rng.mat_f32(n, n, acs);
+				for j in 0..n {
+					for i in 0..n {
+						if !(if upper { i <= j } else { i >= j }) {
+							a[j * acs + i] = f32::NAN;
+						}
+					}
+					a[j * acs + j] = 2.0 * n as f32 + 1.0; // diagonally dominant, as the solve tests use
+				}
+				let b0 = rng.mat_f32(m, n, bcs);
+				for alpha in [1.0, -0.7] {
+					let mut b1 = b0.clone();
+					strsm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b1, bcs, &mut []).unwrap();
+					let mut b2 = b0.clone();
+					let mut work = vec![f32::NAN; strsm_right_packed_work(m, n)];
+					strsm_right_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);
+					for j in 0..n {
+						for i in 0..m {
+							// a unit-diagonal solve of this size overflows f32 to NaN; a NaN's
+							// sign and payload are outside the bit-identity promise
+							let (x, y) = (b1[j * bcs + i], b2[j * bcs + i]);
+							assert!(x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()), "strsm_right_packed vs sweep upper={upper} unit={unit} m={m} n={n} alpha={alpha} ({i},{j}): {x} vs {y}");
+						}
+					}
+				}
+			}
+		}
+	}
+}

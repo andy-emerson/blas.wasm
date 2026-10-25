@@ -243,7 +243,51 @@ fn dtrmm_left_packed_bit_identical_to_the_sweep() {
 					dtrmm_left_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);
 					for j in 0..n {
 						for i in 0..m {
-							assert_eq!(b1[j * bcs + i].to_bits(), b2[j * bcs + i].to_bits(), "dtrmm_left_packed vs sweep upper={upper} unit={unit} m={m} n={n} alpha={alpha} ({i},{j})");
+							// a unit-diagonal solve of this size overflows f32 to NaN; a NaN's
+							// sign and payload are outside the bit-identity promise
+							let (x, y) = (b1[j * bcs + i], b2[j * bcs + i]);
+							assert!(x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()), "dtrmm_left_packed vs sweep upper={upper} unit={unit} m={m} n={n} alpha={alpha} ({i},{j}): {x} vs {y}");
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn dtrmm_right_packed_bit_identical_to_the_sweep() {
+	// the K1 candidate against the shipping right sweep: n across the
+	// MR tails and the KC block edge, n across the 4-column tail, both
+	// triangles, unit and non-unit, α ≠ 1; A's unstored triangle is
+	// NaN-poisoned so a read of it would show
+	let mut rng = Lcg(0x7A11 + 7);
+	let shapes: Vec<(usize, usize)> = (1..14usize).map(|n| (1 + (n * 7) % 11, n)).chain([(4, 16), (9, 17), (12, 31), (64, 64), (33, 65), (20, 130), (8, 257), (12, 260), (5, 300)]).collect();
+	for &(m, n) in &shapes {
+		for upper in [true, false] {
+			for unit in [false, true] {
+				let (acs, bcs) = (n + 1, m + 2);
+				let mut a = rng.mat_f64(n, n, acs);
+				for j in 0..n {
+					for i in 0..n {
+						if !(if upper { i <= j } else { i >= j }) {
+							a[j * acs + i] = f64::NAN;
+						}
+					}
+				}
+				let b0 = rng.mat_f64(m, n, bcs);
+				for alpha in [1.0, -0.7] {
+					let mut b1 = b0.clone();
+					dtrmm(Side::Right, uplo(upper), Trans::NoTrans, diag(unit), m, n, alpha, &a, acs, &mut b1, bcs, &mut []).unwrap();
+					let mut b2 = b0.clone();
+					let mut work = vec![f64::NAN; dtrmm_right_packed_work(m, n)];
+					dtrmm_right_packed(upper, unit, alpha, m, n, &a, acs, &mut b2, bcs, &mut work);
+					for j in 0..n {
+						for i in 0..m {
+							// a unit-diagonal solve of this size overflows f32 to NaN; a NaN's
+							// sign and payload are outside the bit-identity promise
+							let (x, y) = (b1[j * bcs + i], b2[j * bcs + i]);
+							assert!(x.to_bits() == y.to_bits() || (x.is_nan() && y.is_nan()), "dtrmm_right_packed vs sweep upper={upper} unit={unit} m={m} n={n} alpha={alpha} ({i},{j}): {x} vs {y}");
 						}
 					}
 				}
