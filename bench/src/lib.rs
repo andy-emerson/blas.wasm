@@ -369,6 +369,14 @@ pub extern "C" fn run_l2_probe(op: usize) -> f64 {
         }
         6 => l2::dsyr(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
         7 => l2::dsyr2(Uplo::Upper, N, 0.7, &x, &x, am, cs).unwrap(),
+        8 => {
+            y.copy_from_slice(&x);
+            l2::dtrmv(Uplo::Lower, Trans::Trans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
+        9 => {
+            y.copy_from_slice(&x);
+            l2::dtrsv(Uplo::Lower, Trans::Trans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -468,6 +476,28 @@ pub extern "C" fn run_l3_probe(op: usize) -> f64 {
         6 => l3::dtrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         7 => l3::dtrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         8 => l3::dsymm(Side::Right, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
+        // the transposed forms (todos S1): the copy zone, the packed
+        // transposed read (a shape above this type's packed threshold,
+        // its own fold), the syrk family, trmm and trsm on both sides
+        9 => l3::dgemm(Trans::Trans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dgemm_work(Trans::Trans, Trans::NoTrans, N, N, K)]).unwrap(),
+        10 => {
+            const PK: usize = 520;
+            let ab = alloc_mat_f64(PK, &mut next);
+            let bb = alloc_mat_f64(PK, &mut next);
+            let mut cb = alloc_mat_f64(PK, &mut next);
+            let cb = &mut cb[..PK * 8];
+            l3::dgemm(Trans::Trans, Trans::NoTrans, PK, 8, PK, 0.7, &ab, PK, &bb[..PK * 8], PK, 0.3, cb, PK, &mut vec![0.0f64; l3::dgemm_work(Trans::Trans, Trans::NoTrans, PK, 8, PK)]).unwrap();
+            let mut fold = 0.0f64;
+            for j in 0..8 {
+                fold += l1::dasum(&cb[j * PK..j * PK + PK]);
+            }
+            return fold;
+        }
+        11 => l3::dsyrk(Uplo::Upper, Trans::Trans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f64; l3::dsyrk_work(Trans::Trans, N, K)]).unwrap(),
+        12 => l3::dtrmm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrmm_work(Side::Left, Trans::Trans, N, N)]).unwrap(),
+        13 => l3::dtrsm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrsm_work(Side::Left, Trans::Trans, N, N)]).unwrap(),
+        14 => l3::dtrmm(Side::Right, Uplo::Upper, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrmm_work(Side::Right, Trans::Trans, N, N)]).unwrap(),
+        15 => l3::dtrsm(Side::Right, Uplo::Upper, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f64; l3::dtrsm_work(Side::Right, Trans::Trans, N, N)]).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0;
@@ -842,6 +872,14 @@ pub extern "C" fn run_l2_probe_f32(op: usize) -> f64 {
         }
         6 => l2::ssyr(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
         7 => l2::ssyr2(Uplo::Upper, N, 0.7, &x, &x, am, cs).unwrap(),
+        8 => {
+            y.copy_from_slice(&x);
+            l2::strmv(Uplo::Lower, Trans::Trans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
+        9 => {
+            y.copy_from_slice(&x);
+            l2::strsv(Uplo::Lower, Trans::Trans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -883,6 +921,28 @@ pub extern "C" fn run_l3_probe_f32(op: usize) -> f64 {
         6 => l3::strmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         7 => l3::strsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         8 => l3::ssymm(Side::Right, Uplo::Upper, N, N, 0.7, av, acs, bv, bcs, 0.3, cv, ccs).unwrap(),
+        // the transposed forms (todos S1): the copy zone, the packed
+        // transposed read (a shape above this type's packed threshold,
+        // its own fold), the syrk family, trmm and trsm on both sides
+        9 => l3::sgemm(Trans::Trans, Trans::NoTrans, N, N, K, 0.7, av, acs, bv, bcs, 0.3, cv, ccs, &mut vec![0.0f32; l3::sgemm_work(Trans::Trans, Trans::NoTrans, N, N, K)]).unwrap(),
+        10 => {
+            const PK: usize = 900;
+            let ab = alloc_mat_f32(PK, &mut next);
+            let bb = alloc_mat_f32(PK, &mut next);
+            let mut cb = alloc_mat_f32(PK, &mut next);
+            let cb = &mut cb[..PK * 8];
+            l3::sgemm(Trans::Trans, Trans::NoTrans, PK, 8, PK, 0.7, &ab, PK, &bb[..PK * 8], PK, 0.3, cb, PK, &mut vec![0.0f32; l3::sgemm_work(Trans::Trans, Trans::NoTrans, PK, 8, PK)]).unwrap();
+            let mut fold = 0.0f64;
+            for j in 0..8 {
+                fold += l1::sasum(&cb[j * PK..j * PK + PK]) as f64;
+            }
+            return fold;
+        }
+        11 => l3::ssyrk(Uplo::Upper, Trans::Trans, N, K, 0.7, av, acs, 0.3, cv, ccs, &mut vec![0.0f32; l3::ssyrk_work(Trans::Trans, N, K)]).unwrap(),
+        12 => l3::strmm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strmm_work(Side::Left, Trans::Trans, N, N)]).unwrap(),
+        13 => l3::strsm(Side::Left, Uplo::Lower, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strsm_work(Side::Left, Trans::Trans, N, N)]).unwrap(),
+        14 => l3::strmm(Side::Right, Uplo::Upper, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strmm_work(Side::Right, Trans::Trans, N, N)]).unwrap(),
+        15 => l3::strsm(Side::Right, Uplo::Upper, Trans::Trans, Diag::NonUnit, N, N, 0.7, av, acs, cv, ccs, &mut vec![0.0f32; l3::strsm_work(Side::Right, Trans::Trans, N, N)]).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0f32;
@@ -1210,6 +1270,14 @@ pub extern "C" fn run_l2_probe_z(op: usize) -> f64 {
         }
         8 => l2::zher(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
         9 => l2::zher2(Uplo::Upper, N, al, &x, &x, am, cs).unwrap(),
+        10 => {
+            l1::zcopy(&x, &mut y).unwrap();
+            l2::ztrmv(Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
+        11 => {
+            l1::zcopy(&x, &mut y).unwrap();
+            l2::ztrsv(Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -1255,6 +1323,28 @@ pub extern "C" fn run_l3_probe_z(op: usize) -> f64 {
         6 => l3::ztrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         7 => l3::ztrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         8 => l3::zhemm(Side::Right, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
+        // the transposed forms (todos S1): the copy zone, the packed
+        // transposed read (a shape above this type's packed threshold,
+        // its own fold), the syrk family, trmm and trsm on both sides
+        9 => l3::zgemm(Trans::ConjTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C64::ZERO; l3::zgemm_work(Trans::ConjTrans, Trans::NoTrans, N, N, K)]).unwrap(),
+        10 => {
+            const PK: usize = 300;
+            let ab = alloc_mat_c64(PK, &mut next);
+            let bb = alloc_mat_c64(PK, &mut next);
+            let mut cb = alloc_mat_c64(PK, &mut next);
+            let cb = &mut cb[..PK * 8];
+            l3::zgemm(Trans::ConjTrans, Trans::NoTrans, PK, 8, PK, al, &ab, PK, &bb[..PK * 8], PK, be, cb, PK, &mut vec![C64::ZERO; l3::zgemm_work(Trans::ConjTrans, Trans::NoTrans, PK, 8, PK)]).unwrap();
+            let mut fold = 0.0f64;
+            for j in 0..8 {
+                fold += l1::dzasum(&cb[j * PK..j * PK + PK]);
+            }
+            return fold;
+        }
+        11 => l3::zherk(Uplo::Upper, Trans::ConjTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C64::ZERO; l3::zherk_work(Trans::ConjTrans, N, K)]).unwrap(),
+        12 => l3::ztrmm(Side::Left, Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Left, Trans::ConjTrans, N, N)]).unwrap(),
+        13 => l3::ztrsm(Side::Left, Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Left, Trans::ConjTrans, N, N)]).unwrap(),
+        14 => l3::ztrmm(Side::Right, Uplo::Upper, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrmm_work(Side::Right, Trans::ConjTrans, N, N)]).unwrap(),
+        15 => l3::ztrsm(Side::Right, Uplo::Upper, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C64::ZERO; l3::ztrsm_work(Side::Right, Trans::ConjTrans, N, N)]).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0;
@@ -1529,6 +1619,14 @@ pub extern "C" fn run_l2_probe_c(op: usize) -> f64 {
         }
         8 => l2::cher(Uplo::Upper, N, 0.7, &x, am, cs).unwrap(),
         9 => l2::cher2(Uplo::Upper, N, al, &x, &x, am, cs).unwrap(),
+        10 => {
+            l1::ccopy(&x, &mut y).unwrap();
+            l2::ctrmv(Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
+        11 => {
+            l1::ccopy(&x, &mut y).unwrap();
+            l2::ctrsv(Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, am, cs, &mut y).unwrap();
+        }
         _ => return f64::NAN,
     }
     let a_probe = &a[..N];
@@ -1572,6 +1670,28 @@ pub extern "C" fn run_l3_probe_c(op: usize) -> f64 {
         6 => l3::ctrmm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         7 => l3::ctrsm(Side::Right, Uplo::Upper, Trans::NoTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Right, Trans::NoTrans, N, N)]).unwrap(),
         8 => l3::chemm(Side::Right, Uplo::Upper, N, N, al, av, cs, bv, cs, be, cv, cs).unwrap(),
+        // the transposed forms (todos S1): the copy zone, the packed
+        // transposed read (a shape above this type's packed threshold,
+        // its own fold), the syrk family, trmm and trsm on both sides
+        9 => l3::cgemm(Trans::ConjTrans, Trans::NoTrans, N, N, K, al, av, cs, bv, cs, be, cv, cs, &mut vec![C32::ZERO; l3::cgemm_work(Trans::ConjTrans, Trans::NoTrans, N, N, K)]).unwrap(),
+        10 => {
+            const PK: usize = 1030;
+            let ab = alloc_mat_c32(PK, &mut next);
+            let bb = alloc_mat_c32(PK, &mut next);
+            let mut cb = alloc_mat_c32(PK, &mut next);
+            let cb = &mut cb[..PK * 8];
+            l3::cgemm(Trans::ConjTrans, Trans::NoTrans, PK, 8, PK, al, &ab, PK, &bb[..PK * 8], PK, be, cb, PK, &mut vec![C32::ZERO; l3::cgemm_work(Trans::ConjTrans, Trans::NoTrans, PK, 8, PK)]).unwrap();
+            let mut fold = 0.0f64;
+            for j in 0..8 {
+                fold += l1::scasum(&cb[j * PK..j * PK + PK]) as f64;
+            }
+            return fold;
+        }
+        11 => l3::cherk(Uplo::Upper, Trans::ConjTrans, N, K, 0.7, av, cs, 0.3, cv, cs, &mut vec![C32::ZERO; l3::cherk_work(Trans::ConjTrans, N, K)]).unwrap(),
+        12 => l3::ctrmm(Side::Left, Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Left, Trans::ConjTrans, N, N)]).unwrap(),
+        13 => l3::ctrsm(Side::Left, Uplo::Lower, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Left, Trans::ConjTrans, N, N)]).unwrap(),
+        14 => l3::ctrmm(Side::Right, Uplo::Upper, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrmm_work(Side::Right, Trans::ConjTrans, N, N)]).unwrap(),
+        15 => l3::ctrsm(Side::Right, Uplo::Upper, Trans::ConjTrans, Diag::NonUnit, N, N, al, av, cs, cv, cs, &mut vec![C32::ZERO; l3::ctrsm_work(Side::Right, Trans::ConjTrans, N, N)]).unwrap(),
         _ => return f64::NAN,
     }
     let mut fold = 0.0f32;

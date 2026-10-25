@@ -34,8 +34,8 @@ const EB = C64F ? 16 : F32 ? 4 : 8;
 
 // ---- determinism probes first
 const probeNames = CPLX
-	? ['gemv', 'gemv_t', 'gemv_c', 'geru', 'gerc', 'hemv', 'trmv', 'trsv', 'her', 'her2']
-	: ['gemv', 'gemv_t', 'ger', 'symv', 'trmv', 'trsv', 'syr', 'syr2'];
+	? ['gemv', 'gemv_t', 'gemv_c', 'geru', 'gerc', 'hemv', 'trmv', 'trsv', 'her', 'her2', 'trmv_c', 'trsv_c']
+	: ['gemv', 'gemv_t', 'ger', 'symv', 'trmv', 'trsv', 'syr', 'syr2', 'trmv_t', 'trsv_t'];
 const wasmBits = probeNames.map((_, op) => {
 	const buf = new DataView(new ArrayBuffer(8));
 	buf.setFloat64(0, e['run_l2_probe' + sfx](op));

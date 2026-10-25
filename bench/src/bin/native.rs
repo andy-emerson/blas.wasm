@@ -11,17 +11,17 @@ fn main() {
     };
     match mode.as_str() {
         "l1-bits" => dump((0..4).map(|op| blas_bench::run_l1_probe(op)).collect()),
-        "l2-bits" => dump((0..8).map(|op| blas_bench::run_l2_probe(op)).collect()),
-        "l3-bits" => dump((0..9).map(|op| blas_bench::run_l3_probe(op)).collect()),
+        "l2-bits" => dump((0..10).map(|op| blas_bench::run_l2_probe(op)).collect()),
+        "l3-bits" => dump((0..16).map(|op| blas_bench::run_l3_probe(op)).collect()),
         "l1-bits-f32" => dump((0..4).map(|op| blas_bench::run_l1_probe_f32(op)).collect()),
-        "l2-bits-f32" => dump((0..8).map(|op| blas_bench::run_l2_probe_f32(op)).collect()),
-        "l3-bits-f32" => dump((0..9).map(|op| blas_bench::run_l3_probe_f32(op)).collect()),
+        "l2-bits-f32" => dump((0..10).map(|op| blas_bench::run_l2_probe_f32(op)).collect()),
+        "l3-bits-f32" => dump((0..16).map(|op| blas_bench::run_l3_probe_f32(op)).collect()),
         "l1-bits-z" => dump((0..5).map(|op| blas_bench::run_l1_probe_z(op)).collect()),
-        "l2-bits-z" => dump((0..10).map(|op| blas_bench::run_l2_probe_z(op)).collect()),
-        "l3-bits-z" => dump((0..9).map(|op| blas_bench::run_l3_probe_z(op)).collect()),
+        "l2-bits-z" => dump((0..12).map(|op| blas_bench::run_l2_probe_z(op)).collect()),
+        "l3-bits-z" => dump((0..16).map(|op| blas_bench::run_l3_probe_z(op)).collect()),
         "l1-bits-c" => dump((0..5).map(|op| blas_bench::run_l1_probe_c(op)).collect()),
-        "l2-bits-c" => dump((0..10).map(|op| blas_bench::run_l2_probe_c(op)).collect()),
-        "l3-bits-c" => dump((0..9).map(|op| blas_bench::run_l3_probe_c(op)).collect()),
+        "l2-bits-c" => dump((0..12).map(|op| blas_bench::run_l2_probe_c(op)).collect()),
+        "l3-bits-c" => dump((0..16).map(|op| blas_bench::run_l3_probe_c(op)).collect()),
         _ => {
             eprintln!("usage: native l{{1,2,3}}-bits[-f32|-z|-c]");
             std::process::exit(2);

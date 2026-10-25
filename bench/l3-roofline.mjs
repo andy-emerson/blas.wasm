@@ -44,6 +44,13 @@ const probeNames = CPLX ? [
 	'trmm_right',
 	'trsm_right',
 	'hemm_right',
+	'gemm_cn',
+	'gemm_cn_packed',
+	'herk_c',
+	'trmm_left_c',
+	'trsm_left_c',
+	'trmm_right_c',
+	'trsm_right_c',
 ] : [
 	'gemm',
 	'symm_left',
@@ -54,6 +61,13 @@ const probeNames = CPLX ? [
 	'trmm_right',
 	'trsm_right',
 	'symm_right',
+	'gemm_tn',
+	'gemm_tn_packed',
+	'syrk_t',
+	'trmm_left_t',
+	'trsm_left_t',
+	'trmm_right_t',
+	'trsm_right_t',
 ];
 const wasmBits = probeNames.map((_, op) => {
 	const buf = new DataView(new ArrayBuffer(8));
