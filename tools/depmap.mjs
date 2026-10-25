@@ -7,8 +7,9 @@
 //
 // What counts: a call `name(` or `name::<` in a routine file to a free
 // function defined at the top level of another file of the crate. Method
-// calls (`x.f(`), associated functions (`F64x2::load(`), macros and the
-// lane types are not edges: they are plumbing every routine shares.
+// calls (`x.f(`), associated functions (`F64x2::load(`), macros, the
+// lane types and the argument checks (`error.rs`, `check_mat`) are not
+// edges: they are plumbing every routine shares.
 // Names are resolved through the file's `use` lines and the modules'
 // re-exports, so two functions with one name in two files (the per-type
 // `packed_route`s) go to the right file. A name this script cannot
@@ -148,6 +149,9 @@ function resolvePath(fromFile, segs) {
 		if (files.some((f) => f.startsWith(asDir + '/'))) { dir = asDir; continue; }
 		const asFile = `${asDir}.rs`;
 		if (files.includes(asFile)) return { file: asFile, rest: segs.slice(i + 1) };
+		// a routine module re-exported into its level by `pub use family::*`
+		const viaGlob = files.filter((f) => new RegExp(`^${dir === '.' ? '' : dir + '/'}[^/]+/${s}\\.rs$`).test(f));
+		if (viaGlob.length === 1) return { file: viaGlob[0], rest: segs.slice(i + 1) };
 		return null;
 	}
 	return { dir };
@@ -214,6 +218,7 @@ for (const f of files) {
 		if (prefix.length && /^[A-Z]/.test(prefix[prefix.length - 1])) continue;
 		const to = resolveCall(f, prefix, name);
 		if (!to || to === 'local') continue;
+		if (to === 'error.rs' || name === 'check_mat') continue; // argument checks are not edges
 		(edges[f][to] ||= new Set()).add(name);
 	}
 }

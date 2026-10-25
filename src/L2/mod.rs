@@ -14,84 +14,24 @@
 //! only; callers with padded matrices pass the padded column stride as
 //! `cs`.
 
-pub mod dgemv;
-pub mod dger;
-pub mod dsymv;
-pub mod dsyr;
-pub mod dsyr2;
-pub mod dtrmv;
-pub mod dtrsv;
-pub mod sgemv;
-pub mod sger;
-pub mod ssymv;
-pub mod ssyr;
-pub mod ssyr2;
-pub mod strmv;
-pub mod strsv;
-pub mod zgemv;
-pub mod zgerc;
-pub mod zgeru;
-pub mod zhemv;
-pub mod zher;
-pub mod zher2;
-pub mod ztrmv;
-pub mod ztrsv;
-pub mod cgemv;
-pub mod cgerc;
-pub mod cgeru;
-pub mod chemv;
-pub mod cher;
-pub mod cher2;
-pub mod ctrmv;
-pub mod ctrsv;
 
-pub use dgemv::dgemv;
-pub(crate) use dgemv::dgemv_k;
-pub use dger::dger;
-pub use dsymv::dsymv;
-pub(crate) use dsymv::dsymv_k;
-pub use dsyr::dsyr;
-pub use dsyr2::dsyr2;
-pub use dtrmv::dtrmv;
-pub(crate) use dtrmv::dtrmv_k;
-pub use dtrsv::dtrsv;
-pub(crate) use dtrsv::dtrsv_k;
-pub use sgemv::sgemv;
-pub(crate) use sgemv::sgemv_k;
-pub use sger::sger;
-pub use ssymv::ssymv;
-pub(crate) use ssymv::ssymv_k;
-pub use ssyr::ssyr;
-pub use ssyr2::ssyr2;
-pub use strmv::strmv;
-pub(crate) use strmv::strmv_k;
-pub use strsv::strsv;
-pub(crate) use strsv::strsv_k;
-pub use zgemv::zgemv;
-pub(crate) use zgemv::zgemv_k;
-pub use zgeru::zgeru;
-pub use zgerc::zgerc;
-pub use zhemv::zhemv;
-pub(crate) use zhemv::zhemv_k;
-pub use zher::zher;
-pub use zher2::zher2;
-pub use ztrmv::ztrmv;
-pub(crate) use ztrmv::ztrmv_k;
-pub use ztrsv::ztrsv;
-pub(crate) use ztrsv::ztrsv_k;
-pub use cgemv::cgemv;
-pub(crate) use cgemv::cgemv_k;
-pub use cgeru::cgeru;
-pub use cgerc::cgerc;
-pub use chemv::chemv;
-pub(crate) use chemv::chemv_k;
-pub use cher::cher;
-pub use cher2::cher2;
-pub use ctrmv::ctrmv;
-pub(crate) use ctrmv::ctrmv_k;
-pub use ctrsv::ctrsv;
-pub(crate) use ctrsv::ctrsv_k;
 
+
+pub mod gemv;
+pub mod ger;
+pub mod symv;
+pub mod syr;
+pub mod syr2;
+pub mod trmv;
+pub mod trsv;
+
+pub use gemv::*;
+pub use ger::*;
+pub use symv::*;
+pub use syr::*;
+pub use syr2::*;
+pub use trmv::*;
+pub use trsv::*;
 
 /// Shared entry checks: the storage really contains an nrows×ncols
 /// matrix at stride cs.

@@ -18,36 +18,20 @@
 //! choice is the verdict of a two-draw runner race (`bench/README.md`,
 //! decision D3) and the losing candidate stays exported and tested.
 
-pub mod dgemm;
-pub mod dsymm;
-pub mod dsyr2k;
-pub mod dsyrk;
-pub mod dtrmm;
-pub mod dtrsm;
-pub mod sgemm;
-pub mod ssymm;
-pub mod ssyr2k;
-pub mod ssyrk;
-pub mod strmm;
-pub mod strsm;
-pub mod zgemm;
-pub mod zhemm;
-pub mod zher2k;
-pub mod zherk;
-pub mod zsymm;
-pub mod zsyr2k;
-pub mod zsyrk;
-pub mod ztrmm;
-pub mod ztrsm;
-pub mod cgemm;
-pub mod chemm;
-pub mod cher2k;
-pub mod cherk;
-pub mod csymm;
-pub mod csyr2k;
-pub mod csyrk;
-pub mod ctrmm;
-pub mod ctrsm;
+
+pub mod gemm;
+pub mod symm;
+pub mod syrk;
+pub mod syr2k;
+pub mod trmm;
+pub mod trsm;
+
+pub use gemm::*;
+pub use symm::*;
+pub use syrk::*;
+pub use syr2k::*;
+pub use trmm::*;
+pub use trsm::*;
 
 /// `dst ← f(src)ᵀ`: `src` is `rows×cols` at leading dimension `scs`,
 /// `dst` receives the `cols×rows` transpose at leading dimension
@@ -82,36 +66,6 @@ pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: 
 	}
 }
 
-pub use dgemm::{dgemm, dgemm_work, dgemm_packed_work, dgemm_packed_op, dgemm_packed_op_work, dgemm_copy_op, dgemm_copy_op_work, dgemm_colaxpy, dgemm_tiled, dgemm_col4, dgemm_packed, dgemm_packed_bcast};
-pub use dsymm::dsymm;
-pub use dsyrk::{dsyrk, dsyrk_work, dsyrk_packed, dsyrk_packed_work, dsyrk_sweep};
-pub use dsyr2k::{dsyr2k, dsyr2k_work};
-pub use dtrmm::{dtrmm, dtrmm_work, dtrmm_copy, dtrmm_copy_work, dtrmm_stream, dtrmm_left_packed, dtrmm_left_packed_work, dtrmm_right_packed, dtrmm_right_packed_work, dtrmm_left_sweep, dtrmm_right_sweep};
-pub use dtrsm::{dtrsm, dtrsm_work, dtrsm_copy, dtrsm_copy_work, dtrsm_stream, dtrsm_left_packed, dtrsm_left_packed_work, dtrsm_right_packed, dtrsm_right_packed_work, dtrsm_left_sweep, dtrsm_right_sweep};
-pub use sgemm::{sgemm, sgemm_work, sgemm_packed_work, sgemm_packed_op, sgemm_packed_op_work, sgemm_copy_op, sgemm_copy_op_work, sgemm_colaxpy, sgemm_tiled, sgemm_col4, sgemm_packed, sgemm_packed_bcast};
-pub use ssymm::ssymm;
-pub use ssyrk::{ssyrk, ssyrk_work, ssyrk_packed, ssyrk_packed_work, ssyrk_sweep};
-pub use ssyr2k::{ssyr2k, ssyr2k_work};
-pub use strmm::{strmm, strmm_work, strmm_copy, strmm_copy_work, strmm_stream, strmm_left_packed, strmm_left_packed_work, strmm_right_packed, strmm_right_packed_work, strmm_left_sweep, strmm_right_sweep};
-pub use strsm::{strsm, strsm_work, strsm_copy, strsm_copy_work, strsm_stream, strsm_left_packed, strsm_left_packed_work, strsm_right_packed, strsm_right_packed_work, strsm_left_sweep, strsm_right_sweep};
-pub use zgemm::{zgemm, zgemm_work, zgemm_packed_work, zgemm_packed_op, zgemm_packed_op_work, zgemm_copy_op, zgemm_copy_op_work, zgemm_colaxpy, zgemm_col4, zgemm_packed};
-pub use zhemm::zhemm;
-pub use zherk::{zherk, zherk_work};
-pub use zher2k::{zher2k, zher2k_work};
-pub use zsymm::zsymm;
-pub use zsyrk::{zsyrk, zsyrk_work};
-pub use zsyr2k::{zsyr2k, zsyr2k_work};
-pub use ztrmm::{ztrmm, ztrmm_work, ztrmm_copy, ztrmm_copy_work, ztrmm_stream};
-pub use ztrsm::{ztrsm, ztrsm_work, ztrsm_copy, ztrsm_copy_work, ztrsm_stream};
-pub use cgemm::{cgemm, cgemm_work, cgemm_packed_work, cgemm_packed_op, cgemm_packed_op_work, cgemm_copy_op, cgemm_copy_op_work, cgemm_colaxpy, cgemm_col4, cgemm_packed};
-pub use chemm::chemm;
-pub use cherk::{cherk, cherk_work};
-pub use cher2k::{cher2k, cher2k_work};
-pub use csymm::csymm;
-pub use csyrk::{csyrk, csyrk_work};
-pub use csyr2k::{csyr2k, csyr2k_work};
-pub use ctrmm::{ctrmm, ctrmm_work, ctrmm_copy, ctrmm_copy_work, ctrmm_stream};
-pub use ctrsm::{ctrsm, ctrsm_work, ctrsm_copy, ctrsm_copy_work, ctrsm_stream};
 
 
 pub(crate) use super::L2::check_mat;
