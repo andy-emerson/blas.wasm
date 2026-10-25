@@ -1,20 +1,19 @@
 //! `dtrmm` — triangular matrix multiply, in place:
 //! B ← αAB (left) or B ← αBA (right), A triangular.
 //!
-//! Implementation: left side walks four B columns
-//! in lockstep through the `dtrmv` column sweep, so each A column
-//! streams once per group of four instead of once per column (A
-//! traffic 4× down; per-column rounding sequence unchanged — the
-//! columns are independent — so results are bit-for-bit the plain
-//! dtrmv-per-column loop, tested). Right side groups four destination
-//! columns: contributions from inside the group run first in the
-//! original elimination order (descending for upper, ascending for
-//! lower — each original column consumed before it is overwritten),
-//! then the columns outside the group fan out via one stream each.
-//! For LOWER the resulting per-element add order is identical to the
-//! plain sweep (ascending k throughout); for UPPER the in-group adds
-//! now precede the out-of-group adds — a deterministic, documented
-//! reorder (the tests' scalar replay mirrors it). A fused-FMA variant
+//! Implementation: both sides run on the packing layer
+//! (`dtrmm_left_packed`, `dtrmm_right_packed`): the off-diagonal
+//! terms go through the packed gemm's 4×4 broadcast tile, the
+//! diagonal blocks through a lane routine (left) or the sweep's own
+//! column code (right), in place, with every element's terms in the
+//! order the column sweeps used — the diagonal product first, then
+//! ascending l for an upper left side and descending for a lower one;
+//! on the right the in-group terms then the out-of-group ones in
+//! ascending k, a documented reorder of the plain sweep for UPPER
+//! (the tests' scalar replay mirrors it). Results are bit-for-bit the
+//! sweeps (tested), which stay exported as `dtrmm_left_sweep` and
+//! `dtrmm_right_sweep`. The K1 race: 1.4–2.1× over the sweeps on
+//! every shape, two runner draws (`bench/README.md`). A fused-FMA variant
 //! measured better in the campaign record step-1 race but is DEFERRED at the f64
 //! campaign close: wasm relaxed-madd rounding is implementation-
 //! dependent, so it trades away cross-target bit-identity — an

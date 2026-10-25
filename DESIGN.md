@@ -30,8 +30,9 @@ test, faster than everything else that is reproducible, and within
 2× of the fastest thing that is not.** It is not "the fastest gemm on
 the web" (see XNNPACK under "Claims"). Measured against both in the
 same engine (B0, `bench/README.md`), the "faster" part holds today
-for the complex types only; decision D11 in `STATUS.md` decides what
-is done about the real types.
+against BLIS on every row and against OpenBLAS on the complex types,
+dgemm and dsyrk; OpenBLAS leads sgemm, dsymm, dtrmm and dtrsm by
+1.1–1.27×. Decision D11 in `STATUS.md` says what is done about it.
 
 **Two products, nothing else.**
 
@@ -134,7 +135,7 @@ not pretend otherwise.
    host partitions disjoint output regions and joins. Parallelism is
    a property of the JavaScript package, never of the Rust code.
 5. **Numbers before routing, measured where they apply.** Kernel
-   dispatch thresholds (tile/packed) are properties of the code and
+   dispatch thresholds (fan-out/packed) are properties of the code and
    are raced on the reference runners with two draws. Thread fan-out
    thresholds are properties of the user's machine and are calibrated
    at runtime; CI races verify scaling, they do not set the
@@ -167,7 +168,7 @@ not pretend otherwise.
 |---|---|
 | **Reproducible.** Finite results bit-identical across engines, targets, and thread counts (a NaN's sign and payload bits are outside the promise), tested, and auditable from the binary. | per-routine bitwise replays and native ↔ wasm probes on Node (`tests/README.md`), held for other engines by the wasm specification's deterministic float semantics; the p=1 vs p=N bitwise test per routine (todo T5, the thread-count part is a target until then); the relaxed-opcode scan in the gate (`abi/audit.mjs`) |
 | **Dependency-free.** One raw wasm file, zero imports, no toolchain glue, no libc. | the import-count assertion in the gate; `blas.threads.wasm` imports exactly one thing (shared memory) and nothing else |
-| **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded. The single-threaded B0 rows (`bench/README.md`) stand today: true for zgemm and cgemm; false for f64 and f32 Level 3, where OpenBLAS's wasm port is 1.9–2.3× faster and BLIS 1.1–1.4× on sgemm, syrk, trmm and trsm |
+| **Faster than OpenBLAS and BLIS in the browser.** | the Step B table: same engine, same machine, two draws, single- and multi-threaded. The single-threaded B0 rows (`bench/README.md`) stand today: true against BLIS on every row; against OpenBLAS's wasm port true for zgemm and cgemm, a tie on dgemm and dsyrk, and false on sgemm (1.11–1.17×), dtrmm and dtrsm (1.15–1.23×) and dsymm (1.24–1.27×) |
 
 How far each claim currently stands is tracked in `STATUS.md`.
 
@@ -200,8 +201,9 @@ nothing; the tax is confined to compute-bound gemm-like shapes.
 ### Kernels
 
 Four SIMD streaming-loop shapes plus one scalar function, blocked
-four columns at a time by shared kernels, with gemm size-dispatched
-between a register tile and a BLIS/Goto packed-panel shape. The
+four columns at a time by shared kernels, and in the real types a
+BLIS/Goto packed-panel shape with a broadcast micro-kernel that gemm,
+the syrk family's rank-k update, trmm and trsm all run on. The
 taxonomy and the per-routine cells follow; the call graph and the
 naming convention are in `src/README.md`. Every tuned shape is bit-identical to
 its plain column-axpy reference except where an elimination order
@@ -248,10 +250,17 @@ without changing any of them — the shared kernels in
 - **FS** — *fused symv pass* (`axpy_dot`/`axpy_dot4`): one column
   load serves both triangles of the symmetric update, four columns
   grouped per pass over x and y.
-- **RT** — *register tile*: gemm's small-matrix micro-kernel (4×4 in
-  f64, 8×4 in f32 — same register count at each lane width);
-  `CA+RT/FO` means size-dispatched between the tile and fan-out at
-  the measured crossover.
+- **PP** — *packed panels*: the BLIS/Goto shape — operands packed
+  into contiguous panels per k-block, a register-tile micro-kernel
+  (4×4 in f64, 8×4 in f32, 2×4 complexes in c64, 4×4 in c32) over
+  them. In the real types the micro-kernel is the K2 broadcast
+  kernel: α folded into the B panel at pack time, B's values
+  broadcast by lane shuffles, no scalar work in the k loop. syrk,
+  trmm and trsm ride the same tile over their triangles (K1), with
+  the diagonal blocks in lane routines or the column sweep and every
+  element's terms in the sweep's order, so the results are the
+  sweeps' bits. `PP/FO` means size-dispatched between the panels and
+  the fan-out at the measured crossover (the complex gemms).
 - **→d** / **→s** — *delegation*: the complex routine is a one-line
   call onto the tuned same-precision real routine over the
   interleaved 2n-real view (`src/c64.rs` / `src/c32.rs`) — a real
@@ -341,19 +350,21 @@ lands on the per-column scalar, never on a stream.
 
 | BLAS | mathematical name | f64 | f32 | c64 | c32 |
 |---|---|---|---|---|---|
-| `gemm` | matrix multiplication | CA+RT/FO ¹¹ | CA+RT/FO ¹¹ | CA+FO/RT ¹¹ | CA+FO/RT ¹¹ |
-| `syrk` | Gram-matrix update (αAAᵀ + βC) | CA+FO | CA+FO | CA+FO ¹² | CA+FO ¹² |
-| `trmm` | triangular matrix multiplication | CA+FO | CA+FO | CA+FO | CA+FO |
+| `gemm` | matrix multiplication | PP ¹¹ | PP ¹¹ | PP/FO ¹¹ | PP/FO ¹¹ |
+| `syrk` | Gram-matrix update (αAAᵀ + βC) | PP | PP | CA+FO ¹² | CA+FO ¹² |
+| `trmm` | triangular matrix multiplication | PP | PP | CA+FO | CA+FO |
 | `symm` / `syr2k` | symmetric multiply / rank-2k update | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ | CA+FO ¹ |
-| `trsm` | triangular solve, many right-hand sides | DCA+FO | DCA+FO | DCA+FO | DCA+FO |
+| `trsm` | triangular solve, many right-hand sides | PP | PP | DCA+FO | DCA+FO |
 
 ¹ left-side symm/hemm is FS per column of B.
-¹¹ gemm is size-dispatched in every type: d/s run the register tile small, the
-BLIS-style packed-panel shape (`*gemm_packed`) large; z/c run the
+¹¹ d/s run the packed panels at every size (the register tile's zone
+closed when the K2 kernel beat it 1.2–2.3× down to 128³); z/c run the
 col4 fan-out small and a packed-panel COMPLEX register tile large
 (2×4 c64, 4×4 c32 — the geometry recorded as a non-starter unpacked;
 packing removed the strided k-walk that made it one). All shapes
-bit-identical to the `_colaxpy` reference, which stays bit-checked.
+bit-identical to the `_colaxpy` reference, which stays bit-checked;
+the real types' old tile and old packed kernel stay exported as the
+races' losers.
 ¹² the Hermitian `herk`/`her2k` take real α (herk) / real β per the
 reference signatures, and maintain the Hermitian invariant: stored
 diagonals end exactly real.
@@ -368,14 +379,16 @@ diagonals end exactly real.
   as the no-transpose kernel. Two candidates exist for every form and
   the wrappers route the winners of decision D3's race (`DESIGN.md`,
   "Decisions closed"; the numbers in `bench/README.md`); the losers
-  stay exported and tested. Above the packed threshold gemm packs the
-  transposed operand into the panel format from a transposed read
-  (op(A)'s row is a stored column; the three tails that read operands
-  directly are gathered into the workspace, and a transposed A's
-  column tail rides a zero-padded fourth column group); below it, for
-  the syrk family, and for c32 gemm when only B is transposed, the
-  operand is transposed into the caller's workspace ahead of the
-  existing shape (a cost of order mk against mnk of arithmetic). trmm
+  stay exported and tested. The real gemms, and the complex ones
+  above their packed threshold, pack the transposed operand into the
+  panel format from a transposed read (op(A)'s row is a stored
+  column; the three tails that read operands directly are gathered
+  into the workspace, and a transposed A's column tail rides a
+  zero-padded fourth column group); the complex gemms below it, the
+  syrk family, c32 gemm when only B is transposed, and the real
+  syrk's transposed form ahead of its packed shape transpose the
+  operand into the caller's workspace ahead of the no-transpose
+  shape (a cost of order mk against mnk of arithmetic). trmm
   and trsm route per side between the same copy and no-copy kernels:
   a transposed accessor on the right (the right-side kernels only
   ever read A as scalars) in every type, and on the left
@@ -394,14 +407,17 @@ diagonals end exactly real.
   [T]`, on gemm, the syrk family, trmm and trsm, beside a per-routine
   size query that takes the flags (`dgemm_work(transa, transb, m, n,
   k) -> usize`, `dtrmm_work(side, transa, m, n)`), because the routed
-  candidate decides the size. The query is zero for every
-  no-transpose call below gemm's packed threshold and for the
-  transposed forms that need no copy, so those calls pass an empty
+  candidate decides the size. The packed shapes size their panels to
+  the problem (`min(KC, k)·n + min(MC, m)·min(KC, k)` elements for
+  gemm, the same order for syrk, trmm and trsm), so a small call needs
+  a small slice; the query is zero for the complex no-transpose calls
+  below their packed threshold, for the transposed forms that need no
+  copy, and for the tail-only shapes, so those calls pass an empty
   slice; a slice shorter than the query is an argument error, never a
   silent slower path, and the query does not see α, so the slice is
   required even for a call with α = 0. The crate never allocates and has no `alloc`
   (constraint 7, required by threading: no allocator inside a shared
-  memory): the packed gemm shape carves its panels from the slice,
+  memory): the packed shapes carve their panels from the slice,
   and the tests hand it a NaN-filled slice of exactly the queried
   size so a read of unpacked scratch would show. This shape is
   settled by constraint 7 together with the no-silent-miss rule
@@ -756,7 +772,9 @@ trigger where one is worth keeping. Open decisions are in
   against fused-multiply-add kernels while bit-identity holds; the
   claim is reproducibility, zero dependencies, and faster than the
   two named competitors in the browser, the last of which is measured
-  false today for the real types (B0 in `bench/README.md`; D11).
+  true against BLIS and, against OpenBLAS, true on the complex types,
+  a tie on dgemm and dsyrk and 1.1–1.27× behind on sgemm, dsymm, dtrmm
+  and dtrsm (B0 in `bench/README.md`; D11).
 - **Banded and packed storage forms are not planned.** No consumer
   demand.
 

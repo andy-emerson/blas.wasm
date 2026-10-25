@@ -1,17 +1,17 @@
 //! `dgemm` — matrix multiplication: C ← αAB + βC.
 //!
-//! Implementation: a 4×4 register tile below ~1.5 MB of A and a
-//! BLIS-style packed-panel shape above it; transposed operands are
-//! packed from a transposed read above the packed threshold
-//! (`dgemm_packed_op`) and copied into the workspace below it
-//! (`dgemm_copy_op`), per the race in `bench/README.md`. Every shape
-//! is bit-identical to the plain dgemv-per-column reference, kept as
-//! `dgemm_colaxpy`; `dgemm_col4` stays as the raced mid-size
-//! reference. Measured: the packed shape replaced the 4-column fused
-//! stream after two unanimous runner draws (1.24× at 512³, 1.44× at
-//! 1024³, 1.10–1.23× deep-K), and the pre-packed shapes beat faer's
-//! blocked dgemm at every measured size (1.4–1.8× small, ~1.25× large;
-//! campaign record step 6).
+//! Implementation: the BLIS-style packed-panel shape with the K2
+//! micro-kernel at every size (`dgemm_packed_bcast`: α folded into the
+//! B panel at pack time, B broadcast by lane shuffles, two loads of A,
+//! two of B, four shuffles, eight multiplies and eight adds per k step);
+//! transposed operands are packed from a transposed read
+//! (`dgemm_packed_op`). Every shape is bit-identical to the plain
+//! dgemv-per-column reference, kept as `dgemm_colaxpy`; the losers of
+//! the races stay exported: `dgemm_tiled` (the 4×4 register tile that
+//! served below 1.5 MB of A until K2 beat it 1.2–2.3× at every size),
+//! `dgemm_col4` (the fused stream) and `dgemm_packed` (the packed shape
+//! with the pre-K2 kernel, 1.8–1.9× slower on the runner, two draws:
+//! `bench/README.md`).
 
 use super::check_mat;
 use crate::{Error, Trans};
@@ -36,11 +36,11 @@ pub(crate) const MR: usize = 4;
 /// [`dgemm_work`]`(transa, transb, m, n, k)` elements; it may be empty
 /// when the query says zero.
 ///
-/// A transposed operand is packed straight from a transposed
-/// read above the packed threshold ([`dgemm_packed_op`]) and transposed
-/// into the workspace ahead of the register-tile shape below it, so every
-/// flag combination equals the unflagged call on an explicit copy, bit
-/// for bit; `ConjTrans` is `Trans` for a real matrix.
+/// A transposed operand is packed straight from a transposed read
+/// ([`dgemm_packed_op`], decision D3's winner), so every flag
+/// combination equals the unflagged call on an explicit copy, bit for
+/// bit; `ConjTrans` is `Trans` for a real matrix. The copy candidate
+/// ([`dgemm_copy_op`]) stays exported as the race's loser.
 ///
 /// Errors: a leading dimension below its stored row count (arguments 8,
 /// 10, 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
@@ -66,12 +66,11 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 		}
 		return Ok(());
 	}
-	// Above the packed threshold a transposed operand is packed straight
-	// from a transposed read (`dgemm_packed_op`, the race's winner:
-	// `bench/README.md`); below it the operand is transposed into the
-	// workspace ahead of the register-tile shape (`dgemm_copy_op`,
-	// the other candidate). Both are bit-identical to the unflagged call
-	// on an explicit copy (tested); conjugation is an exact sign flip in
+	// A transposed operand is packed straight from a transposed read
+	// (`dgemm_packed_op`, the race's winner: `bench/README.md`); the
+	// copy candidate (`dgemm_copy_op`) is the fallback `packed_route`
+	// no longer selects. Both are bit-identical to the unflagged call on
+	// an explicit copy (tested); conjugation is an exact sign flip in
 	// either.
 	if (transa != Trans::NoTrans || transb != Trans::NoTrans) && packed_route(m, k) {
 		dgemm_packed_op(transa, transb, alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
@@ -82,10 +81,9 @@ pub fn dgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 }
 
 /// Elements of scratch [`dgemm`] needs for these flags and dimensions:
-/// above the packed threshold [`dgemm_packed_work`] (unflagged) or
-/// [`dgemm_packed_op_work`] (a transposed operand); below it the
-/// copies, `m·k` for a transposed `A` and `k·n` for a transposed `B`,
-/// so zero for an unflagged call there.
+/// [`dgemm_packed_work`] (unflagged) or [`dgemm_packed_op_work`] (a
+/// transposed operand), the panels sized to the problem; zero when a
+/// dimension is zero.
 pub fn dgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
 	if m == 0 || n == 0 || k == 0 {
 		return 0; // the quick returns compute nothing
@@ -122,11 +120,9 @@ pub(crate) fn packed_route(_m: usize, _k: usize) -> bool {
 /// C ← αAB + βC. A is m×k, B is k×n, C is m×n; each matrix has its own
 /// column stride.
 ///
-/// Dispatches by A's byte size (`packed_route`): the 4×4 register tile
-/// while A stays small enough that its column-strided k-walk rides the
-/// caches, the packed-panel shape above (it replaced the 4-column fused
-/// stream there, two runner draws). Every shape is bit-for-bit
-/// identical, so the dispatch is invisible to results.
+/// Runs the packed-panel shape with the K2 broadcast kernel
+/// ([`dgemm_packed_bcast`]) at every size. Every exported shape is
+/// bit-for-bit identical to it, so the routing is invisible to results.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dgemm_k(
 	alpha: f64,
@@ -142,13 +138,11 @@ pub(crate) fn dgemm_k(
 	ccs: usize,
 	work: &mut [f64],
 ) {
-	// measured crossover between n=384 (A ≈ 1.2 MB: tiled) and n=512
-	// (A = 2 MB) on both reference draws and the container. Above it,
-	// the packed-panel shape replaced col4 (packed-gemm race,
-	// two runner draws unanimous: 1.24x at 512³, 1.44x at 1024³,
-	// 1.10–1.23x on deep-K prefill shapes; col4 stays as the raced
-	// reference). Packed also edged tiled +3% at 256³ — recorded, not
-	// routed: the tiled zone below 256³ is unmeasured.
+	// The races that settled this, oldest first: the packed shape replaced
+	// col4 above A ≈ 1.5 MB (two runner draws, 1.24× at 512³, 1.44× at
+	// 1024³); the K2 kernel then beat the old packed shape 1.8–1.9× (two
+	// runner draws) and the register tile 1.2–2.3× from 128³ up (dev
+	// container), closing the tile's zone. `bench/README.md` has the tables.
 	dgemm_packed_bcast(alpha, m, n, k, a, acs, b, bcs, beta, c, ccs, work);
 }
 
@@ -688,13 +682,12 @@ unsafe fn tile_4x4(
 
 /// The other candidate for the transposed forms (decision D3 in
 /// `DESIGN.md`; the race in `bench/README.md`): a transposed operand is transposed into `work`
-/// with `transpose_into` and the product then runs the size-dispatched
-/// no-transpose shapes on the copy, so every flag combination is the
-/// explicit-copy definition itself. The netlib wrapper routes it for
-/// every call below the packed threshold and for the no-transpose call
-/// above it (where the two coincide with the plain dispatch); a
-/// transposed operand above the threshold goes to [`dgemm_packed_op`],
-/// the race's choice. `work` needs [`dgemm_copy_op_work`]
+/// with `transpose_into` and the product then runs the no-transpose
+/// shape on the copy, so every flag combination is the explicit-copy
+/// definition itself. The netlib wrapper routes it only for the
+/// no-transpose call (where it coincides with the plain shape); a
+/// transposed operand goes to [`dgemm_packed_op`], the race's choice.
+/// `work` needs [`dgemm_copy_op_work`]
 /// elements. Exported so the benchmarks can race it; it asserts rather
 /// than returning errors.
 #[allow(clippy::too_many_arguments)]
@@ -752,8 +745,8 @@ pub fn dgemm_copy_op_work(transa: Trans, transb: Trans, m: usize, n: usize, k: u
 	ta + tb + packed
 }
 
-/// The transposed forms above the packed threshold (the race's winner
-/// over a whole-operand copy, two runner draws: `bench/README.md`): the
+/// The transposed forms (the race's winner over a whole-operand copy,
+/// two runner draws: `bench/README.md`): the
 /// packed-panel shape with `op(A)` and
 /// `op(B)` packed straight from a transposed read — op(A)'s row is a
 /// stored column of A and op(B)'s packed quad is four consecutive stored

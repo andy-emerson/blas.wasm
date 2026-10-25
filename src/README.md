@@ -114,10 +114,16 @@ The names are netlib's; the signatures are ours (documented per file):
   (real c, complex s, complex r).
 - **Tuned-variant exports.** Where a routine ships raced alternates,
   they carry a suffix: `dgemm_colaxpy` (the plain reference shape),
-  `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` (and the s twins) —
-  `dgemm` itself validates and size-dispatches. z/c export
-  `*gemm_colaxpy`, `*gemm_col4` and `*gemm_packed`; their packed
-  shape is the complex register tile. The alternates take `(alpha, m, n, k, a, lda,
+  `dgemm_tiled`, `dgemm_col4`, `dgemm_packed` (the pre-K2 kernel) and
+  `dgemm_packed_bcast` (the shipping one), and the s twins — `dgemm`
+  itself validates and routes. z/c export `*gemm_colaxpy`,
+  `*gemm_col4` and `*gemm_packed`; their packed shape is the complex
+  register tile. The K1 pairs: `*syrk_packed` / `*syrk_sweep`,
+  `*trmm_left_packed` / `*trmm_left_sweep`, `*trmm_right_packed` /
+  `*trmm_right_sweep`, `*trsm_left_packed` / `*trsm_left_sweep`,
+  `*trsm_right_packed` / `*trsm_right_sweep` in d and s, each packed
+  shape with its `*_work` query; the sweeps are the shapes that shipped
+  before the race. The alternates take `(alpha, m, n, k, a, lda,
   b, ldb, beta, c, ldc)`, no flags, and assert rather than return
   errors: they are kernels, exported so the tests and the benchmarks
   can race them. The transposed-form candidates follow the same rule:

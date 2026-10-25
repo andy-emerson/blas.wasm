@@ -1,13 +1,17 @@
 //! `ssyrk` — symmetric rank-k (Gram-matrix) update:
 //! C ← αAAᵀ + βC, one triangle of C stored.
 //!
-//! Implementation: truncated column-saxpy, 4-column fan-out — four stored columns of C are grouped so each inner
-//! A column streams once per group over the common triangle segment
-//! (source traffic 4× down); the ≤3-row ragged edge per column is
-//! handled scalar in the same per-element order, so results stay
-//! bit-for-bit identical to the plain sweep (tested). The plain
-//! (non-FMA) variant is the measured choice: fusing HARMED ssyrk on
-//! all three campaign record step-1 draws.
+//! Implementation: the packed gemm shape over the stored triangle
+//! (`ssyrk_packed`): A's rows are the left panel, A's rows read as
+//! op(B) = Aᵀ the right panel with α folded in, the 8×4 broadcast tile
+//! the micro-kernel; tiles in the unstored triangle are skipped and
+//! the tiles that cross the diagonal are computed into scratch and
+//! copied back only where stored. The per-element rounding sequence is
+//! the plain sweep's (βC, then ascending-k adds of `A[i,l]·(α·A[j,l])`),
+//! so the result is bit-for-bit the sweep (tested); the sweep itself,
+//! the truncated column-axpy fan-out that shipped before the K1 race,
+//! stays exported as `ssyrk_sweep`. The K1 race: 1.9–2.6× over the
+//! sweep on every shape, two runner draws (`bench/README.md`).
 
 use super::check_mat;
 use super::sgemm::{tile_8x4_packed_bcast, KC, MC, MR};

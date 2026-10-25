@@ -4,8 +4,8 @@ One test file per BLAS routine, mirroring `../src/` (naming:
 `../src/README.md`); `main.rs` per level folder is the Cargo test
 target, `common.rs` holds the shared generator and the
 higher-precision reference summers. Run with
-`cargo test --release` — **218 tests, all green** (L1 68, L2 54, L3
-91, the vendored-math cross-check 4, one doctest; CI-enforced by the
+`cargo test --release` — **228 tests, all green** (L1 68, L2 54, L3
+101, the vendored-math cross-check 4, one doctest; CI-enforced by the
 gate workflow on every push). The three level suites share one helper
 file, `shared.rs` (the generator, the summers, the bit-equality
 checks), through `#[path]`; each level's `common.rs` adds its size
@@ -42,9 +42,9 @@ forms them).
 | rotg | defining identities + reference edge cases + subnormal smoke |
 | gemv, ger, syr, syr2, trmv, trsv | **bit-for-bit same-order scalar replay** + independent bounds (trsv also residual-verified); the transposed trmv/trsv **replay the dot kernel's register fold bit for bit** (the replays themselves checked against the public dot routines at every tail length) and agree with the no-transpose call on an explicit transpose within an n-scaled bound |
 | symv | error-bounded (the fused pass legitimately re-folds its reduction) |
-| gemm, syrk, syr2k | **bit-for-bit replay** + bounds; gemm's four shapes (colaxpy / tile / col4 / packed) cross-checked bit-identical — the packed replay crosses the KC/MC/MR block boundaries and a dispatch-zone replay routes above the packed threshold — so the size dispatch is invisible; every `trans` form **bit-identical to the no-transpose call on an explicit transpose**, all flag pairs, below and above the packed threshold, both gemm candidates, workspace NaN-filled |
+| gemm, syrk, syr2k | **bit-for-bit replay** + bounds; gemm's five shapes (colaxpy / tile / col4 / packed / packed_bcast) cross-checked bit-identical on shapes crossing the KC/MC/MR block boundaries, so routing is invisible; every `trans` form **bit-identical to the no-transpose call on an explicit transpose**, all flag pairs, both gemm candidates, workspace NaN-filled; `*syrk_packed` **bit-identical to the exported sweep** for n 0..23 and across the KC edge, both triangles, the unstored triangle NaN-poisoned and checked untouched |
 | symm | left: bounds (rides symv); right: **bit-for-bit replay** |
-| trmm, trsm | **bit-for-bit replay** both sides + bounds/residuals — the two elimination-order reorders (trmm_right-upper, trsm_right-lower) are documented in their files and the replays mirror them; the other triangles replay the PLAIN order, proving the blocked shapes bit-identical to it; the `transa` forms: both candidates and the routed wrapper **bit-identical to the no-transpose call on an explicit transpose**, every side/triangle/diagonal, shapes off the block sizes |
+| trmm, trsm | **bit-for-bit replay** both sides + bounds/residuals — the two elimination-order reorders (trmm_right-upper, trsm_right-lower) are documented in their files and the replays mirror them; the other triangles replay the PLAIN order; the four packed shapes **bit-identical to the exported sweeps** (m or n 1..13 and 16, 17, 31, 64, 65, 130, 257, 260, 300; both triangles; unit and non-unit; two α; A's unstored triangle NaN-poisoned; two NaNs count as equal, the promise's stated limit); the `transa` forms: both candidates and the routed wrapper **bit-identical to the no-transpose call on an explicit transpose**, every side/triangle/diagonal, shapes off the block sizes |
 | zaxpy, zscal, zdscal, zcopy, zswap, zdrot | **bit-for-bit** vs the scalar `C64` definition (the SIMD product form is a bit-exact rewrite of it) |
 | zdotu, zdotc | error-bounded vs a component-wise compensated reference; plus `zdotc(x,y) == zdotu(conj x, y)` **bitwise** (the conjugation folds into lane signs exactly) |
 | dznrm2, dzasum | error-bounded (delegations to the d-streams; nrm2 guard cases at 1e±300) |

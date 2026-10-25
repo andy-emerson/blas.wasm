@@ -72,44 +72,39 @@ rescans.
 
 ### Level 3 (n = 512, % of same-run arithmetic peak)
 
-The f64 peak measured 13.3–15.3 GFLOP/s across draws; the f32 peak
-26.6–30.6 (~2× — four lanes vs two). Each complex type scores
-against its own precision's real peak (complex arithmetic IS real
-arithmetic; a complex multiply-add counts 8 real FLOPs).
+Runs 40232849090 and 40233130801 at the head that routes K2 and K1
+(`e4850c1`), two different runners (f64 peak probe 14.9 and 22.4
+GFLOP/s, f32 28.8 and 42.2); each complex type scores against its own
+precision's real peak (complex arithmetic IS real arithmetic; a
+complex multiply-add counts 8 real FLOPs). Rows compare within a run,
+so the range is across the two runs' percentages; absolute ms/call is
+in the run logs and, for the B0 rows, in the B0 table below.
 
 | routine | f64 | f32 | c64 | c32 |
 |---|---|---|---|---|
-| gemm | 55–56% ³ | 56–57% | 88–94% ³ | 86–89% |
-| symm_left (complex: hemm_left) | 81–84% | 74–77% | 59–68% ² | 53–62% |
-| syrk (complex: herk) | 38–42% | 48–49% | 66–68% | 78–82% |
-| syr2k (complex: her2k) | 38–42% | 47% | 67–68% | 76–81% |
-| trmm_left | 46–50% | 44–46% | 72–75% | 77–78% |
-| trsm_left | 47–50% | 46–47% | 72–75% | 78% |
-| trmm_right | 47–48% | 55% | 69–76% | 87–89% |
-| trsm_right | 47–48% | 54–55% | 69–76% | 88–89% |
+| gemm | 102–107% | 103–109% | 92–95% | 84–101% |
+| symm_left (complex: hemm_left) | 81–98% | 75–95% | 60–79% | 60–76% |
+| syrk (complex: herk) | 98–102% | 99–110% | 72–95% | 76–94% |
+| syr2k (complex: her2k) | 38–49% | 47–56% | 71–92% | 74–92% |
+| trmm_left | 86–92% | 89–103% | 77–94% | 75–92% |
+| trsm_left | 78–89% | 82–92% | 77–93% | 75–90% |
+| trmm_right | 96–100% | 97–111% | 78–97% | 85–102% |
+| trsm_right | 94–96% | 94–104% | 77–97% | 86–101% |
 
-² hemm_left rides zhemv; its range is from runs
-29705911344/29705909050.
-³ gemm rows, and the whole table, are from runs
-29721461249/29721465793 (campaign record step 14). At n=512 the
-dispatch routes packed for f64 and for c64 (the packed complex
-register tile); f32 and c32 route their pre-packed shapes at this
-size because their packed zones start higher; the larger f64 packed
-wins are at 1024³ and deep-K, above this table's size. Same-run-
-relative numbers move with the ceiling draw (this pair measured f64
-peaks of 15.2/17.0 GFLOP/s against 13.3–15.3 on the Level 2 pair), so
-rows compare within a pair, not across pairs; absolute ms/call in the
-run logs is the stable cross-check.
-
-The complex families sit far closer to the arithmetic ceiling than
-the real layers (~66–94% vs 38–57% outside the symm/hemm rows) —
-complex arithmetic does 4× the
-FLOPs per byte moved, so the same fan-out shapes shift from
-memory-limited toward compute-bound. zgemm at 88–94% of peak (packed
-tile) and cgemm at 86–89% (col4 fan-out, ~26–30 GFLOP/s — the
-fastest absolute rows on the board) are effectively at the ceiling.
-The remaining below-family rows are the hemm_lefts, riding their
-hemv kernels (see the Level-2 note).
+**The percentages above 100% are a defect of the instrument, not a
+result.** The peak probe (`run_ceiling_flops`: 8 accumulators, each
+stepping `acc = acc·m + a`) has its multiply on the accumulator's
+dependency chain, so it measures a latency bound that the K2 kernel,
+whose multiplies are off the chain (8 independent adds per step, the
+products from loads), exceeds by up to 11%. The probe is recorded as
+a bug in `STATUS.md`; until it is fixed the column says how the rows
+stand to each other and to the gemm kernel, not to the machine. What
+the table does show: the real gemm, syrk, trmm and trsm now run
+within 10% of each other (K1 put the triangular routines on the gemm
+tile: left-side trsm is the slowest of them, its diagonal solve on
+lanes), syr2k is the one real Level 3 row still on the column sweep
+(38–56%), and the symm/hemm_left rows ride their Level 2 kernels. The
+complex rows are unchanged by K1 and K2 and sit at 72–101%.
 
 Market comparison (not the metric): the layer's gemm beats faer's
 blocked gemm in every type raced, two draws each. dgemm 1.25–1.8× at
@@ -196,6 +191,77 @@ both draws) and the `copy` for a B-only transposed operand, which lost
 every c32 row in both draws (0.90–0.99); below the threshold every
 type copies ahead of the register tile.
 
+### The K2 race — the gemm micro-kernel (decision D11)
+
+OpenBLAS's wasm gemm kernel showed the real types had 2× left in the
+micro-kernel on the same simd128 lanes. The candidate
+(`*gemm_packed_bcast`) keeps the packed shape's blocking and
+per-element rounding sequence and changes the k loop to the same
+mechanics: α folded into the B panel at pack time, B's four values
+loaded as vectors and broadcast by lane shuffles, no scalar load,
+multiply or scalar-to-vector move left in the loop (the emitted wasm:
+4 loads, 4 shuffles, 8 multiplies, 8 adds per k step, accumulators in
+locals). `k2-ab.mjs` races it against the pre-K2 packed shape and,
+below the old threshold, against the register tile, both called
+directly with the workspace hoisted; folds asserted identical.
+Figures are `old ÷ new` wall time, the range across runs 40226735030
+and 40226834978:
+
+| shape | f64 vs packed | f32 vs packed |
+|---|---|---|
+| 256³ | 1.87–1.90 | 1.77–1.91 |
+| 512³ | 1.86–1.89 | 1.78–1.91 |
+| 1024³ | 1.82–1.86 | 1.79–1.91 |
+| 128×2048×2048 | 1.80–1.83 | 1.73–1.86 |
+
+Against the register tile below the old threshold (dev container,
+one draw, the runner race not taken because the margin at every
+size is far outside its noise): f64 1.22× at 128³ rising to 2.27× at
+512³, f32 1.22–1.55×. Verdict: the broadcast kernel routes at every
+size in both real types; the tile's zone is closed; the pre-K2 packed
+shape and the tile stay exported. A KC/MC sweep (120–256 / 64–256)
+moved nothing and the block sizes stay.
+
+### The K1 race — syrk, trmm and trsm on the packing layer (decision D11)
+
+The candidates run the triangular routines' off-diagonal work through
+the K2 tile and keep each sweep's per-element term order exactly
+(`src/L3/dsyrk.rs`, `dtrmm.rs`, `dtrsm.rs` and the s twins describe
+the mechanics); the sweeps stay exported as `*_sweep` and are the
+"sweep" side here, both sides called directly with the workspace
+hoisted, folds asserted identical. Figures are `sweep ÷ packed` wall
+time, upper / lower, the range across the two runner draws:
+
+| routine | shape (n×k or m×n) | f64 upper | f64 lower | f32 upper | f32 lower |
+|---|---|---|---|---|---|
+| syrk | 256² | 2.06–2.09 | 1.93–1.97 | 2.10–2.13 | 2.33–2.41 |
+| syrk | 512² | 2.05–2.07 | 1.88–1.90 | 2.04 | 2.43–2.47 |
+| syrk | 1024² | 2.37–2.43 | 2.02–2.04 | 1.99–2.00 | 2.58–2.62 |
+| syrk | 512×2048 | 2.05–2.06 | 1.87–1.90 | 2.06 | 2.47–2.49 |
+| syrk | 2048×128 | 2.32 | 1.96–1.97 | 1.99 | 2.59–2.63 |
+| trmm left | 256² | 1.84–1.85 | 1.92–1.93 | 1.85–1.86 | 1.90 |
+| trmm left | 512² | 1.76–1.77 | 1.92–1.94 | 1.91–1.94 | 2.03–2.05 |
+| trmm left | 1024² | 1.84–1.87 | 2.06–2.09 | 1.87–1.91 | 2.08–2.09 |
+| trmm left | 512×64 | 1.63–1.67 | 1.82–1.85 | 1.75–1.78 | 1.88–1.90 |
+| trmm right | 256² | 1.83–1.86 | 1.85–1.87 | 1.84–1.97 | 1.82–1.97 |
+| trmm right | 512² | 1.84–1.86 | 1.86–1.87 | 2.04–2.05 | 2.04–2.06 |
+| trmm right | 1024² | 1.95 | 1.99–2.05 | 2.09 | 2.10–2.12 |
+| trmm right | 512×64 | 1.36–1.39 | 1.36–1.40 | 1.61–1.62 | 1.61 |
+| trsm left | 256² | 1.64–1.68 | 1.70–1.77 | 1.58–1.61 | 1.63–1.67 |
+| trsm left | 512² | 1.51–1.52 | 1.66–1.67 | 1.67–1.72 | 1.81 |
+| trsm left | 1024² | 1.66–1.68 | 1.86–1.90 | 1.51–1.58 | 1.73–1.76 |
+| trsm left | 512×64 | 1.47–1.48 | 1.64–1.68 | 1.56–1.62 | 1.68–1.72 |
+| trsm right | 256² | 1.75–1.78 | 1.74–1.76 | 1.87–1.93 | 1.86–1.88 |
+| trsm right | 512² | 1.80–1.83 | 1.80–1.83 | 1.97–2.01 | 1.96–2.00 |
+| trsm right | 1024² | 1.94 | 1.97–2.00 | 2.08–2.10 | 2.07–2.10 |
+| trsm right | 512×64 | 1.48–1.53 | 1.45–1.50 | 1.52–1.56 | 1.52–1.55 |
+
+Verdict: the packed shapes route in both real types on both sides and
+both triangles; the sweeps stay exported. The remaining overhead
+against the gemm tile's rate is the diagonal routines and the panel
+packing (about 10% at 512²); the complex types, whose kernels already
+beat OpenBLAS-wasm, keep their sweeps.
+
 ### B0 — OpenBLAS and BLIS compiled to WebAssembly, same engine, same machine
 
 The rows D11 asked for (`STATUS.md`): OpenBLAS and BLIS built to
@@ -207,37 +273,49 @@ target (hand-written simd128 gemm kernels; develop at `5bab605`);
 BLIS is its generic C configuration autovectorized by clang under
 `-msimd128` (master at `a8037cf`). Milliseconds per call, min over
 the iterations and over the two interleaved rounds of a run, the
-range across the two runs (40220022112 / 40220778110); the ratio
-columns are this module's time over theirs, so above 1 means this
-module is slower.
+range across the two runs at the head that routes K2 and K1 (runs
+40232073684 and 40232628850); the ratio columns are this module's
+time over theirs, so above 1 means this module is slower.
 
 | op | blas.wasm | OpenBLAS-wasm | BLIS-wasm | ours ÷ OpenBLAS | ours ÷ BLIS |
 |---|---|---|---|---|---|
-| dgemm 512³ | 32.3–37.9 | 17.2–17.5 | 30.9–37.1 | 1.87–2.17 | 1.02–1.04 |
-| sgemm 512³ | 16.1–16.2 | 7.7–7.8 | 13.0 | 2.07–2.08 | 1.24 |
-| zgemm 512³ | 74.8–75.3 | 83.4–83.5 | 82.1–82.2 | 0.90 | 0.91–0.92 |
-| cgemm 512³ | 41.5 | 63.3 | 138.3–138.7 | 0.66 | 0.30 |
-| dsymm left 512 | 23.3–23.7 | 17.5–17.6 | 37.1–37.2 | 1.32–1.35 | 0.63–0.64 |
-| dsyrk 512 | 18.1–18.2 | 9.2 | 16.5 | 1.97–1.98 | 1.10 |
-| dtrmm left 512 | 19.8–20.1 | 8.9 | 14.1 | 2.22–2.26 | 1.40–1.43 |
-| dtrsm left 512 | 19.7–20.0 | 9.8 | 16.9 | 2.01–2.04 | 1.16–1.18 |
-| dgemm 1024³ | 257.2–321.1 | 139.3–139.5 | 297.1–297.5 | 1.85–2.30 | 0.87–1.08 |
-| sgemm 1024³ | 128.2–128.4 | 61.6–61.8 | 104.0–104.1 | 2.08 | 1.23 |
-| zgemm 1024³ | 595.2–596.4 | 665.0–665.4 | 655.0–655.3 | 0.89–0.90 | 0.91 |
-| cgemm 1024³ | 321.9–370.1 | 503.8–503.9 | 1104.0–1108.8 | 0.64–0.73 | 0.29–0.33 |
+| dgemm 512³ | 17.5–19.1 | 17.5–18.2 | 31.5–35.0 | 1.00–1.05 | 0.54–0.56 |
+| sgemm 512³ | 9.0–9.1 | 7.9–8.3 | 13.4–13.9 | 1.11–1.15 | 0.66–0.67 |
+| zgemm 512³ | 79.9–81.1 | 83.8–86.3 | 84.6–91.1 | 0.94–0.95 | 0.89–0.94 |
+| cgemm 512³ | 41.5–45.3 | 63.6–69.7 | 132.8–134.0 | 0.65 | 0.31–0.34 |
+| dsymm left 512 | 21.9–23.2 | 17.7–18.3 | 36.5–40.7 | 1.24–1.27 | 0.57–0.60 |
+| dsyrk 512 | 9.2–9.9 | 9.2–9.4 | 18.9–19.2 | 0.99–1.05 | 0.49–0.51 |
+| dtrmm left 512 | 10.4–11.3 | 9.0–9.2 | 14.1–15.5 | 1.16–1.23 | 0.73 |
+| dtrsm left 512 | 11.4–12.5 | 9.9–10.2 | 17.0–18.5 | 1.15–1.22 | 0.67–0.68 |
+| dgemm 1024³ | 142.3–151.1 | 140.6–144.3 | 291.9–334.7 | 1.01–1.05 | 0.45–0.49 |
+| sgemm 1024³ | 72.3–73.1 | 62.0–62.5 | 106.7–110.9 | 1.17 | 0.66–0.68 |
+| zgemm 1024³ | 642.8–644.7 | 668.7–686.4 | 667.4–722.0 | 0.94–0.96 | 0.89–0.96 |
+| cgemm 1024³ | 314.9–330.9 | 506.3–556.8 | 1060.8–1071.8 | 0.59–0.62 | 0.29–0.31 |
 
-Verdict, unanimous across both draws: OpenBLAS's wasm port is
-1.9–2.3× faster than this module on every f64 and f32 Level 3 row
-(dsymm 1.3×); this module is 1.1× faster on zgemm and 1.4–1.5× on
-cgemm. Against BLIS this module ties dgemm, loses sgemm (1.24×),
-dsyrk (1.1×), dtrmm (1.4×) and dtrsm (1.2×), and wins dsymm (1.6×),
-zgemm (1.1×) and cgemm (3.3×). The claim "faster than OpenBLAS and
-BLIS in the browser" is therefore false today for the real types and
-true for the complex types; what it means for the plan is decision
-D11 in `STATUS.md`. XNNPACK is not built. The earlier native rows
-(OpenBLAS and BLIS as Ubuntu packages, AVX2/AVX-512 with fused
-multiply-add, runs 40213117656 / 40213120395) measured a different
-question and are not kept.
+Verdict, both draws: against OpenBLAS's wasm port this module ties
+dgemm (1.00–1.05×) and dsyrk (0.99–1.05×), trails sgemm 1.11–1.17×,
+dtrmm and dtrsm 1.15–1.23× and dsymm 1.24–1.27×, and leads zgemm
+1.05–1.06× and cgemm 1.5–1.7×. Against BLIS's generic build it leads
+every row, 1.1× on zgemm to 3.3× on cgemm. Before K2 and K1 (runs
+40220022112 / 40220778110, head `6af68df`) the real-type rows read
+1.9–2.3× behind OpenBLAS and the dsyrk, dtrmm and dtrsm rows 1.1–1.4×
+behind BLIS. The claim "faster than OpenBLAS and BLIS in the browser"
+is true today against BLIS, true on the complex types against
+OpenBLAS, and false by 1.1–1.27× on sgemm, dsymm, dtrmm and dtrsm
+against OpenBLAS; what it means for the plan is decision D11 in
+`STATUS.md`. The script also prints dsyrk, dtrmm and dtrsm through the
+race's direct path (`blas.wasm-direct-lda512` and `-lda2048` rows:
+the kernel without the wrapper, A at the race's leading dimension) as
+a standing cross-check of the harness: in run 40233496997 the two
+paths agree within 1% (dsyrk 10.35 / 10.39 / 10.32 ms, dtrmm 12.01 /
+12.05 / 12.01, dtrsm 12.28 / 12.42 / 12.37), so the rows above are the
+kernel's time. Absolute times are not comparable across runs: the
+runner pool's speed varies by up to 1.5× (the two roofline draws
+measured peaks of 14.9 and 22.4 GFLOP/s), which is why every verdict
+here is a same-run ratio. XNNPACK is not built. The earlier
+native rows (OpenBLAS and BLIS as Ubuntu packages, AVX2/AVX-512 with
+fused multiply-add, runs 40213117656 / 40213120395) measured a
+different question and are not kept.
 
 ## Running a roofline (per level, per type)
 

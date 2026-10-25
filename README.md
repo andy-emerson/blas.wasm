@@ -51,11 +51,15 @@ review (`AGENTS.md`) judges it against that reader.
   per matrix.
 - **SIMD on every path**, tuned: four streaming-loop shapes plus one
   scalar function (`DESIGN.md`, "Kernels"), the column shapes blocked four
-  columns at a time by shared kernels, and gemm size-dispatched
-  between a register tile and a BLIS/Goto packed-panel shape in every
-  type. Every tuned shape is bit-identical to its plain column-axpy
-  reference except where an elimination order forbids it; those two
-  cases are documented in their files and mirrored by their tests.
+  columns at a time by shared kernels, and in the real types gemm,
+  syrk, trmm and trsm on one BLIS/Goto packed-panel shape whose
+  micro-kernel uses the mechanics of OpenBLAS's wasm kernel (α folded
+  into the panel, lane broadcasts, no scalar work in the k loop); the
+  complex gemms are size-dispatched between a fused
+  stream and a packed complex tile. Every tuned shape is bit-identical
+  to its plain column-axpy reference except where an elimination
+  order forbids it; those two cases are documented in their files and
+  mirrored by their tests.
 - **Every flag form.** `Trans`, `Side`, `Uplo` and `Diag` on every
   routine that has them, in all four types. Each transposed form is
   bit-identical to the no-transpose call on an explicit transpose;
@@ -64,10 +68,9 @@ review (`AGENTS.md`) judges it against that reader.
   kernels' fold, a documented rounding order of their own.
 - **Zero runtime dependencies; the crate never allocates.** `no_std`
   without `alloc`: gemm, the syrk family, trmm and trsm take a
-  trailing `work` slice sized by their `*_work` query, which is zero
-  for every no-transpose call below gemm's packed threshold and for
-  the transposed forms that need no copy, so an empty slice is often
-  enough. The four math entry points the layer needs are vendored in
+  trailing `work` slice sized by their `*_work` query; the packed
+  shapes size their panels to the problem, so a small call needs a
+  small slice and a tail-only call none. The four math entry points the layer needs are vendored in
   `src/math.rs` and cross-checked bit for bit against libm (a
   dev-dependency only) on every CI run.
 - **Bit-identical native ↔ wasm** for finite results (NaN sign and
@@ -115,7 +118,8 @@ strides `incx`/`incy` not yet present. Every routine that checks a
 precondition returns `Result<(), Error>`; an `Error` names the routine
 and the position of the offending argument, and nothing is written when
 one is returned. gemm, the syrk family, trmm and trsm take a trailing
-scratch slice sized by their `*_work` query (often zero). The
+scratch slice sized by their `*_work` query (small for small calls, zero
+for the tail-only ones). The
 `daxpy` chapter in the crate documentation carries the same example,
 compiled and run by `cargo test`.
 

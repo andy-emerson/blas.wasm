@@ -1,20 +1,21 @@
 //! `strsm` — triangular solve, many right-hand sides, in place:
 //! B ← αA⁻¹B (left) or B ← αBA⁻¹ (right).
 //!
-//! Implementation: left side is divide-then-
-//! column-saxpy — αscal, then four B columns walk the `strsv`
-//! elimination in lockstep so each A column streams once per group of
-//! four (A traffic 4× down; the columns are independent, so results
-//! are bit-for-bit the plain strsv-per-column loop, tested). Right
-//! side groups four destination columns: already-solved columns
-//! outside the group fan out via one shared stream each, then the
-//! in-group elimination runs in the original order (ascending for
-//! upper, descending for lower), including reference `dtrsm`'s
-//! multiply-by-reciprocal on the diagonal. For UPPER the per-element
-//! add order stays fully ascending — bit-identical to the plain
-//! sweep; for LOWER the out-of-group adds now precede the in-group
-//! adds — a deterministic, documented reorder (the tests' scalar
-//! replay mirrors it). The fused-FMA variant is DEFERRED at the f32
+//! Implementation: both sides run on the packing layer
+//! (`strsm_left_packed`, `strsm_right_packed`): the already-solved
+//! rows (left) or columns (right) enter through the packed gemm's 8×4
+//! broadcast tile from panels appended as each block is solved, the
+//! diagonal blocks through a lane solve (left) or the sweep's own
+//! in-group elimination with reference `strsm`'s multiply by the
+//! reciprocal (right), in place, with every element's terms in the
+//! order the column sweeps used — α first, then the subtractions in
+//! elimination order, then the diagonal; on the right the solved
+//! columns outside the group then the in-group ones, a documented
+//! reorder of the plain sweep for LOWER (the tests' scalar replay
+//! mirrors it). Results are bit-for-bit the sweeps (tested), which
+//! stay exported as `strsm_left_sweep` and `strsm_right_sweep`. The
+//! K1 race: 1.4–2.1× over the sweeps on every shape, two runner draws
+//! (`bench/README.md`). The fused-FMA variant is DEFERRED at the f32
 //! campaign close (relaxed-madd rounding is implementation-dependent
 //! — architect decision; DESIGN.md, "Fast mode is a lever"). The transposed forms route
 //! between a workspace copy and the no-copy kernels per the race

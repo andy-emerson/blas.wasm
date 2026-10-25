@@ -17,15 +17,17 @@ Last updated 2026-10-25.
 
 | check | result | run |
 |---|---|---|
-| `cargo test --release` (native, 218 tests: L1 68, L2 54, L3 91, vendored math 4, one doctest) | all pass | local, 2026-10-25, head `96b3248` |
-| 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S5 |
+| `cargo test --release` (native, 228 tests: L1 68, L2 54, L3 101, vendored math 4, one doctest) | all pass | local, 2026-10-25, head `e4850c1`; gate run 26 |
+| 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | gate run 26, head `e4850c1`; the two roofline runs below re-check them |
+| `bench.yml` k2-race (two draws: the broadcast kernel against the pre-K2 packed shape, both called directly) | 1.73–1.91× on every shape, folds identical; table in `bench/README.md` | runs 40226735030, 40226834978 |
+| `bench.yml` k1-race (two draws: the packed syrk, trmm and trsm against the exported sweeps, both called directly) | 1.36–2.63× on every shape, folds identical; table in `bench/README.md` | runs 40231405123, 40232089887 |
+| `bench.yml` rooflines (two draws at the routed head) | probes bit-identical; Level 3 table in `bench/README.md`; the real gemm, syrk, trmm and trsm rows read 86–111% of the peak probe, which is bug B1 | runs 40232849090, 40233130801 |
 | `bench.yml` tri-race and gemm-t-race (two draws each, candidates called directly, workspaces outside the timed call) | every fold identical; verdicts and tables in `bench/README.md` | runs 40212210771, 40212213162, 40212214964, 40212217524 |
-| `bench.yml` b0 (two draws: OpenBLAS, BLIS, blas.wasm on one runner, one thread) | rows in `bench/README.md` | runs 40213117656, 40213120395 |
+| `bench.yml` b0 (two draws: OpenBLAS-wasm, BLIS-wasm, blas.wasm in one Node on one runner, one thread) | rows and verdict in `bench/README.md`: ties OpenBLAS on dgemm and dsyrk, 1.1–1.27× behind on sgemm, dsymm, dtrmm, dtrsm, ahead on the complex types; ahead of BLIS on every row | runs 40232073684, 40232628850 (pre-campaign draws 40220022112, 40220778110) |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
-| gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test (the error slot included), binary audit against `abi/surface.json` (133 exports), the book with warnings denied | run 24, head `3d63750`, github.com/andy-emerson/blas.wasm/actions/runs/40216386043 (run 23 at `96b3248`, the last code commit, also green) |
-| the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; the one doctest (the `daxpy` chapter's example) passes | local, 2026-10-25, head `767299a` |
-| binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 133 exports, 333 functions, 128455 instructions decoded, 0 relaxed-SIMD | local, 2026-10-25, head `767299a` |
-| bench workflow (rooflines, packed race) | on demand; latest scoreboard in `bench/README.md` is from the July 2026 campaign draws | GitHub Actions, `workflow_dispatch` |
+| gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test (the error slot included), binary audit against `abi/surface.json` (133 exports), the book with warnings denied | run 26, head `e4850c1` (the last crate code commit), github.com/andy-emerson/blas.wasm/actions/runs/40232081694 |
+| the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; the one doctest (the `daxpy` chapter's example) passes | gate run 26, head `e4850c1`; local at the doc pass that followed |
+| binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 133 exports, 0 relaxed-SIMD | gate run 26, head `e4850c1` |
 
 The three claims (`DESIGN.md`, "Claims") stand as follows:
 *reproducible* is true single-threaded and tested per routine; the
@@ -33,25 +35,29 @@ binary audit is in the gate (`abi/audit.mjs`); the thread-count part
 is untested (no threaded artifact yet). *Dependency-free* is
 true: zero imports, verified by the smoke test instantiating with no
 import object. *Faster than OpenBLAS and BLIS in the browser* is
-measured single-threaded (B0, `bench/README.md`, two runner draws):
-true for zgemm and cgemm, false for every f64 and f32 Level 3 row,
-where OpenBLAS's wasm port is 1.9–2.3× faster than this module and
-BLIS's generic build 1.1–1.4× faster on sgemm, syrk, trmm and trsm.
-The multi-threaded part is untested (todo B).
+measured single-threaded (B0, `bench/README.md`, two runner draws at
+the head that routes K2 and K1): true against BLIS on every row;
+against OpenBLAS's wasm port true for zgemm (1.05×) and cgemm
+(1.5–1.7×), a tie on dgemm and dsyrk (0.99–1.05×), false on sgemm
+(1.11–1.17× behind), dtrmm and dtrsm (1.15–1.23×) and dsymm
+(1.24–1.27×). The multi-threaded part is untested (todo B).
 
 ## Open decisions
 
-- **D3, closing question — is the packed trmm/trsm candidate still
+- **D3, closing question — is the transposed trmm/trsm race still
   owed?** D3 named three candidates for the transposed triangular
-  forms; two were built and raced (the workspace copy and the no-copy
-  kernels), the wrappers route their winners, and the third, trmm/trsm
-  rebuilt on the packing layer, was not built: it would change the
-  no-transpose shapes as well, and the race margins were set by the
-  copy's cost and the kernels' load ratios. Options: close D3 on the
-  two-candidate verdicts (the routing stands; the packed candidate
-  becomes the lever recorded below), or require the third candidate
-  before closing (the routing is provisional until then). Gates: the
-  M2 merge recommendation.
+  forms: the workspace copy, the no-copy kernels, and trmm/trsm
+  rebuilt on the packing layer. The first two were raced and the
+  wrappers route their winners; the third now exists (K1) for the
+  no-transpose forms, and the copy candidate runs it on the copy, so
+  the transposed race as recorded (`bench/README.md`, "The
+  transposed-form races") predates the kernel on its copy side, and
+  the packed kernel on a transposed read (what K2 does for gemm) is
+  unbuilt for trmm and trsm. Options: close D3 on the recorded
+  verdicts (the routing stands; the re-race and the transposed-read
+  candidate become the lever recorded below), or require the re-race
+  before closing (the transposed routing is provisional until then).
+  Gates: the M2 merge recommendation.
 
 Four more gate the M2 merge. Each was settled by the Agent during the
 M2 reviews and is reopened here because it is the Human's to close;
@@ -125,31 +131,38 @@ names its options, the recommendation, and what it gates.
   error slot and computes nothing; (3) the linker default, one static
   stack region shared by every instance (unsound; listed to be
   rejected). Recommendation: 2.
-- **D11 — Level 3 tuning before Step B.** Gates K1, K2 and how
-  strongly the speed claim can be stated. At n = 512 dgemm and sgemm
-  sit at 55–57% of the measured arithmetic peak and the syrk family
-  and trmm/trsm at 38–50% in f64 (`bench/README.md`); XNNPACK runs
-  near the fused-multiply-add peak, twice ours, so "within 2×" is at
-  risk as written. B0 is measured the way the plan asked, OpenBLAS
-  and BLIS compiled to wasm in the same Node on the same runner, two
-  draws (`bench/README.md`): OpenBLAS's own wasm target, with
-  hand-written simd128 gemm kernels and no relaxed SIMD, is 1.9–2.3×
-  faster than this module on every f64 and f32 Level 3 row (dgemm,
-  sgemm, dsyrk, dtrmm, dtrsm; dsymm 1.3×), and this module is 1.1×
-  faster on zgemm and 1.4–1.5× on cgemm; BLIS's generic build ties
-  dgemm, is 1.1–1.4× faster on sgemm, dsyrk, dtrmm and dtrsm, and is
-  slower on dsymm, zgemm and cgemm. So "faster than OpenBLAS and
-  BLIS" is false today for the real types, by a factor of two against
-  OpenBLAS, and the gap is not the instruction set: OpenBLAS reaches
-  it with the same simd128 lanes. Options now: (1) the campaigns
-  before B — K2 first (the gemm micro-kernel, which OpenBLAS's wasm
-  kernels show has 2× left on this instruction set) and K1 (the syrk
-  family and trmm/trsm onto the packing layer), each raced two draws
-  against OpenBLAS-wasm as the bar, not only against our own shapes;
-  (2) no kernel work, weaken the claim to "faster on the complex
-  types, within 2.3× of OpenBLAS on the real ones". Recommendation:
-  1. Either way: never write success for a miss; the claim is weakened
-  now in `DESIGN.md` and stays weakened until a race earns it back.
+- **D11 — Level 3 tuning before Step B: confirm the campaigns, and
+  what the speed claim says now.** Gates how the speed claim is
+  stated and whether more kernel work precedes Step B. Where it
+  stood: B0 measured the way the plan asked (OpenBLAS and BLIS
+  compiled to wasm in the same Node on the same runner, two draws)
+  put OpenBLAS's own wasm target 1.9–2.3× ahead of this module on
+  every f64 and f32 Level 3 row and this module ahead on the complex
+  types, with the same simd128 lanes on both sides. The Human's "can
+  you fix it?" was read as choosing option 1 of the fork (the K2 and
+  K1 campaigns before B) and both ran on this branch: K2 (the gemm
+  micro-kernel rebuilt on the mechanics of OpenBLAS's kernel, 1.7–1.9×
+  over the pre-K2 shape, two runner draws) and K1 (syrk, trmm and
+  trsm onto the packing layer, 1.4–2.6× over the sweeps, two runner
+  draws), every result bit-identical to the shapes that shipped. B0
+  at the routed head, two draws (`bench/README.md`): a tie with
+  OpenBLAS-wasm on dgemm and dsyrk (0.99–1.05×), 1.11–1.17× behind
+  on sgemm, 1.15–1.23× on dtrmm and dtrsm, 1.24–1.27× on dsymm; ahead
+  1.05× on zgemm and 1.5–1.7× on cgemm; ahead of BLIS on every row.
+  Open now: (a) confirm that reading of "fix it" — the routing of
+  the campaign kernels is the Agent's recommendation, not yet the
+  Human's ruling, and the pre-campaign shapes stay exported so a
+  reversal is a dispatch change; (b) whether the remaining 1.1–1.27×
+  on sgemm, dsymm, dtrmm and dtrsm is pursued before B (the levers
+  below: sgemm's 8×4 tile against OpenBLAS's, the triangular
+  diagonal routines, dsymm onto the packing layer) or the claim is
+  stated as "ahead of BLIS; ahead of OpenBLAS on the complex types,
+  level on dgemm and dsyrk, within 1.3× elsewhere" and B proceeds.
+  Recommendation: (a) yes; (b) state the claim as measured and
+  proceed to B, racing the levers only if B's multi-threaded table
+  reopens the question. Rejected along the way: fusing multiply and
+  add (relaxed SIMD) — it would double the arithmetic peak and break
+  the reproducibility claim (constraint 2).
 
 ## Todos, by milestone
 
@@ -183,10 +196,12 @@ warnings denied.
 Done on this branch except S3: every flag form in four types with the
 D3 race's winners routed (S0, S4, S1, S2), the reference alpha, beta,
 dimension and NaN rules, the complex symmetric family and `zrot`/`crot`
-(S5), the module error slot (S6), and the B0 rows (OpenBLAS and BLIS
-compiled to wasm in the same Node: OpenBLAS 1.9–2.3× faster than this
-module on the real types, this module faster on the complex ones;
-XNNPACK is not built). What
+(S5), the module error slot (S6), the B0 rows (OpenBLAS and BLIS
+compiled to wasm in the same Node) and, read from D11, the K2 and K1
+campaigns, after which this module ties OpenBLAS-wasm on dgemm and
+dsyrk, trails it 1.1–1.27× on sgemm, dsymm, dtrmm and dtrsm, leads it
+on the complex types and leads BLIS everywhere (XNNPACK is not
+built). What
 is built is in `README.md` and `DESIGN.md`, the numbers in
 `bench/README.md`, the evidence in the commit log and the checks
 above.
@@ -204,14 +219,23 @@ above.
   (D2). Evidence: `npm pack` contents; Node and browser smoke tests; a
   tag produces the release attachments. Gated by D6. (3–5)
 
-### K — Optional Level 3 tuning campaigns (only if B0 and D11 call for them)
+### K — Level 3 tuning campaigns (run under D11's option 1; the ruling is open)
 
-- [ ] **K1 — syrk family and trmm/trsm onto the packing layer**, raced
-  per type. Evidence: two-draw races; routed only at measured wins;
-  replays bit-identical. Gated by D11. (10–20)
-- [ ] **K2 — gemm micro-kernel campaign**: blocking, broadcast,
-  unroll, raced. Evidence: two-draw races against the shipping kernel;
-  losses recorded in the module docs. Gated by D11. (8–15)
+- [x] **K2 — gemm micro-kernel campaign.** Done for f64 and f32: α
+  folded into the B panel, B broadcast by lane shuffles, no scalar
+  work in the k loop; 1.73–1.91× over the pre-K2 packed shape on every
+  shape (runs 40226735030, 40226834978) and 1.2–2.3× over the register
+  tile from 128³ up (container), so the tile's zone closed; a KC/MC
+  sweep moved nothing. Bit-identical to the shipping shapes (tests).
+  The losers stay exported. Not done: the complex gemms keep their
+  kernels (they already lead OpenBLAS-wasm).
+- [x] **K1 — syrk, trmm and trsm onto the packing layer.** Done for
+  f64 and f32, both sides, both triangles: 1.36–2.63× over the sweeps
+  on every shape (runs 40231405123, 40232089887), bit-identical to the
+  sweeps, which stay exported. Not done: syr2k (still the sweep,
+  38–56% in the Level 3 table), the complex triangular routines, the
+  transposed forms (they run the packed kernel on a transposed copy,
+  the stream-versus-copy race for them not re-run since K1).
 
 ### M4 — Reproducible at any thread count
 
@@ -250,32 +274,56 @@ current numbers.
 - The `i*amax` first-index rescans (worst: isamax at 8% of the stream
   ceiling; icamax inherits it). A fused single-pass candidate already
   lost its f64 race.
-- Packed-gemm tuning constants: KC and MC are first guesses, not
-  swept.
-- The unmeasured dispatch gaps: f64 below 256³ versus the tiled
-  shape; c32 between 2 MB and 8 MB of A.
+- The unmeasured dispatch gap: c32 between 2 MB and 8 MB of A. (The
+  real types' gap closed with K2: the packed kernel wins at every
+  size; KC and MC were swept 120–256 / 64–256 and moved nothing.)
 - The c32 `hemv` grouping lost (~2%, both draws); `chemv` keeps the
   single-column pass. Re-race only if the lane product form changes.
 - A lane version of the complex left transposed trmm/trsm kernels
   (`ztrmm_left_t_k` and twins): the scalar one lost its race to the
   copy 0.26–0.76× (both draws); the real-type lane kernels won 1.3–2.8×,
   so the complex lane form is the obvious next candidate.
-- trmm/trsm rebuilt on the packing layer (D3's third candidate, the
-  K1 campaign's shape), which would also change the no-transpose
-  shapes; the B0 rows put OpenBLAS-wasm 2–2.3× ahead on dsyrk, dtrmm
-  and dtrsm, which is the motivation D11 asked for.
-- The gemm micro-kernel (K2): OpenBLAS's `WASM128_GENERIC` dgemm and
-  sgemm kernels are 1.9–2.1× faster than ours on the same simd128
-  lanes without relaxed SIMD, so the register blocking, broadcast and
-  unroll of that kernel are the first thing to read before the
-  campaign.
+- What is left against OpenBLAS-wasm after K2 and K1 (B0, two draws):
+  sgemm 1.11–1.17× — the 8×4 f32 tile against theirs (same geometry;
+  the difference is in the loads or the panel layout, unread); dtrmm
+  and dtrsm 1.15–1.23× — the diagonal blocks (the lane routines and
+  the sweep's column code) and the per-k-block packing of B, about
+  10% of the time at 512² against the gemm tile's rate; dsymm
+  1.24–1.27× — still the Level 2 fused pass per column, the natural
+  next routine for the packing layer (pack the symmetric A as a full
+  panel from both triangles). syr2k on the packing layer as two
+  rank-k updates (38–56% in the Level 3 table, the one real Level 3
+  row still on the sweep).
+- The transposed trmm/trsm forms since K1: the stream candidates
+  (D3's winners for the left real forms) are raced against the old
+  copy candidate; the copy now runs the packed kernel, so the race
+  is stale and the no-transpose packed kernel on a transposed read
+  (K2 did it for gemm) is the unraced third candidate.
 - The f32 left transposed trmm/trsm ascending-walk cases (trmm upper,
   trsm lower) sit at 0.85–1.0 of the copy on 1024² while the
   descending walks win 1.3×; the asymmetry is unexplained.
 
 ## Bugs
 
-None open.
+- **B1 — the arithmetic-peak probe measures below the kernels.**
+  `run_ceiling_flops` steps `acc = acc·m + a` on 8 accumulators, so
+  its multiply is on the dependency chain and it measures a latency
+  bound; the K2 kernel keeps its multiplies off the chain and reads
+  102–111% of the probe in both roofline draws (runs 40232849090,
+  40233130801), as do the K1 rows in f32. Fix: a probe whose multiply
+  takes independent operands (products from a rotating register set,
+  adds on the chain), re-measured against the kernel in one run; the
+  test that would have caught it: the roofline script fails any row
+  above 100% of the peak. Until then the Level 3 "% of peak" column is
+  relative to the gemm kernel, not to the machine.
+- Closed on this branch, recorded because the commit that opened it
+  (`409158e`) states the wrong premise: the B0 rows and the K1 race
+  rows seemed to disagree 1.15–1.3× on the same kernel. They were
+  compared across runs on different runners, whose speed differs by
+  up to 1.5× (roofline peaks 14.9 and 22.4 GFLOP/s in two draws); in
+  one run the two paths agree within 1% (run 40233496997). The direct
+  rows stay in the B0 script as the check that would have caught it,
+  and no claim in this tree compares absolute times across runs.
 
 ## Not in this tree
 
