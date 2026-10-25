@@ -36,8 +36,8 @@ const PACKED_MIN_A_BYTES: usize = 8 << 20; // 8 MB
 /// so every flag combination equals the unflagged call on an explicit
 /// copy, bit for bit.
 ///
-/// Errors: a leading dimension below its row count (arguments 8, 10,
-/// 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
+/// Errors: a leading dimension below its stored row count (arguments 8,
+/// 10, 13); `a`, `b` or `c` shorter than its extent (arguments 7, 9, 12);
 /// `work` shorter than the query (argument 14).
 #[allow(clippy::too_many_arguments)]
 pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: C32, a: &[C32], lda: usize, b: &[C32], ldb: usize, beta: C32, c: &mut [C32], ldc: usize, work: &mut [C32]) -> Result<(), Error> {
@@ -94,6 +94,9 @@ pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 /// copies), plus [`cgemm_packed_work`] when the dispatcher routes to
 /// the packed shape; zero for an unflagged call below that size.
 pub fn cgemm_work(transa: Trans, transb: Trans, m: usize, n: usize, k: usize) -> usize {
+	if m == 0 || n == 0 || k == 0 {
+		return 0; // the quick returns compute nothing
+	}
 	let ta = if transa == Trans::NoTrans { 0 } else { m * k };
 	let tb = if transb == Trans::NoTrans { 0 } else { k * n };
 	let packed = if packed_route(m, k) { cgemm_packed_work(m, n, k) } else { 0 };

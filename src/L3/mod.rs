@@ -45,17 +45,23 @@ pub mod ctrsm;
 /// `dst` receives the `cols×rows` transpose at leading dimension
 /// `cols` (so it must hold `rows·cols` elements); `f` is applied to
 /// each element (identity, or conjugation for the `ᴴ` forms). Walked in
-/// 32×32 blocks so both the strided reads and the strided writes stay
-/// within a few cache lines per block.
+/// bands of 8 source rows by 256 source columns: the eight destination
+/// lines a band writes stay resident across the band, and eight is
+/// within the associativity of a Level 1 cache, so a destination stride
+/// that is a multiple of 4 KB (every power-of-two dimension) no longer
+/// thrashes one cache set. Measured on the container, f64 1024×1024:
+/// 4.9 ns per element with 32×32 blocks, 1.5 with these bands; 1000×1000
+/// 1.5 and 1.3.
 pub(crate) fn transpose_into<T: Copy>(src: &[T], scs: usize, rows: usize, cols: usize, dst: &mut [T], f: impl Fn(T) -> T) {
-	const B: usize = 32;
+	const ROWS: usize = 8;
+	const COLS: usize = 256;
 	assert!(dst.len() >= rows * cols, "transpose_into: destination too short");
 	let mut j0 = 0;
 	while j0 < cols {
-		let j1 = (j0 + B).min(cols);
+		let j1 = (j0 + COLS).min(cols);
 		let mut i0 = 0;
 		while i0 < rows {
-			let i1 = (i0 + B).min(rows);
+			let i1 = (i0 + ROWS).min(rows);
 			for j in j0..j1 {
 				let col = &src[j * scs + i0..j * scs + i1];
 				for (i, &v) in (i0..i1).zip(col) {
