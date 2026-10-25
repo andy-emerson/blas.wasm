@@ -57,3 +57,34 @@ fn csymm_both_sides_bounded() {
 		}
 	}
 }
+
+#[test]
+fn csymm_right_replays_the_plain_sweep_bitwise() {
+	// the right-side sweep's per-element sequence: βC, then l ascending
+	// with the symmetric element looked up across the stored triangle and
+	// the product (α·A[l,j])·B[i,l] added in that order — the header's claim
+	let mut rng = Lcg(0x5A11 + 7);
+	let scale = |beta: C32, v: C32| if beta == C32::ZERO { C32::ZERO } else if beta == C32::ONE { v } else { beta * v };
+	for n in 1..40usize {
+		for upper in [true, false] {
+			let m = 1 + (n * 7) % 13;
+			let (acs, bcs, ccs) = (n + 1, m + 1, m + 2);
+			let (full, a) = symmetric_pair(&mut rng, n, acs, upper);
+			let b = rng.mat_c32(m, n, bcs);
+			let c0 = rng.mat_c32(m, n, ccs);
+			for (alpha, beta) in [(rng.next_c32(), rng.next_c32()), (C32::ONE, C32::ZERO), (rng.next_c32(), C32::ONE)] {
+				let mut c = c0.clone();
+				csymm(Side::Right, uplo(upper), m, n, alpha, &a, acs, &b, bcs, beta, &mut c, ccs).unwrap();
+				for j in 0..n {
+					for i in 0..m {
+						let mut v = scale(beta, c0[j * ccs + i]);
+						for l in 0..n {
+							v = v + (alpha * full[j * n + l]) * b[l * bcs + i];
+						}
+						assert!(bits_eq_cc(v, c[j * ccs + i]), "csymm right replay upper={upper} n={n} ({i},{j})");
+					}
+				}
+			}
+		}
+	}
+}

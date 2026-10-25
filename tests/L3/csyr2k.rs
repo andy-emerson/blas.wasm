@@ -77,3 +77,39 @@ fn csyr2k_bounded_triangle_only_and_transposed_form_bitwise() {
 		}
 	}
 }
+
+#[test]
+fn csyr2k_replays_the_plain_sweep_bitwise() {
+	// the dsyr2k shape's per-element sequence on complex lanes: βC on the
+	// stored triangle, then per l ascending the B-column term
+	// (α·B[j,l])·A[i,l] followed by the A-column term (α·A[j,l])·B[i,l]
+	let mut rng = Lcg(0x5E2 + 3);
+	let scale = |beta: C32, v: C32| if beta == C32::ZERO { C32::ZERO } else if beta == C32::ONE { v } else { beta * v };
+	for n in 1..40usize {
+		for upper in [true, false] {
+			let k = 1 + (n * 5) % 11;
+			let (lda, ldc) = (n + 1, n + 2);
+			let a = rng.mat_c32(n, k, lda);
+			let b = rng.mat_c32(n, k, lda);
+			let c0 = rng.mat_c32(n, n, ldc);
+			for (alpha, beta) in [(rng.next_c32(), rng.next_c32()), (C32::ONE, C32::ZERO), (rng.next_c32(), C32::ONE)] {
+				let mut c = c0.clone();
+				csyr2k(uplo(upper), Trans::NoTrans, n, k, alpha, &a, lda, &b, lda, beta, &mut c, ldc, &mut []).unwrap();
+				for j in 0..n {
+					for i in 0..n {
+						if !(if upper { i <= j } else { i >= j }) {
+							assert!(bits_eq_cc(c0[j * ldc + i], c[j * ldc + i]), "csyr2k wrote outside the triangle ({i},{j})");
+							continue;
+						}
+						let mut v = scale(beta, c0[j * ldc + i]);
+						for l in 0..k {
+							v = v + (alpha * b[l * lda + j]) * a[l * lda + i];
+							v = v + (alpha * a[l * lda + j]) * b[l * lda + i];
+						}
+						assert!(bits_eq_cc(v, c[j * ldc + i]), "csyr2k replay upper={upper} n={n} k={k} ({i},{j})");
+					}
+				}
+			}
+		}
+	}
+}

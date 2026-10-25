@@ -74,3 +74,37 @@ fn zsyrk_bounded_triangle_only_and_transposed_form_bitwise() {
 		}
 	}
 }
+
+#[test]
+fn zsyrk_replays_the_plain_sweep_bitwise() {
+	// the dsyrk shape's per-element sequence on complex lanes: βC on the
+	// stored triangle, then l ascending with (α·A[j,l])·A[i,l] — the
+	// header's claim, unconjugated throughout
+	let mut rng = Lcg(0x5E1 + 3);
+	let scale = |beta: C64, v: C64| if beta == C64::ZERO { C64::ZERO } else if beta == C64::ONE { v } else { beta * v };
+	for n in 1..40usize {
+		for upper in [true, false] {
+			let k = 1 + (n * 5) % 11;
+			let (lda, ldc) = (n + 1, n + 2);
+			let a = rng.mat_c64(n, k, lda);
+			let c0 = rng.mat_c64(n, n, ldc);
+			for (alpha, beta) in [(rng.next_c64(), rng.next_c64()), (C64::ONE, C64::ZERO), (rng.next_c64(), C64::ONE)] {
+				let mut c = c0.clone();
+				zsyrk(uplo(upper), Trans::NoTrans, n, k, alpha, &a, lda, beta, &mut c, ldc, &mut []).unwrap();
+				for j in 0..n {
+					for i in 0..n {
+						if !(if upper { i <= j } else { i >= j }) {
+							assert!(bits_eq_c(c0[j * ldc + i], c[j * ldc + i]), "zsyrk wrote outside the triangle ({i},{j})");
+							continue;
+						}
+						let mut v = scale(beta, c0[j * ldc + i]);
+						for l in 0..k {
+							v = v + (alpha * a[l * lda + j]) * a[l * lda + i];
+						}
+						assert!(bits_eq_c(v, c[j * ldc + i]), "zsyrk replay upper={upper} n={n} k={k} ({i},{j})");
+					}
+				}
+			}
+		}
+	}
+}
