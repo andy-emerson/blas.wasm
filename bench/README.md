@@ -124,6 +124,41 @@ where faer's row is a plain replace). The packed-vs-incumbent race
 itself: `packed-gemm-ab.mjs`, runs 29720778259/29720782633, full
 tables in campaign record step 14.
 
+### The transposed-form races (decision D3)
+
+Two candidates per transposed form, both bit-identical to the
+definition (the no-transpose call on an explicit transpose), raced on
+the runners with two draws each; the netlib wrappers route the winner
+and the loser stays exported. Figures are `stream ÷ copy` (trmm/trsm)
+or `pack ÷ copy` (gemm) wall time, min-of-iters, the range across the
+two draws; `copy` is op(A) transposed into the workspace ahead of the
+existing kernel.
+
+**trmm/trsm** (`tri-t-ab.mjs`, runs 40208127781 / 40208130046;
+`stream` = the no-copy candidate: a transposed accessor on the right,
+column-reduction kernels on the left; A at a 1024 leading dimension, B
+refilled per call):
+
+| side, shape | f64 trmm | f64 trsm | f32 trmm | f32 trsm | c64 trmm | c64 trsm | c32 trmm | c32 trsm |
+|---|---|---|---|---|---|---|---|---|
+| left 256² (U / L) | 1.32–1.56 / 1.65–1.88 | 1.91–1.99 / 1.34–1.49 | 0.99 / 1.14–1.21 | 1.36–1.37 / 0.95–0.98 | 0.63–0.74 / 0.49–0.58 | 0.55–0.62 / 0.50–0.52 | 0.32–0.37 / 0.29–0.32 | 0.28–0.32 / 0.28–0.30 |
+| left 1024² (U / L) | 1.40–1.49 / 1.83–1.86 | 1.93–1.99 / 1.45–1.46 | 0.91–0.94 / 1.04–1.17 | 1.30–1.37 / 0.85–0.93 | — | — | — | — |
+| left 1024×16 (U / L) | 2.05–2.11 / 2.64–2.66 | 2.77–2.79 / 2.07–2.32 | 1.55–1.68 / 1.99–2.05 | 2.35–2.39 / 1.59–1.63 | 1.07–1.14 / 0.93 | 0.91–1.00 / 0.83–0.89 | 0.47–0.58 / 0.43–0.51 | 0.45–0.49 / 0.39–0.45 |
+| left 1024×128 (U / L) | 1.52–1.57 / 1.94–2.08 | 2.10–2.16 / 1.50–1.66 | 1.00–1.03 / 1.15–1.28 | 1.42–1.47 / 0.93–0.99 | 0.64–0.76 / 0.56–0.66 | 0.57–0.64 / 0.56–0.59 | 0.31–0.39 / 0.28–0.33 | 0.28–0.33 / 0.26–0.30 |
+| right 256² (U / L) | 1.03–1.05 / 1.03–1.04 | 1.06–1.08 / 1.06–1.07 | 1.04 / 1.04 | 1.04–1.05 / 1.04 | 1.02–1.04 / 1.03–1.04 | 1.03–1.11 / 1.03–1.09 | 1.04–1.05 / 1.04–1.05 | 1.04 / 1.04 |
+| right 1024² (U / L) | 1.02 / 1.02–1.03 | 1.02–1.03 / 1.02–1.03 | 1.02 / 1.02–1.03 | 1.02 / 1.02 | — | — | — | — |
+| right 16×1024 (U / L) | 1.31 / 1.31–1.34 | 1.35 / 1.32–1.46 | 1.31–1.43 / 1.30–1.46 | 1.32–1.43 / 1.28–1.43 | 1.45–1.53 / 1.38–1.49 | 1.44–1.56 / 1.40–1.60 | 1.36–1.40 / 1.34–1.40 | 1.40–1.50 / 1.38–1.41 |
+| right 128×1024 (U / L) | 1.10 / 1.08 | 1.12 / 1.12–1.15 | 1.13 / 1.13–1.15 | 1.12–1.14 / 1.12–1.16 | 1.09–1.10 / 1.08–1.13 | 1.10–1.14 / 1.08–1.14 | 1.10–1.12 / 1.09–1.11 | 1.09–1.11 / 1.09–1.12 |
+
+Verdict and routing: `stream` on the right in every type (never below
+1.02, up to 1.6 where B is skinny); `stream` on the left for f64 and
+f32 (f64 never below 1.3 from 256², f32 wins the skinny shapes 1.6–2.4×
+and sits at 0.85–1.0 on the largest square ascending-walk cases); the
+`copy` on the left for c64 and c32, where the scalar complex reduction
+kernel loses at every size (0.26–0.76; 0.9–1.1 only at 1024×16 c64).
+The 64² rows (0.65–1.9, mixed) are too small to be verdicts. A lane
+version of the complex left kernel is a recorded lever (`STATUS.md`).
+
 ## Running a roofline (per level, per type)
 
 ```sh
