@@ -21,12 +21,13 @@ use crate::L2::zdscale_y;
 /// `C ← α·op(A)·op(B)ᴴ + conj(α)·op(B)·op(A)ᴴ + βC` with `op(A)` and
 /// `op(B)` `n×k` for [`Trans::NoTrans`] and `k×n` otherwise; `C` is
 /// Hermitian of order `n` with the triangle named by `uplo` stored and
-/// updated. `work` is scratch of at least [`zher2k_work`]`(n, k)` elements.
+/// updated. `work` is scratch of at least [`zher2k_work`]`(trans, n, k)` elements.
 ///
 /// [`Trans::Trans`] is not a valid form for a Hermitian update and
 /// returns [`ErrorKind::Argument`](crate::ErrorKind::Argument) on argument 2;
-/// [`Trans::ConjTrans`] is not built yet (`STATUS.md`, todo S1) and returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported).
+/// [`Trans::ConjTrans`] transposes and conjugates `A` and `B` into the
+/// workspace first and then runs the no-transpose kernel, so it equals
+/// the unflagged call on an explicit copy bit for bit.
 ///
 /// Errors: a leading dimension below its row count (arguments 7, 9,
 /// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11);
@@ -37,25 +38,40 @@ pub fn zher2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C64, a: &[C64
 	if trans == Trans::Trans {
 		return Err(crate::error::argument(R, 2));
 	}
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
 	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
 	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
-	crate::error::work(R, 13, work.len(), zher2k_work(n, k))?;
+	crate::error::work(R, 13, work.len(), zher2k_work(trans, n, k))?;
 	if n == 0 {
 		return Ok(());
 	}
+	// op(A) and op(B) are materialized in the workspace ahead of the
+	// no-transpose kernel, so the transposed form is bit-identical to
+	// the unflagged call on an explicit copy (tested); conjugation is an exact sign flip
+	let (work, a, lda) = if trans == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(n * k);
+		super::transpose_into(a, lda, k, n, ta, |x| x.conj());
+		(rest, &*ta, n)
+	};
+	let (_work, b, ldb) = if trans == Trans::NoTrans {
+		(work, b, ldb)
+	} else {
+		let (tb, rest) = work.split_at_mut(n * k);
+		super::transpose_into(b, ldb, k, n, tb, |x| x.conj());
+		(rest, &*tb, n)
+	};
 	zher2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }
 
-/// Elements of scratch [`zher2k`] needs for these dimensions. Zero: no form
-/// built so far uses scratch.
-pub fn zher2k_work(_n: usize, _k: usize) -> usize {
-	0
+/// Elements of scratch [`zher2k`] needs for these flags and dimensions:
+/// `2·n·k` for the transposed form (the copies of `op(A)` and `op(B)`),
+/// zero otherwise.
+pub fn zher2k_work(trans: Trans, n: usize, k: usize) -> usize {
+	if trans == Trans::NoTrans { 0 } else { 2 * n * k }
 }
 
 /// C ← αABᴴ + conj(α)BAᴴ + βC with real β. A and B are n×k; C is n×n

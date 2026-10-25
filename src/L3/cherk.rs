@@ -19,12 +19,13 @@ use crate::L2::csscale_y;
 /// `C ← α·op(A)·op(A)ᴴ + βC` with `op(A)` `n×k` for [`Trans::NoTrans`]
 /// and `k×n` otherwise; `C` is Hermitian of order `n` with the triangle
 /// named by `uplo` stored and updated. `work` is scratch of at least
-/// [`cherk_work`]`(n, k)` elements.
+/// [`cherk_work`]`(trans, n, k)` elements.
 ///
 /// [`Trans::Trans`] is not a valid form for a Hermitian update and
 /// returns [`ErrorKind::Argument`](crate::ErrorKind::Argument) on argument 2;
-/// [`Trans::ConjTrans`] is not built yet (`STATUS.md`, todo S1) and returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported).
+/// [`Trans::ConjTrans`] transposes and conjugates `A` into the
+/// workspace first and then runs the no-transpose kernel, so it equals
+/// the unflagged call on an explicit copy bit for bit.
 ///
 /// Errors: a leading dimension below its row count (arguments 7, 10);
 /// `a` or `c` shorter than its extent (arguments 6, 9); `work` shorter
@@ -35,24 +36,32 @@ pub fn cherk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[C32]
 	if trans == Trans::Trans {
 		return Err(crate::error::argument(R, 2));
 	}
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
 	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
-	crate::error::work(R, 11, work.len(), cherk_work(n, k))?;
+	crate::error::work(R, 11, work.len(), cherk_work(trans, n, k))?;
 	if n == 0 {
 		return Ok(());
 	}
+	// op(A) is materialized in the workspace ahead of the
+	// no-transpose kernel, so the transposed form is bit-identical to
+	// the unflagged call on an explicit copy (tested); conjugation is an exact sign flip
+	let (work, a, lda) = if trans == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(n * k);
+		super::transpose_into(a, lda, k, n, ta, |x| x.conj());
+		(rest, &*ta, n)
+	};
+	let _ = work;
 	cherk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }
 
-/// Elements of scratch [`cherk`] needs for these dimensions. Zero: no form
-/// built so far uses scratch.
-pub fn cherk_work(_n: usize, _k: usize) -> usize {
-	0
+/// Elements of scratch [`cherk`] needs for these flags and dimensions:
+/// `n·k` for the transposed form (the copy of `op(A)`), zero otherwise.
+pub fn cherk_work(trans: Trans, n: usize, k: usize) -> usize {
+	if trans == Trans::NoTrans { 0 } else { n * k }
 }
 
 /// C ← αAAᴴ + βC with real α, β. A is n×k; C is n×n with the `upper`

@@ -1,6 +1,5 @@
 use super::common::*;
 use blas_wasm::L3::*;
-use blas_wasm::Trans;
 use blas_wasm::C64;
 
 #[test]
@@ -185,27 +184,6 @@ fn zgemm_dispatch_packed_zone_bit_identical() {
 	}
 }
 
-/// The explicit copy the flags are defined against: `op(x)` column-major
-/// at a leading dimension of rows+1 (deliberately not the tight one).
-fn op_z(x: &[C64], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<C64>, usize) {
-	let (r, c) = match t {
-		Trans::NoTrans => (rows, cols),
-		_ => (cols, rows),
-	};
-	let ldo = r + 1;
-	let mut o = vec![C64::ZERO; ldo * c];
-	for j in 0..c {
-		for i in 0..r {
-			o[j * ldo + i] = match t {
-				Trans::NoTrans => x[j * ld + i],
-				Trans::Trans => x[i * ld + j],
-				Trans::ConjTrans => x[i * ld + j].conj(),
-			};
-		}
-	}
-	(o, ldo)
-}
-
 #[test]
 fn zgemm_flags_equal_the_explicit_transpose_bitwise() {
 	// the definition of the flags: op(A)·op(B) through transa/transb is
@@ -224,8 +202,8 @@ fn zgemm_flags_equal_the_explicit_transpose_bitwise() {
 				let a = rng.mat_c64(ar, ac, lda);
 				let b = rng.mat_c64(br, bc, ldb);
 				let c0 = rng.mat_c64(m, n, ccs);
-				let (oa, lda2) = op_z(&a, lda, ar, ac, ta);
-				let (ob, ldb2) = op_z(&b, ldb, br, bc, tb);
+				let (oa, lda2) = op_c64(&a, lda, ar, ac, ta);
+				let (ob, ldb2) = op_c64(&b, ldb, br, bc, tb);
 				for (alpha, beta) in [(C64::ONE, C64::ZERO), (C64::new(-0.7, 0.2), C64::new(0.4, 0.1)), (C64::ONE, C64::ONE)] {
 					let mut c1 = c0.clone();
 					let mut w1 = vec![C64::new(f64::NAN, f64::NAN); zgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)];

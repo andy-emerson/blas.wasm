@@ -1,6 +1,5 @@
 use super::common::*;
 use blas_wasm::L3::*;
-use blas_wasm::Trans;
 use blas_wasm::C64;
 use blas_wasm::C32;
 
@@ -186,27 +185,6 @@ fn cgemm_dispatch_packed_zone_bit_identical() {
 	}
 }
 
-/// The explicit copy the flags are defined against: `op(x)` column-major
-/// at a leading dimension of rows+1 (deliberately not the tight one).
-fn op_c(x: &[C32], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<C32>, usize) {
-	let (r, c) = match t {
-		Trans::NoTrans => (rows, cols),
-		_ => (cols, rows),
-	};
-	let ldo = r + 1;
-	let mut o = vec![C32::ZERO; ldo * c];
-	for j in 0..c {
-		for i in 0..r {
-			o[j * ldo + i] = match t {
-				Trans::NoTrans => x[j * ld + i],
-				Trans::Trans => x[i * ld + j],
-				Trans::ConjTrans => x[i * ld + j].conj(),
-			};
-		}
-	}
-	(o, ldo)
-}
-
 #[test]
 fn cgemm_flags_equal_the_explicit_transpose_bitwise() {
 	// the definition of the flags: op(A)·op(B) through transa/transb is
@@ -225,8 +203,8 @@ fn cgemm_flags_equal_the_explicit_transpose_bitwise() {
 				let a = rng.mat_c32(ar, ac, lda);
 				let b = rng.mat_c32(br, bc, ldb);
 				let c0 = rng.mat_c32(m, n, ccs);
-				let (oa, lda2) = op_c(&a, lda, ar, ac, ta);
-				let (ob, ldb2) = op_c(&b, ldb, br, bc, tb);
+				let (oa, lda2) = op_c32(&a, lda, ar, ac, ta);
+				let (ob, ldb2) = op_c32(&b, ldb, br, bc, tb);
 				for (alpha, beta) in [(C32::ONE, C32::ZERO), (C32::new(-0.7, 0.2), C32::new(0.4, 0.1)), (C32::ONE, C32::ONE)] {
 					let mut c1 = c0.clone();
 					let mut w1 = vec![C32::new(f32::NAN, f32::NAN); cgemm_work(Trans::NoTrans, Trans::NoTrans, m, n, k)];

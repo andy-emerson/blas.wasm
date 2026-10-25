@@ -244,7 +244,7 @@ pub unsafe extern "C" fn dsymm_right(alpha: f64, m: usize, n: usize, a: *const f
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn dsyrk(alpha: f64, n: usize, k: usize, a: *const f64, acs: usize, beta: f64, c: *mut f64, ccs: usize, upper: u32) {
-	L3::dsyrk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dsyrk_work(n, k)]).unwrap();
+	L3::dsyrk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dsyrk_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn dsyrk(alpha: f64, n: usize, k: usize, a: *const f64, ac
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn dsyr2k(alpha: f64, n: usize, k: usize, a: *const f64, acs: usize, b: *const f64, bcs: usize, beta: f64, c: *mut f64, ccs: usize, upper: u32) {
-	L3::dsyr2k(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dsyr2k_work(n, k)]).unwrap();
+	L3::dsyr2k(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f64; L3::dsyr2k_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -467,7 +467,7 @@ pub unsafe extern "C" fn ssymm_right(alpha: f32, m: usize, n: usize, a: *const f
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn ssyrk(alpha: f32, n: usize, k: usize, a: *const f32, acs: usize, beta: f32, c: *mut f32, ccs: usize, upper: u32) {
-	L3::ssyrk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f32; L3::ssyrk_work(n, k)]).unwrap();
+	L3::ssyrk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f32; L3::ssyrk_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -475,7 +475,7 @@ pub unsafe extern "C" fn ssyrk(alpha: f32, n: usize, k: usize, a: *const f32, ac
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn ssyr2k(alpha: f32, n: usize, k: usize, a: *const f32, acs: usize, b: *const f32, bcs: usize, beta: f32, c: *mut f32, ccs: usize, upper: u32) {
-	L3::ssyr2k(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f32; L3::ssyr2k_work(n, k)]).unwrap();
+	L3::ssyr2k(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![0.0f32; L3::ssyr2k_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -724,7 +724,7 @@ pub unsafe extern "C" fn zhemm_right(are: f64, aim: f64, m: usize, n: usize, a: 
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn zherk(alpha: f64, n: usize, k: usize, a: *const C64, acs: usize, beta: f64, c: *mut C64, ccs: usize, upper: u32) {
-	L3::zherk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zherk_work(n, k)]).unwrap();
+	L3::zherk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zherk_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -732,7 +732,7 @@ pub unsafe extern "C" fn zherk(alpha: f64, n: usize, k: usize, a: *const C64, ac
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn zher2k(are: f64, aim: f64, n: usize, k: usize, a: *const C64, acs: usize, b: *const C64, bcs: usize, beta: f64, c: *mut C64, ccs: usize, upper: u32) {
-	L3::zher2k(uplo(upper != 0), Trans::NoTrans, n, k, C64::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zher2k_work(n, k)]).unwrap();
+	L3::zher2k(uplo(upper != 0), Trans::NoTrans, n, k, C64::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C64::ZERO; L3::zher2k_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -981,7 +981,7 @@ pub unsafe extern "C" fn chemm_right(are: f32, aim: f32, m: usize, n: usize, a: 
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn cherk(alpha: f32, n: usize, k: usize, a: *const C32, acs: usize, beta: f32, c: *mut C32, ccs: usize, upper: u32) {
-	L3::cherk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cherk_work(n, k)]).unwrap();
+	L3::cherk(uplo(upper != 0), Trans::NoTrans, n, k, alpha, unsafe { s(a, ml(n, k, acs)) }, acs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cherk_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety
@@ -989,7 +989,7 @@ pub unsafe extern "C" fn cherk(alpha: f32, n: usize, k: usize, a: *const C32, ac
 /// conventions (matrices: `cs*(cols-1)+rows` elements).
 #[no_mangle]
 pub unsafe extern "C" fn cher2k(are: f32, aim: f32, n: usize, k: usize, a: *const C32, acs: usize, b: *const C32, bcs: usize, beta: f32, c: *mut C32, ccs: usize, upper: u32) {
-	L3::cher2k(uplo(upper != 0), Trans::NoTrans, n, k, C32::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cher2k_work(n, k)]).unwrap();
+	L3::cher2k(uplo(upper != 0), Trans::NoTrans, n, k, C32::new(are, aim), unsafe { s(a, ml(n, k, acs)) }, acs, unsafe { s(b, ml(n, k, bcs)) }, bcs, beta, unsafe { sm(c, ml(n, n, ccs)) }, ccs, &mut vec![C32::ZERO; L3::cher2k_work(Trans::NoTrans, n, k)]).unwrap();
 }
 
 /// # Safety

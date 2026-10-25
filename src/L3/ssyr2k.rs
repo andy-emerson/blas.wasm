@@ -17,11 +17,11 @@ use crate::L2::sscale_y;
 /// `C ← α·op(A)·op(B)ᵀ + α·op(B)·op(A)ᵀ + βC` with `op(A)` and
 /// `op(B)` `n×k` for [`Trans::NoTrans`] and `k×n` otherwise; `C` is
 /// symmetric of order `n` with the triangle named by `uplo` stored and
-/// updated. `work` is scratch of at least [`ssyr2k_work`]`(n, k)` elements.
+/// updated. `work` is scratch of at least [`ssyr2k_work`]`(trans, n, k)` elements.
 ///
-/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
-/// other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+/// The transposed form transposes `A` and `B` into the workspace first and
+/// then runs the no-transpose kernel, so it equals the unflagged call on
+/// an explicit copy bit for bit; `ConjTrans` is `Trans` for a real matrix.
 ///
 /// Errors: a leading dimension below its row count (arguments 7, 9,
 /// 12); `a`, `b` or `c` shorter than its extent (arguments 6, 8, 11);
@@ -29,25 +29,40 @@ use crate::L2::sscale_y;
 #[allow(clippy::too_many_arguments)]
 pub fn ssyr2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, b: &[f32], ldb: usize, beta: f32, c: &mut [f32], ldc: usize, work: &mut [f32]) -> Result<(), Error> {
 	const R: &str = "ssyr2k";
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
 	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
 	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
-	crate::error::work(R, 13, work.len(), ssyr2k_work(n, k))?;
+	crate::error::work(R, 13, work.len(), ssyr2k_work(trans, n, k))?;
 	if n == 0 {
 		return Ok(());
 	}
+	// op(A) and op(B) are materialized in the workspace ahead of the
+	// no-transpose kernel, so the transposed form is bit-identical to
+	// the unflagged call on an explicit copy (tested)
+	let (work, a, lda) = if trans == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(n * k);
+		super::transpose_into(a, lda, k, n, ta, |x| x);
+		(rest, &*ta, n)
+	};
+	let (_work, b, ldb) = if trans == Trans::NoTrans {
+		(work, b, ldb)
+	} else {
+		let (tb, rest) = work.split_at_mut(n * k);
+		super::transpose_into(b, ldb, k, n, tb, |x| x);
+		(rest, &*tb, n)
+	};
 	ssyr2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }
 
-/// Elements of scratch [`ssyr2k`] needs for these dimensions. Zero: no form
-/// built so far uses scratch.
-pub fn ssyr2k_work(_n: usize, _k: usize) -> usize {
-	0
+/// Elements of scratch [`ssyr2k`] needs for these flags and dimensions:
+/// `2·n·k` for the transposed form (the copies of `op(A)` and `op(B)`),
+/// zero otherwise.
+pub fn ssyr2k_work(trans: Trans, n: usize, k: usize) -> usize {
+	if trans == Trans::NoTrans { 0 } else { 2 * n * k }
 }
 
 /// C ← α(ABᵀ + BAᵀ) + βC. A and B are n×k; C is n×n with the `upper`

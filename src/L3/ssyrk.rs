@@ -18,11 +18,11 @@ use crate::L2::sscale_y;
 /// `C ← α·op(A)·op(A)ᵀ + βC` with `op(A)` `n×k` for [`Trans::NoTrans`]
 /// and `k×n` otherwise; `C` is symmetric of order `n` with the triangle
 /// named by `uplo` stored and updated. `work` is scratch of at least
-/// [`ssyrk_work`]`(n, k)` elements.
+/// [`ssyrk_work`]`(trans, n, k)` elements.
 ///
-/// The transposed form is not built yet (`STATUS.md`, todo S1): `trans`
-/// other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on argument 2.
+/// The transposed form transposes `A` into the workspace first and
+/// then runs the no-transpose kernel, so it equals the unflagged call on
+/// an explicit copy bit for bit; `ConjTrans` is `Trans` for a real matrix.
 ///
 /// Errors: a leading dimension below its row count (arguments 7, 10);
 /// `a` or `c` shorter than its extent (arguments 6, 9); `work` shorter
@@ -30,24 +30,32 @@ use crate::L2::sscale_y;
 #[allow(clippy::too_many_arguments)]
 pub fn ssyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32], lda: usize, beta: f32, c: &mut [f32], ldc: usize, work: &mut [f32]) -> Result<(), Error> {
 	const R: &str = "ssyrk";
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	let (ar, ac) = if trans == Trans::NoTrans { (n, k) } else { (k, n) };
 	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
-	crate::error::work(R, 11, work.len(), ssyrk_work(n, k))?;
+	crate::error::work(R, 11, work.len(), ssyrk_work(trans, n, k))?;
 	if n == 0 {
 		return Ok(());
 	}
+	// op(A) is materialized in the workspace ahead of the
+	// no-transpose kernel, so the transposed form is bit-identical to
+	// the unflagged call on an explicit copy (tested)
+	let (work, a, lda) = if trans == Trans::NoTrans {
+		(work, a, lda)
+	} else {
+		let (ta, rest) = work.split_at_mut(n * k);
+		super::transpose_into(a, lda, k, n, ta, |x| x);
+		(rest, &*ta, n)
+	};
+	let _ = work;
 	ssyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }
 
-/// Elements of scratch [`ssyrk`] needs for these dimensions. Zero: no form
-/// built so far uses scratch.
-pub fn ssyrk_work(_n: usize, _k: usize) -> usize {
-	0
+/// Elements of scratch [`ssyrk`] needs for these flags and dimensions:
+/// `n·k` for the transposed form (the copy of `op(A)`), zero otherwise.
+pub fn ssyrk_work(trans: Trans, n: usize, k: usize) -> usize {
+	if trans == Trans::NoTrans { 0 } else { n * k }
 }
 
 /// C ← αAAᵀ + βC. A is n×k; C is n×n with the `upper` (or lower)

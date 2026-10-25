@@ -80,17 +80,25 @@ fn syrk_family_flags_and_dimensions() {
 	let mut c = vec![0.0; n * n];
 	let mut w: Vec<f64> = vec![];
 	assert_eq!(dsyrk(Uplo::Upper, Trans::NoTrans, n, k, 1.0, &a, n, 0.0, &mut c, n, &mut w), Ok(()));
-	assert_eq!(dsyrk(Uplo::Upper, Trans::Trans, n, k, 1.0, &a, k, 0.0, &mut c, n, &mut w), Err(e("dsyrk", 2, ErrorKind::Unsupported)));
+	// the transposed form sizes A as k×n and needs its copy in the workspace
+	assert_eq!(dsyrk_work(Trans::Trans, n, k), n * k);
+	assert_eq!(dsyr2k_work(Trans::Trans, n, k), 2 * n * k);
+	assert_eq!(dsyrk(Uplo::Upper, Trans::Trans, n, k, 1.0, &a, k, 0.0, &mut c, n, &mut w), Err(e("dsyrk", 11, ErrorKind::Workspace)));
+	assert_eq!(dsyrk(Uplo::Upper, Trans::Trans, n, k, 1.0, &a, 1, 0.0, &mut c, n, &mut vec![0.0; n * k]), Err(e("dsyrk", 7, ErrorKind::Argument)));
+	assert_eq!(dsyrk(Uplo::Upper, Trans::Trans, n, k, 1.0, &a, k, 0.0, &mut c, n, &mut vec![f64::NAN; n * k]), Ok(()));
+	assert_eq!(dsyr2k(Uplo::Lower, Trans::Trans, n, k, 1.0, &a, k, &b, k, 0.0, &mut c, n, &mut w), Err(e("dsyr2k", 13, ErrorKind::Workspace)));
 	assert_eq!(dsyrk(Uplo::Upper, Trans::NoTrans, n, k, 1.0, &a, 2, 0.0, &mut c, n, &mut w), Err(e("dsyrk", 7, ErrorKind::Argument)));
 	assert_eq!(dsyrk(Uplo::Upper, Trans::NoTrans, n, k, 1.0, &a, n, 0.0, &mut c, 2, &mut w), Err(e("dsyrk", 10, ErrorKind::Argument)));
 	assert_eq!(dsyr2k(Uplo::Lower, Trans::NoTrans, n, k, 1.0, &a, n, &b, n, 0.0, &mut c, n, &mut w), Ok(()));
 	assert_eq!(dsyr2k(Uplo::Lower, Trans::NoTrans, n, k, 1.0, &a, n, &b, 2, 0.0, &mut c, n, &mut w), Err(e("dsyr2k", 9, ErrorKind::Argument)));
-	// Hermitian: Trans is invalid, ConjTrans is not built yet
+	// Hermitian: Trans is invalid, ConjTrans needs the copy
 	let az = vec![C64::ONE; n * k];
 	let mut cz = vec![C64::ZERO; n * n];
 	let mut wz: Vec<C64> = vec![];
 	assert_eq!(zherk(Uplo::Upper, Trans::Trans, n, k, 1.0, &az, k, 0.0, &mut cz, n, &mut wz), Err(e("zherk", 2, ErrorKind::Argument)));
-	assert_eq!(zherk(Uplo::Upper, Trans::ConjTrans, n, k, 1.0, &az, k, 0.0, &mut cz, n, &mut wz), Err(e("zherk", 2, ErrorKind::Unsupported)));
+	assert_eq!(zherk(Uplo::Upper, Trans::ConjTrans, n, k, 1.0, &az, k, 0.0, &mut cz, n, &mut wz), Err(e("zherk", 11, ErrorKind::Workspace)));
+	assert_eq!(zherk_work(Trans::ConjTrans, n, k), n * k);
+	assert_eq!(zherk(Uplo::Upper, Trans::ConjTrans, n, k, 1.0, &az, k, 0.0, &mut cz, n, &mut vec![C64::ZERO; n * k]), Ok(()));
 	assert_eq!(zherk(Uplo::Upper, Trans::NoTrans, n, k, 1.0, &az, n, 0.0, &mut cz, n, &mut wz), Ok(()));
 }
 

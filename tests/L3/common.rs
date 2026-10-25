@@ -6,6 +6,7 @@
 
 #![allow(dead_code)] // each per-routine test file uses its own subset
 
+
 pub struct Lcg(pub u64);
 impl Lcg {
 	pub fn next_f64(&mut self) -> f64 {
@@ -217,4 +218,86 @@ pub fn uplo(upper: bool) -> Uplo {
 /// Maps the old `unit: bool` test parameter onto the flag enum.
 pub fn diag(unit: bool) -> Diag {
 	if unit { Diag::Unit } else { Diag::NonUnit }
+}
+
+/// The explicit copy the flags are defined against: `op(x)` column-major
+/// at a leading dimension of rows+1 (deliberately not the tight one).
+pub fn op_f64(x: &[f64], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<f64>, usize) {
+	let (r, c) = match t {
+		Trans::NoTrans => (rows, cols),
+		_ => (cols, rows),
+	};
+	let ldo = r + 1;
+	let mut o = vec![0.0; ldo * c];
+	for j in 0..c {
+		for i in 0..r {
+			o[j * ldo + i] = match t {
+				Trans::NoTrans => x[j * ld + i],
+				_ => x[i * ld + j],
+			};
+		}
+	}
+	(o, ldo)
+}
+
+/// The explicit copy the flags are defined against: `op(x)` column-major
+/// at a leading dimension of rows+1 (deliberately not the tight one).
+pub fn op_f32(x: &[f32], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<f32>, usize) {
+	let (r, c) = match t {
+		Trans::NoTrans => (rows, cols),
+		_ => (cols, rows),
+	};
+	let ldo = r + 1;
+	let mut o = vec![0.0; ldo * c];
+	for j in 0..c {
+		for i in 0..r {
+			o[j * ldo + i] = match t {
+				Trans::NoTrans => x[j * ld + i],
+				_ => x[i * ld + j],
+			};
+		}
+	}
+	(o, ldo)
+}
+
+/// The explicit copy the flags are defined against: `op(x)` column-major
+/// at a leading dimension of rows+1 (deliberately not the tight one).
+pub fn op_c64(x: &[C64], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<C64>, usize) {
+	let (r, c) = match t {
+		Trans::NoTrans => (rows, cols),
+		_ => (cols, rows),
+	};
+	let ldo = r + 1;
+	let mut o = vec![C64::ZERO; ldo * c];
+	for j in 0..c {
+		for i in 0..r {
+			o[j * ldo + i] = match t {
+				Trans::NoTrans => x[j * ld + i],
+				Trans::Trans => x[i * ld + j],
+				Trans::ConjTrans => x[i * ld + j].conj(),
+			};
+		}
+	}
+	(o, ldo)
+}
+
+/// The explicit copy the flags are defined against: `op(x)` column-major
+/// at a leading dimension of rows+1 (deliberately not the tight one).
+pub fn op_c32(x: &[C32], ld: usize, rows: usize, cols: usize, t: Trans) -> (Vec<C32>, usize) {
+	let (r, c) = match t {
+		Trans::NoTrans => (rows, cols),
+		_ => (cols, rows),
+	};
+	let ldo = r + 1;
+	let mut o = vec![C32::ZERO; ldo * c];
+	for j in 0..c {
+		for i in 0..r {
+			o[j * ldo + i] = match t {
+				Trans::NoTrans => x[j * ld + i],
+				Trans::Trans => x[i * ld + j],
+				Trans::ConjTrans => x[i * ld + j].conj(),
+			};
+		}
+	}
+	(o, ldo)
 }
