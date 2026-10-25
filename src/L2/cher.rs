@@ -21,6 +21,9 @@ pub fn cher(uplo: Uplo, n: usize, alpha: f32, x: &[C32], a: &mut [C32], lda: usi
 	const R: &str = "cher";
 	crate::error::vec(R, 4, x.len(), n)?;
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
+	if n == 0 {
+		return Ok(());
+	}
 	cher_k(alpha, n, a, lda, uplo.is_upper(), &x[..n]);
 	Ok(())
 }

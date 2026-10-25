@@ -154,7 +154,7 @@ pub(crate) use cher2::cher2_k;
 #[inline]
 pub(crate) fn check_mat(a_len: usize, nrows: usize, ncols: usize, cs: usize) {
 	assert!(cs >= nrows, "column stride below row count");
-	if ncols > 0 {
+	if nrows > 0 && ncols > 0 {
 		assert!(
 			a_len >= cs * (ncols - 1) + nrows,
 			"matrix storage too short for its dimensions"

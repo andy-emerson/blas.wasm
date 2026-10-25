@@ -37,6 +37,9 @@ pub fn ssyrk(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: f32, a: &[f32]
 	crate::error::mat(R, 6, 7, a.len(), ar, ac, lda)?;
 	crate::error::mat(R, 9, 10, c.len(), n, n, ldc)?;
 	crate::error::work(R, 11, work.len(), ssyrk_work(n, k))?;
+	if n == 0 {
+		return Ok(());
+	}
 	ssyrk_k(alpha, n, k, a, lda, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }

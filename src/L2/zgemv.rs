@@ -29,6 +29,9 @@ pub fn zgemv(trans: Trans, m: usize, n: usize, alpha: C64, a: &[C64], lda: usize
 	let (xn, yn) = match trans { Trans::NoTrans => (n, m), _ => (m, n) };
 	crate::error::vec(R, 7, x.len(), xn)?;
 	crate::error::vec(R, 9, y.len(), yn)?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	let (x, y) = (&x[..xn], &mut y[..yn]);
 	match trans {
 		Trans::NoTrans => zgemv_k(alpha, m, n, a, lda, x, beta, y),

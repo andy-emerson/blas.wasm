@@ -33,6 +33,9 @@ pub fn ztrmv(uplo: Uplo, trans: Trans, diag: Diag, n: usize, a: &[C64], lda: usi
 	}
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
 	crate::error::vec(R, 7, x.len(), n)?;
+	if n == 0 {
+		return Ok(());
+	}
 	ztrmv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]);
 	Ok(())
 }

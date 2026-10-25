@@ -45,6 +45,9 @@ pub fn cher2k(uplo: Uplo, trans: Trans, n: usize, k: usize, alpha: C32, a: &[C32
 	crate::error::mat(R, 8, 9, b.len(), ar, ac, ldb)?;
 	crate::error::mat(R, 11, 12, c.len(), n, n, ldc)?;
 	crate::error::work(R, 13, work.len(), cher2k_work(n, k))?;
+	if n == 0 {
+		return Ok(());
+	}
 	cher2k_k(alpha, n, k, a, lda, b, ldb, beta, c, ldc, uplo.is_upper());
 	Ok(())
 }

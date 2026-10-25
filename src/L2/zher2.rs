@@ -23,6 +23,9 @@ pub fn zher2(uplo: Uplo, n: usize, alpha: C64, x: &[C64], y: &[C64], a: &mut [C6
 	crate::error::vec(R, 4, x.len(), n)?;
 	crate::error::vec(R, 5, y.len(), n)?;
 	crate::error::mat(R, 6, 7, a.len(), n, n, lda)?;
+	if n == 0 {
+		return Ok(());
+	}
 	zher2_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], &y[..n]);
 	Ok(())
 }

@@ -18,6 +18,9 @@ pub fn sger(m: usize, n: usize, alpha: f32, x: &[f32], y: &[f32], a: &mut [f32],
 	crate::error::vec(R, 4, x.len(), m)?;
 	crate::error::vec(R, 5, y.len(), n)?;
 	crate::error::mat(R, 6, 7, a.len(), m, n, lda)?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	sger_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

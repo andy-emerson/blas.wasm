@@ -50,6 +50,9 @@ pub fn dtrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
 	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
 	crate::error::work(R, 12, work.len(), dtrsm_work(side, transa, m, n))?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	match side {
 		Side::Left => dtrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
 		Side::Right => dtrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),

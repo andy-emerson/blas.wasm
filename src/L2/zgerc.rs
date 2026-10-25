@@ -20,6 +20,9 @@ pub fn zgerc(m: usize, n: usize, alpha: C64, x: &[C64], y: &[C64], a: &mut [C64]
 	crate::error::vec(R, 4, x.len(), m)?;
 	crate::error::vec(R, 5, y.len(), n)?;
 	crate::error::mat(R, 6, 7, a.len(), m, n, lda)?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	zgerc_k(alpha, m, n, a, lda, &x[..m], &y[..n]);
 	Ok(())
 }

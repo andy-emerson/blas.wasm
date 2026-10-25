@@ -29,6 +29,9 @@ pub fn dsymv(uplo: Uplo, n: usize, alpha: f64, a: &[f64], lda: usize, x: &[f64],
 	crate::error::mat(R, 4, 5, a.len(), n, n, lda)?;
 	crate::error::vec(R, 6, x.len(), n)?;
 	crate::error::vec(R, 8, y.len(), n)?;
+	if n == 0 {
+		return Ok(());
+	}
 	dsymv_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], beta, &mut y[..n]);
 	Ok(())
 }

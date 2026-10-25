@@ -16,6 +16,9 @@ pub fn dsyr(uplo: Uplo, n: usize, alpha: f64, x: &[f64], a: &mut [f64], lda: usi
 	const R: &str = "dsyr";
 	crate::error::vec(R, 4, x.len(), n)?;
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
+	if n == 0 {
+		return Ok(());
+	}
 	dsyr_k(alpha, n, a, lda, uplo.is_upper(), &x[..n]);
 	Ok(())
 }

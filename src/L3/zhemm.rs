@@ -30,6 +30,9 @@ pub fn zhemm(side: Side, uplo: Uplo, m: usize, n: usize, alpha: C64, a: &[C64], 
 	crate::error::mat(R, 6, 7, a.len(), na, na, lda)?;
 	crate::error::mat(R, 8, 9, b.len(), m, n, ldb)?;
 	crate::error::mat(R, 11, 12, c.len(), m, n, ldc)?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	match side {
 		Side::Left => zhemm_left_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),
 		Side::Right => zhemm_right_k(alpha, m, n, a, lda, uplo.is_upper(), b, ldb, beta, c, ldc),

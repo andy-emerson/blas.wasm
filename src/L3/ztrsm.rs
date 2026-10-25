@@ -47,6 +47,9 @@ pub fn ztrsm(side: Side, uplo: Uplo, transa: Trans, diag: Diag, m: usize, n: usi
 	crate::error::mat(R, 8, 9, a.len(), na, na, lda)?;
 	crate::error::mat(R, 10, 11, b.len(), m, n, ldb)?;
 	crate::error::work(R, 12, work.len(), ztrsm_work(side, transa, m, n))?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
 	match side {
 		Side::Left => ztrsm_left_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),
 		Side::Right => ztrsm_right_k(alpha, m, n, a, lda, uplo.is_upper(), diag.is_unit(), b, ldb),

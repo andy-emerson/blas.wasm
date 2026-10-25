@@ -53,6 +53,17 @@ pub fn cgemm(transa: Trans, transb: Trans, m: usize, n: usize, k: usize, alpha: 
 	crate::error::mat(R, 9, 10, b.len(), br, bc, ldb)?;
 	crate::error::mat(R, 12, 13, c.len(), m, n, ldc)?;
 	crate::error::work(R, 14, work.len(), cgemm_work(m, n, k))?;
+	if m == 0 || n == 0 {
+		return Ok(());
+	}
+	if k == 0 {
+		// a product of empty operands: C ← βC, the same per-column
+		// scaling every shape applies before accumulating
+		for j in 0..n {
+			crate::L2::cscale_y(beta, &mut c[j * ldc..j * ldc + m]);
+		}
+		return Ok(());
+	}
 	cgemm_k(alpha, m, n, k, a, lda, b, ldb, beta, c, ldc, work);
 	Ok(())
 }

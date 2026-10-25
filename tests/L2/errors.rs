@@ -63,3 +63,32 @@ fn triangular_vectors_transposes_are_not_built_yet() {
 	assert_eq!(dtrsv(Uplo::Upper, Trans::NoTrans, Diag::Unit, n, &a, 2, &mut x), Err(e("dtrsv", 6, ErrorKind::Argument)));
 	assert_eq!(dtrsv(Uplo::Upper, Trans::NoTrans, Diag::Unit, n, &a, 3, &mut x[..2]), Err(e("dtrsv", 7, ErrorKind::Length)));
 }
+
+#[test]
+fn empty_dimensions_return_ok_and_write_nothing() {
+	// netlib quick returns: a zero dimension is legal, needs no storage
+	// (lda ≥ 1 still), computes nothing and touches nothing
+	let a3 = vec![1.0; 3];
+	let mut y3 = vec![7.0; 3];
+	assert_eq!(dgemv(Trans::NoTrans, 0, 3, 1.0, &[], 1, &a3, 0.5, &mut []), Ok(()));
+	assert_eq!(dgemv(Trans::NoTrans, 3, 0, 1.0, &[], 3, &[], 0.5, &mut y3), Ok(()));
+	assert_eq!(y3, vec![7.0; 3]); // y is not scaled: reference returns before βy
+	assert_eq!(dgemv(Trans::Trans, 0, 3, 1.0, &[], 1, &[], 0.5, &mut y3), Ok(()));
+	assert_eq!(y3, vec![7.0; 3]);
+	assert_eq!(dger(0, 3, 1.0, &[], &a3, &mut [], 1), Ok(()));
+	assert_eq!(dger(3, 0, 1.0, &a3, &[], &mut [], 3), Ok(()));
+	assert_eq!(dsymv(Uplo::Upper, 0, 1.0, &[], 1, &[], 0.5, &mut []), Ok(()));
+	assert_eq!(dsyr(Uplo::Lower, 0, 1.0, &[], &mut [], 1), Ok(()));
+	assert_eq!(dsyr2(Uplo::Lower, 0, 1.0, &[], &[], &mut [], 1), Ok(()));
+	assert_eq!(dtrmv(Uplo::Upper, Trans::NoTrans, Diag::NonUnit, 0, &[], 1, &mut []), Ok(()));
+	assert_eq!(dtrsv(Uplo::Lower, Trans::NoTrans, Diag::Unit, 0, &[], 1, &mut []), Ok(()));
+	let z3 = vec![C64::ONE; 3];
+	let mut yz = vec![C64::new(7.0, 1.0); 3];
+	assert_eq!(zgemv(Trans::ConjTrans, 0, 3, C64::ONE, &[], 1, &[], C64::ZERO, &mut yz), Ok(()));
+	assert_eq!(yz, vec![C64::new(7.0, 1.0); 3]);
+	assert_eq!(zgerc(0, 3, C64::ONE, &[], &z3, &mut [], 1), Ok(()));
+	assert_eq!(zhemv(Uplo::Upper, 0, C64::ONE, &[], 1, &[], C64::ZERO, &mut []), Ok(()));
+	assert_eq!(zher(Uplo::Upper, 0, 1.0, &[], &mut [], 1), Ok(()));
+	// lda below max(1, rows) is still an error on an empty matrix
+	assert_eq!(dgemv(Trans::NoTrans, 0, 3, 1.0, &[], 0, &a3, 0.5, &mut []), Err(e("dgemv", 6, ErrorKind::Argument)));
+}

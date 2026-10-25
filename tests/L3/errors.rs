@@ -103,3 +103,34 @@ fn symm_and_triangular_sides_size_a_by_side() {
 	assert_eq!(dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::Unit, m, n, 1.0, &a, 2, &mut bb, 1, &mut w), Err(e("dtrmm", 11, ErrorKind::Argument)));
 	assert_eq!(dtrmm_work(Side::Left, Trans::NoTrans, m, n), 0);
 }
+
+#[test]
+fn empty_dimensions_return_ok_and_k_zero_scales_c() {
+	// netlib quick returns: m == 0 or n == 0 computes nothing and touches
+	// nothing; k == 0 is a legal product of empty operands, C ← βC
+	let mut c = vec![2.0; 4];
+	let mut w: Vec<f64> = vec![];
+	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 0, 2, 3, 1.0, &[], 1, &[1.0; 6], 3, 0.0, &mut [], 1, &mut w), Ok(()));
+	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 2, 0, 3, 1.0, &[1.0; 6], 2, &[], 3, 0.0, &mut c, 2, &mut w), Ok(()));
+	assert_eq!(c, vec![2.0; 4]);
+	assert_eq!(dgemm_work(0, 2, 3), 0);
+	assert_eq!(dgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 0, 1.0, &[], 2, &[], 1, 0.5, &mut c, 2, &mut w), Ok(()));
+	assert_eq!(c, vec![1.0; 4]);
+	let mut cz = vec![C64::new(2.0, 2.0); 4];
+	let mut wz: Vec<C64> = vec![];
+	assert_eq!(zgemm(Trans::NoTrans, Trans::NoTrans, 0, 2, 3, C64::ONE, &[], 1, &[C64::ONE; 6], 3, C64::ZERO, &mut [], 1, &mut wz), Ok(()));
+	assert_eq!(zgemm(Trans::NoTrans, Trans::NoTrans, 2, 2, 0, C64::ONE, &[], 2, &[], 1, C64::new(0.5, 0.0), &mut cz, 2, &mut wz), Ok(()));
+	assert_eq!(cz, vec![C64::new(1.0, 1.0); 4]);
+	assert_eq!(dsymm(Side::Left, Uplo::Upper, 0, 3, 1.0, &[], 1, &[], 1, 0.0, &mut [], 1), Ok(()));
+	assert_eq!(dsymm(Side::Right, Uplo::Upper, 3, 0, 1.0, &[], 1, &[], 3, 0.0, &mut [], 3), Ok(()));
+	assert_eq!(dsyrk(Uplo::Upper, Trans::NoTrans, 0, 3, 1.0, &[], 1, 0.0, &mut [], 1, &mut w), Ok(()));
+	let mut c3 = vec![2.0; 9];
+	assert_eq!(dsyrk(Uplo::Upper, Trans::NoTrans, 3, 0, 1.0, &[], 3, 0.5, &mut c3, 3, &mut w), Ok(()));
+	assert_eq!(&c3[..3], &[1.0, 2.0, 2.0]); // upper triangle scaled, the rest untouched
+	assert_eq!(dsyr2k(Uplo::Lower, Trans::NoTrans, 0, 3, 1.0, &[], 1, &[], 1, 0.0, &mut [], 1, &mut w), Ok(()));
+	assert_eq!(zherk(Uplo::Upper, Trans::NoTrans, 0, 3, 1.0, &[], 1, 0.0, &mut [], 1, &mut wz), Ok(()));
+	assert_eq!(dtrmm(Side::Left, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, 0, 3, 1.0, &[], 1, &mut [], 1, &mut w), Ok(()));
+	assert_eq!(dtrmm(Side::Right, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, 3, 0, 1.0, &[], 1, &mut [], 3, &mut w), Ok(()));
+	assert_eq!(dtrsm(Side::Right, Uplo::Lower, Trans::NoTrans, Diag::NonUnit, 0, 3, 1.0, &[1.0; 9], 3, &mut [], 1, &mut w), Ok(()));
+	assert_eq!(dtrsm(Side::Left, Uplo::Upper, Trans::NoTrans, Diag::Unit, 3, 0, 1.0, &[1.0; 9], 3, &mut [], 3, &mut w), Ok(()));
+}

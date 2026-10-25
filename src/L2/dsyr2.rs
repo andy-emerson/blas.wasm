@@ -19,6 +19,9 @@ pub fn dsyr2(uplo: Uplo, n: usize, alpha: f64, x: &[f64], y: &[f64], a: &mut [f6
 	crate::error::vec(R, 4, x.len(), n)?;
 	crate::error::vec(R, 5, y.len(), n)?;
 	crate::error::mat(R, 6, 7, a.len(), n, n, lda)?;
+	if n == 0 {
+		return Ok(());
+	}
 	dsyr2_k(alpha, n, a, lda, uplo.is_upper(), &x[..n], &y[..n]);
 	Ok(())
 }
