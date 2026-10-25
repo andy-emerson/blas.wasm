@@ -11,6 +11,10 @@ edition = "2021"
 # LaTeX rendered at build time; no client-side script.
 [preprocessor.katex]
 after = ["links"]
+# The KaTeX stylesheet and fonts are vendored under src/katex/ (KaTeX
+# 0.16.4, MIT; LICENSE alongside) and linked from theme/head.hbs, so
+# the book renders offline and on any host; no CDN link is injected.
+no-css = true
 
 # Call-graph diagrams. The two JavaScript assets this preprocessor
 # needs are not committed: run `mdbook-mermaid install book` once

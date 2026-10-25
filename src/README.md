@@ -9,10 +9,15 @@ are NOT extra nodes — they produce bit-identical results. This graph
 covers the f64 and f32 layers, which have identical structure; the
 c64 layer's differences are listed below it.
 
-<!-- ANCHOR: graph -->
+Two diagrams, read left to right: what each Level 3 operation calls,
+then what each Level 2 operation calls. Level 1 operations call
+nothing. `symv` calls nothing either: its fused kernel does the work
+the axpy-plus-dot composition would otherwise do.
+
+<!-- ANCHOR: graph-l3 -->
 ```mermaid
-graph TD
-  subgraph L3
+graph LR
+  subgraph L3["Level 3"]
     gemm
     symm_left
     symm_right
@@ -23,31 +28,14 @@ graph TD
     trsm_left
     trsm_right
   end
-
-  subgraph L2
+  subgraph L21["Operations called"]
     gemv
-    gemv_t
-    ger
     symv
     trmv
     trsv
-    syr
-    syr2
-  end
-
-  subgraph L1
     axpy
-    dot
     scal
-    copy
-    swap
-    rot
-    nrm2
-    asum
-    iamax
-    rotg
   end
-
   gemm --> gemv
   symm_left --> symv
   symm_right --> axpy
@@ -61,7 +49,26 @@ graph TD
   trsm_left --> scal
   trsm_right --> axpy
   trsm_right --> scal
+```
+<!-- ANCHOR_END: graph-l3 -->
 
+<!-- ANCHOR: graph-l2 -->
+```mermaid
+graph LR
+  subgraph L2["Level 2"]
+    gemv
+    gemv_t
+    ger
+    symv
+    trmv
+    trsv
+    syr
+    syr2
+  end
+  subgraph L1["Operations called"]
+    axpy
+    dot
+  end
   gemv --> axpy
   gemv_t --> dot
   ger --> axpy
@@ -70,7 +77,12 @@ graph TD
   syr --> axpy
   syr2 --> axpy
 ```
-<!-- ANCHOR_END: graph -->
+<!-- ANCHOR_END: graph-l2 -->
+
+The Level 1 operations are leaves: `axpy`, `dot`, `scal`, `copy`,
+`swap`, `rot`, `nrm2`, `asum`, `iamax` and `rotg`. Nothing in the
+crate calls `rotg`, `copy`, `swap`, `rot`, `nrm2`, `asum` or `iamax`;
+consumers do.
 
 Notes:
 
@@ -80,10 +92,6 @@ Notes:
   internal shapes and dispatcher (inside the gemm files), and the
   small helpers (`check_mat`; `{d,s,z,c}scale_y` and the real-α
   `{zd,cs}scale_y`; `{d,s}sym_at` and `{z,c}her_at`).
-- `symv` has no outgoing arrows: its fused kernel does the work the
-  axpy+dot composition would otherwise do.
-- `rotg` and copy/swap/rot/nrm2/asum/iamax are leaves — nothing in
-  the crate calls them; consumers do.
 
 ## The complex layers (z- and c-routines) — same graph, renamed nodes
 

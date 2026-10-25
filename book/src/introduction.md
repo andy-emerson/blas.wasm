@@ -39,11 +39,11 @@ Three documents in the repository sit beside this book:
 
 ## Conventions used in this book
 
-Matrices are column-major: column \\(j\\) of an \\(m \times n\\) matrix
-\\(A\\) stored at column stride \\(\mathrm{cs} \ge m\\) occupies
-\\(A[j \cdot \mathrm{cs} \,..\, j \cdot \mathrm{cs} + m)\\). Routine
+Matrices are column-major: column $j$ of an $m \times n$ matrix
+$A$ stored at column stride $\mathrm{cs} \ge m$ occupies
+$A[j \cdot \mathrm{cs} \,..\, j \cdot \mathrm{cs} + m)$. Routine
 names follow netlib: a type prefix (`d` for f64, `s` for f32, `z` for
 double complex, `c` for single complex) and the reference BLAS name,
-so `daxpy` is the f64 axpy. \\(\mathrm{fl}(\cdot)\\) denotes rounding
+so `daxpy` is the f64 axpy. $\mathrm{fl}(\cdot)$ denotes rounding
 to the working precision under the round-to-nearest-even rule that
 IEEE 754 and WebAssembly both require.

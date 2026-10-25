@@ -1,8 +1,8 @@
 # axpy — scaled vector addition
 
-\\[ y \leftarrow \alpha x + y \\]
+$$ y \leftarrow \alpha x + y $$
 
-for vectors \\(x, y\\) of length \\(n\\) and a scalar \\(\alpha\\).
+for vectors $x, y$ of length $n$ and a scalar $\alpha$.
 Reference BLAS names the four type variants `daxpy`, `saxpy`,
 `zaxpy` and `caxpy`. This chapter follows `daxpy`; the other three
 are the same shape at their own lane width, with the complex pair's
@@ -10,9 +10,9 @@ product form documented in their source files.
 
 ## What each element is
 
-Element \\(i\\) of the result is, exactly,
+Element $i$ of the result is, exactly,
 
-\\[ y_i \leftarrow \mathrm{fl}\big(y_i + \mathrm{fl}(\alpha\, x_i)\big), \\]
+$$ y_i \leftarrow \mathrm{fl}\big(y_i + \mathrm{fl}(\alpha\, x_i)\big), $$
 
 one multiply rounding and one add rounding, in that order. There is
 no fused multiply-add: a fused form rounds once, and relaxed-SIMD
@@ -29,7 +29,7 @@ the result is independent of the lane width, of how many elements an
 iteration processes, and of whether the loop runs on a wasm engine
 with simd128 or on native hardware through the lane emulation in
 `src/lanes.rs`, which performs the lane operations elementwise. The
-tail loop, which handles the last \\(n \bmod 4\\) elements one at a
+tail loop, which handles the last $n \bmod 4$ elements one at a
 time, performs the same two roundings. Every target therefore
 produces the same bits, and the test for this routine checks exactly
 that: bit-for-bit equality against the scalar definition.
