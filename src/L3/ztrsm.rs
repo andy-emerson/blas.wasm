@@ -12,8 +12,9 @@
 //! disclosure as f64: UPPER-right stays bit-for-bit the plain sweep;
 //! LOWER-right's out-of-group adds precede the in-group adds —
 //! deterministic, documented, mirrored by the tests' replay. No
-//! singularity check. Transpose/conjugate forms: not built — no
-//! consumer yet.
+//! singularity check. The transposed and
+//! conjugate-transposed forms route between a workspace copy (left) and
+//! the no-copy accessor kernel (right) per the race (`bench/README.md`).
 
 use super::check_mat;
 use crate::{Diag, Error, Side, Trans, Uplo};

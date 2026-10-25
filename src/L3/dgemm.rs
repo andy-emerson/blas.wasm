@@ -7,8 +7,9 @@
 //! dgemv-per-column reference, which is kept as `dgemm_colaxpy`; col4
 //! stays as the raced mid-size reference. The pre-packed shapes beat
 //! faer's blocked dgemm at every measured size (1.4–1.8× small, ~1.25×
-//! large; campaign record step 6, STATUS.md). Transposed operands are copied into the
-//! workspace by `L3::transpose_into` and ride the same shapes.
+//! large; campaign record step 6, STATUS.md). Transposed operands are packed from a
+//! transposed read above the packed threshold (`dgemm_packed_op`) and
+//! copied into the workspace below it (`dgemm_copy_op`), per the race.
 
 use super::check_mat;
 use crate::{Error, Trans};

@@ -64,7 +64,11 @@ its lanes in a fixed order). It is verified by 126 determinism probes
 (30 f64 + 30 f32 + 33 c64 + 33 c32) — fixed-LCG inputs at odd sizes
 so every tail path runs, folded to one f64 — checked on every
 roofline run and on every reference-runner draw to date, **all green
-on every check**.
+on every check**. The guarantee is for finite results: a NaN's sign
+and payload bits are outside it (WebAssembly leaves NaN propagation
+to the engine, and the review of the transposed trmm/trsm forms saw an
+overflowed f32 solve differ from its definition only in the NaN sign
+bit).
 
 The expected patterns (a probe value changes ONLY when an
 accumulation order is changed deliberately, like the symv fold — any

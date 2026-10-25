@@ -18,11 +18,11 @@ per level. Counting convention, used everywhere: **23 routines** per
 real type (netlib names = files; flag variants folded, so gemv covers
 N/T and symm/trmm/trsm cover both sides) which split into **27
 distinct operations** (the call-graph nodes). The complex layers
-count differently because reference BLAS itself splits there: **26
-routines / 31 operations** each for c64 and c32 (dot → dotu/dotc,
-ger → geru/gerc, scal gains a real-α form, gemv adds the
-conjugate-transpose form, and the symmetric family becomes
-Hermitian). Companion maps: `src/README.md` (who calls whom),
+count differently because reference BLAS itself splits there: **30
+routines / 36 operations** each for c64 and c32 (dot → dotu/dotc,
+ger → geru/gerc, scal gains a real-α form, rot gains a complex-sine
+form, gemv adds the conjugate-transpose form, and the symmetric
+family exists twice, Hermitian and complex-symmetric). Companion maps: `src/README.md` (who calls whom),
 `bench/README.md` (the measured benchmarks), `tests/README.md` (the
 bit-identical test results).
 
@@ -45,7 +45,7 @@ review (`AGENTS.md`) judges it against that reader.
 ## What is built
 
 - **Four type layers**, f64 / f32 / c64 / c32, every routine of the
-  counting convention above: 116 routine exports in the module. Unit
+  counting convention above: 126 routine exports in the module. Unit
   stride: callers pass contiguous column slices with a column stride
   per matrix.
 - **SIMD on every path**, tuned: four streaming-loop shapes plus one
@@ -71,13 +71,14 @@ review (`AGENTS.md`) judges it against that reader.
   four math entry points the layer needs are vendored in
   `src/math.rs` and cross-checked bit for bit against libm (a
   dev-dependency only) on every CI run.
-- **Bit-identical native ↔ wasm**, by construction (`src/lanes.rs`
+- **Bit-identical native ↔ wasm** for finite results (NaN sign and
+  payload bits are outside the claim), by construction (`src/lanes.rs`
   emulates the SIMD lane structure elementwise off-wasm) and verified
   by 126 determinism probes on every gate run (`tests/README.md`),
   every flag form included.
 - **The module.** `abi/` wraps every routine in a flat C ABI (the
   interim argument order, to be replaced by CBLAS names and order in
-  todo C) and compiles to the standalone `blas.wasm` (~220 KB, 116 routines plus
+  todo C) and compiles to the standalone `blas.wasm` (~290 KB, 126 routines plus
   `wasm_alloc`/`wasm_free`, raw wasm, zero imports); conventions in
   `abi/src/lib.rs`, smoke test `abi/check.mjs`, attached to the
   GitHub release for each tag by the release workflow. Rust consumers
@@ -92,11 +93,8 @@ review (`AGENTS.md`) judges it against that reader.
 ## What is not built
 
 Relative to a complete BLAS (`DESIGN.md`, constraint 6), all planned
-and sequenced in `STATUS.md`: vector strides (`incx`/`incy`); the complex
-symmetric (non-Hermitian) symm/syrk/syr2k; the complex-s rotation
-`zrot`/`crot`; the `alpha == 0` / `beta == 1` quick returns and the
-NaN rules of reference BLAS (the zero-dimension quick returns are in
-place); the module's exports use an invented argument order rather
+and sequenced in `STATUS.md`: vector strides (`incx`/`incy`); the
+module's exports use an invented argument order rather
 than CBLAS's and trap on an argument error instead of reporting it.
 Fused multiply-add variants
 measured faster for some routines and are deliberately not shipped:

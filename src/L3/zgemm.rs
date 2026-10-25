@@ -10,8 +10,9 @@
 //! zgemv-per-column loop stays as `zgemm_colaxpy`, the raced-and-
 //! bit-checked reference; all shapes are bit-for-bit identical,
 //! per-element sequence βC then ascending k. Transposed or conjugated
-//! operands are copied (conjugation an exact sign flip) into the
-//! workspace by `L3::transpose_into` and ride the same shapes.
+//! operands (conjugation an exact sign flip) are packed from a
+//! transposed read above the packed threshold (`zgemm_packed_op`) and
+//! copied into the workspace below it (`zgemm_copy_op`), per the race.
 
 use super::check_mat;
 use crate::{Error, Trans};

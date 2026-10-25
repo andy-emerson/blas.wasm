@@ -7,8 +7,9 @@
 //! noise to −2%) — all bit-identical to the plain sgemv-per-column
 //! reference, which is kept as `sgemm_colaxpy`; col4 stays as the
 //! raced reference. f32 measurements: campaign record steps 10 and 14
-//! (STATUS.md). Transposed operands are copied into the
-//! workspace by `L3::transpose_into` and ride the same shapes.
+//! (STATUS.md). Transposed operands are packed from a
+//! transposed read above the packed threshold (`sgemm_packed_op`) and
+//! copied into the workspace below it (`sgemm_copy_op`), per the race.
 
 use super::check_mat;
 use crate::{Error, Trans};

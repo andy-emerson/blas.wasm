@@ -377,7 +377,8 @@ diagonals end exactly real.
   stride appears in the Rust signatures is decision D7.
 - **Workspace.** Scratch is a caller-provided slice, `work: &mut
   [T]`, on every routine that needs it, beside a per-routine size
-  query (`dgemm_work(m, k, n) -> usize`). Below the packed threshold
+  query (`dgemm_work(transa, transb, m, n, k) -> usize`). Below the
+  packed threshold
   the query returns zero, so small calls pass an empty slice; a slice
   shorter than the query is an argument error, never a silent slower
   path. The crate never allocates and has no `alloc` (constraint 7,
@@ -587,26 +588,21 @@ trigger where one is worth keeping. Open decisions are in
   roadmap that mixes design, todo and chronology; GitHub Issues as
   living status (allowed by the agreement, but it moves open work off
   the clone).
-- **D3 — The transposed forms are chosen by a race, not by
-  argument.** Candidates are built, each bit-identical to the
-  explicit-transpose definition, and raced on the reference runners
-  with two draws; the winner is routed and the losers stay in the
-  record with their numbers, as the existing kernels' losers do.
-  Verdicts (`bench/README.md`): for gemm above the packed threshold
-  the transposed pack beat the whole-operand copy on every row
-  (1.0–1.3× square, 1.5–2.0× where A is transposed and n is small);
-  for trmm/trsm the no-copy kernels won the right side in every type
-  (1.02–1.6×) and the left side in f64 and f32 (f64 1.3–2.8× from
-  256², f32 1.0–2.4× with its largest ascending-walk squares at
-  0.85–1.0), while the scalar complex left kernel lost to the copy
-  at every size (0.26–0.76) and the copy is routed there. Not built:
-  trmm/trsm rebuilt on the packing layer — the race's margins were
-  already settled by the copy's cost and the kernels' load ratios,
-  and a packed trmm/trsm would change the no-transpose shapes too; it
-  is a lever (`STATUS.md`). Rejected: ruling on a dev-container
+- **D3 — The transposed triangular forms are chosen by a race, not
+  by argument.** All candidate implementations are built and raced on
+  the reference runners with two draws: the transposed copy into
+  caller workspace feeding the existing kernels, new row-streaming
+  kernels, and trmm/trsm rebuilt on the packing layer so the
+  transposed forms ride the packer as gemm's do. The winner is
+  routed; the losers stay in the record with their numbers, as the
+  existing kernels' losers do. Rejected: ruling on a dev-container
   measurement of one candidate against an inference about the
   others. Every routine that needs scratch takes the workspace slice
-  described under "Completing the surface".
+  described under "Completing the surface". Applied so far to two of
+  the three candidates, and to gemm as well (`bench/README.md` holds
+  the verdicts, the wrappers route them); whether the packed
+  trmm/trsm candidate is still owed before D3 is closed is an open
+  question in `STATUS.md`.
 - **D4 — The Rust crate's error convention.** `Result<(), Error>` on
   every routine, the error carrying the routine and the argument
   position, with every checkable precondition reported and no panic

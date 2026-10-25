@@ -9,8 +9,9 @@
 //! Same reorder disclosure as f64: LOWER-right keeps the plain
 //! sweep's per-element order bit-for-bit; UPPER-right's in-group adds
 //! precede the out-of-group adds — deterministic, documented, and
-//! mirrored by the tests' scalar replay. Transpose/conjugate forms:
-//! not built — no consumer yet.
+//! mirrored by the tests' scalar replay. The transposed and
+//! conjugate-transposed forms route between a workspace copy (left) and
+//! the no-copy accessor kernel (right) per the race (`bench/README.md`).
 
 use super::check_mat;
 use crate::{Diag, Error, Side, Trans, Uplo};

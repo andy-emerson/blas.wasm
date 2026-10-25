@@ -8,9 +8,10 @@
 //! noise, so col4 keeps them). The plain cgemv-per-column loop stays
 //! as `cgemm_colaxpy`, the raced-and-bit-checked reference; all
 //! shapes are bit-for-bit identical, per-element sequence βC then
-//! ascending k. Transposed or conjugated operands are copied
-//! (conjugation an exact sign flip) into the workspace by
-//! `L3::transpose_into` and ride the same shapes.
+//! ascending k. Transposed or conjugated operands
+//! (conjugation an exact sign flip) are packed from a transposed read
+//! above the packed threshold (`cgemm_packed_op`) and copied into the
+//! workspace below it (`cgemm_copy_op`), per the race.
 
 use super::check_mat;
 use crate::{Error, Trans};

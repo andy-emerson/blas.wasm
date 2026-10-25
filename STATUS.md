@@ -21,7 +21,7 @@ Last updated 2026-10-25.
 | 12 determinism probe suites, 126 probes (every flag form included) | native ↔ wasm bit-identical | local, 2026-10-25, after S2 |
 | `bench.yml` tri-race and gemm-t-race (two draws each) | every fold identical; verdicts in `bench/README.md` | runs 40208127781, 40208130046, 40208724791, 40208727304 |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
-| gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
+| gate workflow on this branch, dispatched by hand | success, every step: tests, clippy host and wasm, 12 determinism probe suites (126 probes), C-ABI build and smoke test, binary audit, the book with warnings denied | run 21, head `40782a0`, github.com/andy-emerson/blas.wasm/actions/runs/40210413099 |
 | the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
 | binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 119 exports, 265 functions, 100732 instructions decoded, 0 relaxed-SIMD | local, 2026-10-25, head `641cecc` |
 | bench workflow (rooflines, packed race) | on demand; latest scoreboard in `bench/README.md` is from the July 2026 campaign draws | GitHub Actions, `workflow_dispatch` |
@@ -35,6 +35,18 @@ import object. *Faster than OpenBLAS and BLIS in the browser* is
 plausible and unmeasured (todo B).
 
 ## Open decisions
+
+- **D3, closing question — is the packed trmm/trsm candidate still
+  owed?** D3 named three candidates for the transposed triangular
+  forms; two were built and raced (the workspace copy and the no-copy
+  kernels), the wrappers route their winners, and the third, trmm/trsm
+  rebuilt on the packing layer, was not built: it would change the
+  no-transpose shapes as well, and the race margins were set by the
+  copy's cost and the kernels' load ratios. Options: close D3 on the
+  two-candidate verdicts (the routing stands; the packed candidate
+  becomes the lever recorded below), or require the third candidate
+  before closing (the routing is provisional until then). Gates: the
+  M2 merge recommendation.
 
 Only the Human closes these. D3, D4 and D8 are closed and recorded in
 `DESIGN.md`; D8 turned out to be settled by constraint 7 rather than
@@ -142,10 +154,14 @@ warnings denied.
 - [ ] **S3 — Vector strides on every Level 1 and 2 vector argument.**
   Evidence: the strided call equals the unit-stride call on a gathered
   copy, bitwise; negative strides versus reference. Gated by D7. (5–8)
-- [ ] **S5 — Reference semantics**: the `alpha == 0` / `beta == 1`
-  quick returns (the zero-dimension returns are in place), NaN
-  propagation, the complex symmetric symm/syrk/syr2k, `zrot`/`crot`.
-  Evidence: per-rule tests against the reference definitions. (4–6)
+- [x] **S5 — Reference semantics.** Done on this branch: the
+  `alpha == 0` / `beta == 1` / `k == 0` rules in every wrapper (what the
+  reference does not read is NaN-poisoned in the tests), the complex
+  symmetric symm/syrk/syr2k and `zrot`/`crot` in both complex types,
+  iamax's NaN rule. One known deviation: `nrm2` of a vector holding
+  both an infinity and a NaN returns the infinity where the reference
+  returns NaN (its scaled accumulation never compares the NaN); every
+  other NaN input propagates as in the reference.
 - [ ] **S6 — Argument errors reported with the xerbla index; the
   module error slot.** Evidence: every check path returns, never
   traps. (1–2)
