@@ -16,7 +16,7 @@
 use crate::lanes::F64x2;
 
 /// One sequential pass over a source column updating four destination
-/// columns: cᵤ[i] += a[i]·tᵤ.
+/// columns: `cᵤ[i]` += `a[i]`·tᵤ.
 ///
 /// # Safety
 /// All five column pointers must be valid for `len` f64s; the
@@ -59,7 +59,7 @@ pub(crate) unsafe fn daxpy4(
 
 /// Fused symv column pass: one load of `a` per
 /// element serves both halves of the symmetric update —
-/// y[i] += t·a[i] (elementwise) and acc += a[i]·x[i] (reduction,
+/// `y[i]` += t·`a[i]` (elementwise) and acc += `a[i]`·`x[i]` (reduction,
 /// two lane-pair accumulators) — where the plain shape streamed the
 /// column twice (`axpy` + `dot`). Returns the dot part. The reduction
 /// order differs from `dot`'s 4-accumulator fold, which is fine: symv
@@ -102,8 +102,8 @@ pub(crate) unsafe fn daxpy_dot(
 }
 
 /// Four fused symv column passes sharing one stream over x and y:
-/// y[i] += Σᵤ tᵤ·aᵤ[i] (accumulated in u order into the loaded y
-/// value) while each accᵤ += aᵤ[i]·x[i]. One y load/store and one x
+/// `y[i]` += Σᵤ tᵤ·`aᵤ[i]` (accumulated in u order into the loaded y
+/// value) while each accᵤ += `aᵤ[i]`·`x[i]`. One y load/store and one x
 /// load per pair of elements serve four columns. Returns the four dot
 /// parts.
 ///
@@ -158,7 +158,7 @@ pub(crate) unsafe fn daxpy_dot4(
 }
 
 /// One pass over the destination with four source columns fanned in:
-/// c[i] ← ((((c[i] + a0[i]·t0) + a1[i]·t1) + a2[i]·t2) + a3[i]·t3) —
+/// `c[i]` ← ((((`c[i]` + `a0[i]`·t0) + `a1[i]`·t1) + `a2[i]`·t2) + `a3[i]`·t3) —
 /// the same rounding sequence as four consecutive plain `axpy` passes
 /// in that order, with the destination loaded and stored once.
 ///
@@ -211,7 +211,7 @@ pub(crate) unsafe fn daxpy4in(
 use crate::c64::C64;
 
 /// One sequential pass over a source column updating four destination
-/// columns: cᵤ[i] += a[i]·tᵤ (complex).
+/// columns: `cᵤ[i]` += `a[i]`·tᵤ (complex).
 ///
 /// # Safety
 /// All five column pointers must be valid for `len` C64s; the
@@ -253,7 +253,7 @@ pub(crate) unsafe fn zaxpy4(
 }
 
 /// One pass over the destination with four source columns fanned in:
-/// c[i] ← ((((c[i] + a0[i]·t0) + a1[i]·t1) + a2[i]·t2) + a3[i]·t3)
+/// `c[i]` ← ((((`c[i]` + `a0[i]`·t0) + `a1[i]`·t1) + `a2[i]`·t2) + `a3[i]`·t3)
 /// (complex; each product fully formed before its add) — the same
 /// rounding sequence as four consecutive plain `zaxpy` passes in that
 /// order.
@@ -297,8 +297,8 @@ pub(crate) unsafe fn zaxpy4in(
 }
 
 /// Fused zhemv column pass: one load of `a` per element serves both
-/// halves of the Hermitian update — y[i] += t·a[i] (elementwise) and
-/// acc += conj(a[i])·x[i] (reduction, two register accumulators).
+/// halves of the Hermitian update — `y[i]` += t·`a[i]` (elementwise) and
+/// acc += conj(`a[i]`)·`x[i]` (reduction, two register accumulators).
 /// The conjugated product is dup0(a)·x + neg1(dup1(a)·swap(x)):
 /// lane0 = a.re·x.re + a.im·x.im, lane1 = a.re·x.im − a.im·x.re —
 /// bit-exactly `a.conj() * x` in the canonical order. Returns the
@@ -356,7 +356,7 @@ pub(crate) unsafe fn zaxpy_dotc(
 use crate::lanes::F32x4;
 
 /// One sequential pass over a source column updating four destination
-/// columns: cᵤ[i] += a[i]·tᵤ.
+/// columns: `cᵤ[i]` += `a[i]`·tᵤ.
 ///
 /// # Safety
 /// All five column pointers must be valid for `len` f32s; the
@@ -399,7 +399,7 @@ pub(crate) unsafe fn saxpy4(
 
 /// Fused symv column pass: one load of `a` per
 /// element serves both halves of the symmetric update —
-/// y[i] += t·a[i] (elementwise) and acc += a[i]·x[i] (reduction,
+/// `y[i]` += t·`a[i]` (elementwise) and acc += `a[i]`·`x[i]` (reduction,
 /// two lane-pair accumulators) — where the plain shape streamed the
 /// column twice (`axpy` + `dot`). Returns the dot part. The reduction
 /// order differs from `dot`'s 4-accumulator fold, which is fine: symv
@@ -442,8 +442,8 @@ pub(crate) unsafe fn saxpy_dot(
 }
 
 /// Four fused symv column passes sharing one stream over x and y:
-/// y[i] += Σᵤ tᵤ·aᵤ[i] (accumulated in u order into the loaded y
-/// value) while each accᵤ += aᵤ[i]·x[i]. One y load/store and one x
+/// `y[i]` += Σᵤ tᵤ·`aᵤ[i]` (accumulated in u order into the loaded y
+/// value) while each accᵤ += `aᵤ[i]`·`x[i]`. One y load/store and one x
 /// load per pair of elements serve four columns. Returns the four dot
 /// parts.
 ///
@@ -498,7 +498,7 @@ pub(crate) unsafe fn saxpy_dot4(
 }
 
 /// One pass over the destination with four source columns fanned in:
-/// c[i] ← ((((c[i] + a0[i]·t0) + a1[i]·t1) + a2[i]·t2) + a3[i]·t3) —
+/// `c[i]` ← ((((`c[i]` + `a0[i]`·t0) + `a1[i]`·t1) + `a2[i]`·t2) + `a3[i]`·t3) —
 /// the same rounding sequence as four consecutive plain `axpy` passes
 /// in that order, with the destination loaded and stored once.
 ///
@@ -552,7 +552,7 @@ pub(crate) unsafe fn saxpy4in(
 use crate::c32::C32;
 
 /// One sequential pass over a source column updating four destination
-/// columns: cᵤ[i] += a[i]·tᵤ (complex f32).
+/// columns: `cᵤ[i]` += `a[i]`·tᵤ (complex f32).
 ///
 /// # Safety
 /// All five column pointers must be valid for `len` C32s; the
@@ -603,7 +603,7 @@ pub(crate) unsafe fn caxpy4(
 }
 
 /// One pass over the destination with four source columns fanned in:
-/// c[i] ← ((((c[i] + a0[i]·t0) + a1[i]·t1) + a2[i]·t2) + a3[i]·t3)
+/// `c[i]` ← ((((`c[i]` + `a0[i]`·t0) + `a1[i]`·t1) + `a2[i]`·t2) + `a3[i]`·t3)
 /// (complex f32; each product fully formed before its add) — the same
 /// rounding sequence as four consecutive plain `caxpy` passes in that
 /// order.
@@ -653,7 +653,7 @@ pub(crate) unsafe fn caxpy4in(
 	}
 }
 
-/// Fused chemv column pass: y[i] += t·a[i] while acc += conj(a[i])·x[i]
+/// Fused chemv column pass: `y[i]` += t·`a[i]` while acc += conj(`a[i]`)·`x[i]`
 /// — the c32 twin of `zaxpy_dotc` (conjugated product =
 /// dup_even(a)·x + neg_odd(dup_odd(a)·swap_pairs(x)), bit-exactly
 /// `a.conj() * x` per complex). Returns the accumulated dot part;
@@ -707,9 +707,9 @@ pub(crate) unsafe fn caxpy_dotc(
 }
 
 /// Four fused zhemv column passes sharing one stream over x and y
-/// (raced and shipped): y[i] += Σᵤ tᵤ·aᵤ[i]
+/// (raced and shipped): `y[i]` += Σᵤ tᵤ·`aᵤ[i]`
 /// (accumulated in u order into the loaded y value) while each
-/// accᵤ += conj(aᵤ[i])·x[i]. One y load/store and one x load per
+/// accᵤ += conj(`aᵤ[i]`)·`x[i]`. One y load/store and one x load per
 /// complex serve four columns — the daxpy_dot4 shape at complex
 /// lane geometry.
 ///

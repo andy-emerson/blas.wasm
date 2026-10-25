@@ -223,7 +223,7 @@ pub fn cgemm_packed(
 /// (`c + (av·vre + swap_pairs(av)·vim)`).
 /// # Safety
 /// `ap` valid for `kc*8` f32, `bp` for `kc*32` f32; `cp` points at
-/// C[i, j] (stride `ccs` complexes) with 4 rows and 4 columns in
+/// `C[i, j]` (stride `ccs` complexes) with 4 rows and 4 columns in
 /// bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 unsafe fn ctile_4x4_packed(

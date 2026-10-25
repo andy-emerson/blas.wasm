@@ -89,7 +89,7 @@ pub fn zgemm(
 /// so the k-walk is sequential (the strided-A weakness that killed the
 /// idea of an unpacked complex tile never arises). α is folded into
 /// the B panel at pack time (same single α·b rounding as col4's `t`),
-/// stored pre-expanded as [re,re] / [−im,im] lane pairs so the kernel
+/// stored pre-expanded as `[re,re]` / [−im,im] lane pairs so the kernel
 /// loads its multipliers instead of rebuilding them per step.
 ///
 /// Per-element sequence: βC first (shared `zscale_y`, applied to whole
@@ -206,7 +206,7 @@ pub fn zgemm_packed(
 /// identical to `zaxpy4` (`c + (av·vre + swap(av)·vim)`).
 /// # Safety
 /// `ap` valid for `kc*4` f64, `bp` for `kc*16` f64; `cp` points at
-/// C[i, j] (stride `ccs` complexes) with 2 rows and 4 columns in
+/// `C[i, j]` (stride `ccs` complexes) with 2 rows and 4 columns in
 /// bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 unsafe fn ztile_2x4_packed(

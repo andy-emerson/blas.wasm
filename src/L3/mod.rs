@@ -64,7 +64,7 @@ pub use ctrsm::{ctrsm_left, ctrsm_right};
 
 pub(crate) use super::L2::check_mat;
 
-/// Symmetric-triangle element lookup: A[i,j] with only one triangle
+/// Symmetric-triangle element lookup: `A[i,j]` with only one triangle
 /// stored (f64).
 #[inline]
 pub(crate) fn dsym_at(a: &[f64], cs: usize, upper: bool, i: usize, j: usize) -> f64 {
@@ -87,7 +87,7 @@ pub(crate) fn ssym_at(a: &[f32], cs: usize, upper: bool, i: usize, j: usize) -> 
 	}
 }
 
-/// Hermitian-triangle element lookup: A[i,j] with only one triangle
+/// Hermitian-triangle element lookup: `A[i,j]` with only one triangle
 /// stored — conjugated on the reflected side, and REAL on the
 /// diagonal (stored diagonal imaginary parts are ignored, per the
 /// LAPACK Hermitian storage convention).

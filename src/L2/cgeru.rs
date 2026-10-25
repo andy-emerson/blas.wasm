@@ -1,7 +1,7 @@
 //! `cgeru` — unconjugated rank-1 update: A ← A + αxyᵀ.
 //!
 //! Implementation: column-caxpy — one Level 1 `caxpy` stream per
-//! column (column j gets α·y[j] times x), exactly the `dger` shape.
+//! column (column j gets α·`y[j]` times x), exactly the `dger` shape.
 
 use super::check_mat;
 use crate::c32::C32;

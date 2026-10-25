@@ -2,7 +2,7 @@
 //! one triangle stored.
 //!
 //! Implementation: column-zaxpy — two Level 1 `zaxpy` streams per
-//! stored strict segment (scalars α·conj(y[j]) and conj(α·x[j]); the
+//! stored strict segment (scalars α·conj(`y[j]`) and conj(α·`x[j]`); the
 //! conjugations land on the scalars). Diagonal update is real and
 //! stored with imaginary part exactly 0 — reference `zher2`'s DBLE()
 //! convention, the layer's Hermitian invariant.

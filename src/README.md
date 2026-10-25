@@ -1,88 +1,22 @@
 # src/ — routine naming and the call graph
 
-Which operations call which operations. **One node = one
-mathematically distinct operation** — 27 of them: the 23 netlib-named
-routines (= the files per type) with the flag variants split out,
-because a transposed product or a side swap is a different result
-(gemv_t; symm/trmm/trsm left and right). gemm's internal loop shapes
-are NOT extra nodes — they produce bit-identical results. This graph
-covers the f64 and f32 layers, which have identical structure; the
-c64 layer's differences are listed below it.
+Which operations call which: **one node = one mathematically distinct
+operation**, 27 of them for a real type: the 23 netlib-named routines
+(= the files per type) with the flag variants split out, because a
+transposed product or a side swap is a different result (gemv_t;
+symm/trmm/trsm left and right). gemm's internal loop shapes are not
+extra nodes: they produce bit-identical results. The f64 and f32
+layers have identical structure; the complex layers' differences are
+listed below.
 
-Two diagrams, read left to right: what each Level 3 operation calls,
-then what each Level 2 operation calls. Level 1 operations call
-nothing. `symv` calls nothing either: its fused kernel does the work
-the axpy-plus-dot composition would otherwise do.
-
-<!-- ANCHOR: graph-l3 -->
-```mermaid
-graph LR
-  subgraph L3["Level 3"]
-    gemm
-    symm_left
-    symm_right
-    syrk
-    syr2k
-    trmm_left
-    trmm_right
-    trsm_left
-    trsm_right
-  end
-  subgraph L21["Operations called"]
-    gemv
-    symv
-    trmv
-    trsv
-    axpy
-    scal
-  end
-  gemm --> gemv
-  symm_left --> symv
-  symm_right --> axpy
-  syrk --> axpy
-  syr2k --> axpy
-  trmm_left --> trmv
-  trmm_left --> scal
-  trmm_right --> axpy
-  trmm_right --> scal
-  trsm_left --> trsv
-  trsm_left --> scal
-  trsm_right --> axpy
-  trsm_right --> scal
-```
-<!-- ANCHOR_END: graph-l3 -->
-
-<!-- ANCHOR: graph-l2 -->
-```mermaid
-graph LR
-  subgraph L2["Level 2"]
-    gemv
-    gemv_t
-    ger
-    symv
-    trmv
-    trsv
-    syr
-    syr2
-  end
-  subgraph L1["Operations called"]
-    axpy
-    dot
-  end
-  gemv --> axpy
-  gemv_t --> dot
-  ger --> axpy
-  trmv --> axpy
-  trsv --> axpy
-  syr --> axpy
-  syr2 --> axpy
-```
-<!-- ANCHOR_END: graph-l2 -->
-
-The Level 1 operations are leaves: `axpy`, `dot`, `scal`, `copy`,
-`swap`, `rot`, `nrm2`, `asum`, `iamax` and `rotg`. Nothing in the
-crate calls `rotg`, `copy`, `swap`, `rot`, `nrm2`, `asum` or `iamax`;
-consumers do.
+The diagrams live in the crate documentation, chapter
+`blas_wasm::book::call_graph` (`cargo doc --open`), beside the code
+they describe. In short: the Level 3 operations call `gemv`, `symv`,
+`trmv`, `trsv`, `axpy` and `scal`; the Level 2 operations call `axpy`,
+except `gemv_t`, which calls `dot`, and `symv`, which calls nothing
+(its fused kernel does the work the axpy-plus-dot composition would
+otherwise do); the Level 1 operations are leaves, and `rotg`, `copy`,
+`swap`, `rot`, `nrm2`, `asum` and `iamax` are called by consumers only.
 
 Notes:
 

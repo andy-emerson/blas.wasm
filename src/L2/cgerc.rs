@@ -1,7 +1,7 @@
 //! `cgerc` — conjugated rank-1 update: A ← A + αx·yᴴ.
 //!
 //! Implementation: column-caxpy — identical to `cgeru` except column
-//! j's scalar is α·conj(y[j]) (the conjugation lands on the scalar,
+//! j's scalar is α·conj(`y[j]`) (the conjugation lands on the scalar,
 //! never on a stream).
 
 use super::check_mat;

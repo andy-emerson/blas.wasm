@@ -125,8 +125,8 @@ pub fn dtrsm_right(
 ) {
 	check_mat(a.len(), n, n, acs);
 	check_mat(b.len(), m, n, bcs);
-	// X·A = αB solved column-wise: X[:,j] = (αB[:,j] − Σ X[:,k]·a[k,j])
-	// / a[j,j], where the sum runs over already-solved columns k
+	// X·A = αB solved column-wise: X[:,j] = (αB[:,j] − Σ X[:,k]·a`[k,j]`)
+	// / a`[j,j]`, where the sum runs over already-solved columns k
 	// (k < j for upper, k > j for lower). Groups of four apply the
 	// solved columns outside the group first (one shared stream each),
 	// then finish the in-group elimination in the original order.

@@ -1,13 +1,13 @@
 //! `chemv` — Hermitian matrix × vector: y ← αAx + βy, A Hermitian
-//! with only one triangle stored (A[j,i] = conj(A[i,j]); diagonal
+//! with only one triangle stored (`A[j,i]` = conj(`A[i,j]`); diagonal
 //! imaginary parts are ignored, per the LAPACK storage convention).
 //!
 //! Implementation: fused column pass — one stream over the stored
 //! strict segment serves both triangles' contributions
-//! (`kernels::caxpy_dotc`: y[i] += t·a[i] elementwise while
-//! acc += conj(a[i])·x[i] reduces), the complex twin of the `dsymv`
+//! (`kernels::caxpy_dotc`: `y[i]` += t·`a[i]` elementwise while
+//! acc += conj(`a[i]`)·`x[i]` reduces), the complex twin of the `dsymv`
 //! fused shape at single-column width. The diagonal contributes
-//! t·re(a[j,j]) (real by convention). Accumulation order is the fused
+//! t·re(`a[j,j]`) (real by convention). Accumulation order is the fused
 //! pass's own — chemv is bounds-tested, not bit-locked; cross-target
 //! determinism holds through the lane emulation as everywhere else.
 //! The 4-column fused grouping that pushed `dsymv` to 2× is a

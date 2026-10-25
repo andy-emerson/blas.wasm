@@ -39,6 +39,7 @@ review (`AGENTS.md`) judges it against that reader.
 | `src/README.md` | routine naming and the call graph | maintainer |
 | `tests/README.md` | what each routine is tested to, and the cross-target bit patterns | maintainer |
 | `bench/README.md` | the measurement method and the current scoreboard | maintainer |
+| the crate documentation (`cargo doc --open`; GitHub Pages after merge) | the book: each routine's chapter beside its code, the mathematics and the rounding-order arguments, examples compiled by `cargo test` | the person using or studying the library |
 | `AGENTS.md` | the working agreement between the Human and the Agent (unedited upstream release; `CLAUDE.md` points at it) | both |
 
 ## What is built
@@ -97,8 +98,9 @@ slice with its own column stride (`cs ≥ rows`; column `j` of an
 `rows × cols` matrix is `a[j*cs .. j*cs + rows]`), and every vector is
 a contiguous slice. Flag variants are separate functions
 (`dgemv`/`dgemv_t`, `dtrsm_left`/`dtrsm_right`); triangle and
-unit-diagonal selection are `bool`s. The same example, compiled and
-run on every build of the book, is the axpy chapter's.
+unit-diagonal selection are `bool`s. The `daxpy` chapter in the crate
+documentation carries the same example, compiled and run by
+`cargo test`.
 
 ```rust
 use blas_wasm::{L1, L3};

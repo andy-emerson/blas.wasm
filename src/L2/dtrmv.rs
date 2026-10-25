@@ -5,7 +5,7 @@
 //! (`kernels::daxpy4in`, sources in reference `dtrmv`'s column order:
 //! ascending for upper, descending for lower), so x's
 //! read-modify-write traffic drops 4×; the ≤3-row ragged band and the
-//! diagonal writes run scalar in the original step order. Each x[j]
+//! diagonal writes run scalar in the original step order. Each `x[j]`
 //! is still consumed before its own slot is overwritten (the four
 //! group t-values are provably untouched until their step), and the
 //! per-element rounding sequence is unchanged — bit-for-bit the plain

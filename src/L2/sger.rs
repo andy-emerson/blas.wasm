@@ -1,7 +1,7 @@
 //! `sger` — outer-product (rank-1) update: A ← A + αxyᵀ.
 //!
 //! Implementation: column-saxpy — one Level 1 `saxpy` stream per column
-//! (column j gets α·y[j] times x).
+//! (column j gets α·`y[j]` times x).
 
 use super::check_mat;
 use crate::L1::saxpy;

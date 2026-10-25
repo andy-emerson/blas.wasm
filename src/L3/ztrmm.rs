@@ -115,7 +115,7 @@ pub fn ztrmm_right(
 ) {
 	check_mat(a.len(), n, n, acs);
 	check_mat(b.len(), m, n, bcs);
-	// result column j = α·Σ_{k in triangle} a[k,j]·B_orig[:,k]; column
+	// result column j = α·Σ_{k in triangle} a`[k,j]`·B_orig[:,k]; column
 	// order (descending for upper, ascending for lower) touches each
 	// original column before anything overwrites it. Columns j and k
 	// never alias (k ≠ j always), so the raw-pointer views are

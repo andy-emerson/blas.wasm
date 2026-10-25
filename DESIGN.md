@@ -467,44 +467,39 @@ unchanged.
 
 ### The book (todo group D)
 
-An mdBook site: a folder of Markdown chapters plus a `SUMMARY.md`,
-built by one command into a static site with sidebar, search, themes
-and navigation; deployed to GitHub Pages by a workflow on every push
-to `main`; previewed locally with `mdbook serve`.
+The crate documentation is the book. Rust's own literate facility,
+rustdoc, renders every module's prose as a page with the source one
+click away, and compiles and runs every Rust example in the prose
+under `cargo test`, so examples cannot rot. Each routine's module
+page is its chapter: the operation in notation, the rounding-order
+argument that makes the bit-identity claim true for that family, the
+lane geometry, the dispatch thresholds and the measured results.
+Chapters that belong to no single routine are doc-only modules under
+`blas_wasm::book`. Mathematics and diagrams come from one header file
+(`rustdoc/header.html`, KaTeX and Mermaid from a CDN, pinned),
+injected with `--html-in-header`; the gate builds the documentation
+with warnings denied, so a broken link or bad markup fails; the Pages
+workflow runs `cargo doc` and publishes `target/doc`. Nothing else is
+added to the repository for the book.
 
-- One chapter per routine family per level, giving the mathematics in
-  LaTeX (`mdbook-katex`, rendered at build time, no client script),
-  the rounding-order argument that makes the bit-identity claim true
-  for that family, the lane geometry, the dispatch thresholds and the
-  measured results. A chapter each on the testing contract, the
-  measurement method, the deployment shape, and a page for C
-  programmers.
-- Source regions are marked `// ANCHOR: name` / `// ANCHOR_END: name`
-  and pulled into chapters by mdBook's include directive. The code in
-  the book is the code that ships. mdBook renders a missing anchor as
-  an empty include without complaint, so `book/check-includes.mjs`
-  verifies every include's file and anchor pair and the gate fails on
-  a removed or renamed anchor.
-- `mdbook test` compiles and runs the Rust code blocks written
-  directly in chapters, so standalone examples cannot rot. The gate
-  builds and tests the book; the Pages workflow deploys it.
-  `mdbook-mermaid` renders the call-graph diagrams.
-- The content of the four READMEs migrates into chapters and the
-  READMEs shrink to a paragraph and a link. The API reference stays
-  in rustdoc on docs.rs, with the KaTeX header so module docs render
-  the same mathematics; book and reference link to each other.
+- One chapter per routine, written in the routine's file. `daxpy`
+  sets the standard; the rest are brought to it family by family as
+  work on them lands.
+- The content of the four READMEs migrates into the crate docs and
+  the READMEs shrink to a paragraph and a link.
+- The API reference and the book are the same site, so there is
+  nothing to cross-link.
 
-Why a book and not literate programming in the literal sense
-(Markdown tangled into Rust): Rust has no line directive, so every
-compiler error, clippy warning, test failure and panic would cite the
-generated file and be mapped back by hand; rust-analyzer, rustfmt and
-go-to-definition would work on generated code; diffs would show prose
-churn or generated code; and literate layouts are a known barrier to
-outside contributors, which a crate and an npm package are asking
-for. Knuth's reason for tangling, ordering code for the reader rather
-than the compiler, does not apply in Rust, where item order is free
-and one file per routine already groups by concept. The book is the
-inverse: prose includes code, code stays canonical.
+Why not tangling (Markdown as the source of truth, Rust files
+generated from its code blocks): for this codebase it means
+rewriting all 98 routine files as Markdown, compiler and clippy
+diagnostics that point into generated files while kernels are being
+tuned, and a tangler in CI; the paradigm is legitimate and the
+reasons are about this codebase. Why not mdBook with live includes:
+it was built and replaced. It is a standard tool, but here it was a
+second toolchain beside the code (a build tool, two preprocessors,
+generated assets, an include checker) for prose that rustdoc already
+places next to the code. Ruling by the Human, 2026-10-25.
 
 ### Measurement (todo group B)
 
@@ -678,10 +673,11 @@ trigger where one is worth keeping. Open decisions are in
   to everyone and the mapping from the Rust signatures is mechanical.
 - **Row-major is the operand swap**, as OpenBLAS does it. No
   row-major kernels.
-- **The documentation is a book, not a tangled literate program.**
-  Reasons under "The book". Tangling earns its place only when the
-  exposition is the primary artifact and the code secondary; here the
-  code is primary.
+- **The book is the crate documentation.** rustdoc renders the prose
+  beside the code and compiles the examples; nothing is added for it
+  but a header file and a Pages workflow. Rejected: tangling Markdown
+  into Rust, and an mdBook site with live includes, which was built
+  and replaced; reasons under "The book".
 - **Zero runtime dependencies.** The four libm entry points the layer
   needs are vendored in `src/math.rs` (sqrt via the hardware
   instruction, which IEEE requires correctly rounded; hypot ported

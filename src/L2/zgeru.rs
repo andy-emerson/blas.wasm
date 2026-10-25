@@ -1,7 +1,7 @@
 //! `zgeru` — unconjugated rank-1 update: A ← A + αxyᵀ.
 //!
 //! Implementation: column-zaxpy — one Level 1 `zaxpy` stream per
-//! column (column j gets α·y[j] times x), exactly the `dger` shape.
+//! column (column j gets α·`y[j]` times x), exactly the `dger` shape.
 
 use super::check_mat;
 use crate::c64::C64;

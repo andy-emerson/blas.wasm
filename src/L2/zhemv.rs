@@ -1,17 +1,17 @@
 //! `zhemv` — Hermitian matrix × vector: y ← αAx + βy, A Hermitian
-//! with only one triangle stored (A[j,i] = conj(A[i,j]); diagonal
+//! with only one triangle stored (`A[j,i]` = conj(`A[i,j]`); diagonal
 //! imaginary parts are ignored, per the LAPACK storage convention).
 //!
 //! Implementation: 4-column grouped fused pass (close-out race)
 //! — four stored columns share ONE stream over x and y
-//! (`kernels::zaxpy_dotc4`: y[i] += Σᵤ tᵤ·aᵤ[i] while each
-//! accᵤ += conj(aᵤ[i])·x[i]), the dsymv grouping at complex lane
+//! (`kernels::zaxpy_dotc4`: `y[i]` += Σᵤ tᵤ·`aᵤ[i]` while each
+//! accᵤ += conj(`aᵤ[i]`)·`x[i]`), the dsymv grouping at complex lane
 //! geometry; tail columns use the single-column fused pass
 //! (`kernels::zaxpy_dotc`). Raced against the single-column shape on
 //! both reference draws and WON (3.19–3.45 vs 3.58–3.92 ms at
 //! n=2048, ~9–13%) — the same lever LOST for c32 (see `chemv`), so
 //! each type ships its own winner. The diagonal contributes
-//! t·re(a[j,j]) (real by convention). Accumulation order is the
+//! t·re(`a[j,j]`) (real by convention). Accumulation order is the
 //! grouped pass's own — zhemv is bounds-tested, not bit-locked;
 //! cross-target determinism holds through the lane emulation as
 //! everywhere else.

@@ -20,7 +20,7 @@ Last updated 2026-10-25.
 | `cargo test --release` (native, 156 tests: L1 64, L2 40, L3 48, vendored math 4) | all pass | local, 2026-10-25, head `641cecc` |
 | gate workflow on `main` (tests, clippy host + wasm, 90 cross-target determinism probes, C-ABI build + smoke test; before the audit and book steps existed) | success | run 15, head `d803ae5`, 2026-10-25, github.com/andy-emerson/blas.wasm/actions/runs/40159219042 |
 | gate workflow on this branch, dispatched by hand (adds the binary audit and the book steps) | success, every step: tests, clippy host and wasm, 12 determinism probe runs, C-ABI build and smoke test, binary audit self-test and audit, book tooling, include check, book build, mdbook test (run 16, before the mdbook test fix, had failed at the book step with E0464) | run 17, head `641cecc`, github.com/andy-emerson/blas.wasm/actions/runs/40163689397 |
-| book: `node book/check-includes.mjs`, `mdbook build book`, `mdbook test book -L target/book/release/deps` | all pass (3 includes resolve; 3 chapters; the axpy example compiles and runs) | local, 2026-10-25, head `641cecc` |
+| the book: `cargo doc --no-deps` with the header and warnings denied; the doctests in `cargo test --release` | builds clean; 157 tests pass, the `daxpy` chapter's example among them | local, 2026-10-25, after the rustdoc switch |
 | binary audit: `node abi/audit.mjs --self-test` and the audit of the built module | self-test 3 of 3; 0 imports, 119 exports, 265 functions, 100732 instructions decoded, 0 relaxed-SIMD | local, 2026-10-25, head `641cecc` |
 | bench workflow (rooflines, packed race) | on demand; latest scoreboard in `bench/README.md` is from the July 2026 campaign draws | GitHub Actions, `workflow_dispatch` |
 
@@ -105,11 +105,16 @@ is in the commit log and the gate run listed under "Latest checks".
 
 ### M1 — The book builds
 
-Done on this branch except the human action below.
+The book is the crate documentation (rustdoc), per the Human's ruling
+of 2026-10-25, replacing the mdBook site. Done on this branch except
+the human action below: the crate page, the call-graph chapter and
+the `daxpy` chapter render with mathematics and diagrams, the example
+runs under `cargo test`, and the gate builds the documentation with
+warnings denied.
 
 - [ ] **Pages source set to GitHub Actions** (Settings → Pages), so
-  `.github/workflows/pages.yml` can deploy the book on the first push
-  to `main` after the merge. Human action.
+  `.github/workflows/pages.yml` can publish `cargo doc` on the first
+  push to `main` after the merge. Human action.
 
 ### M2 — Complete BLAS surface, netlib semantics
 
@@ -184,8 +189,9 @@ Done on this branch except the human action below.
   Emscripten, XNNPACK, stdlib, both thread modes, two draws. Evidence:
   the published table with configurations and run identifiers. (5–8)
 - [ ] **D4 — Book migration**: the READMEs become pointers, every
-  routine family has a chapter. Evidence: `mdbook test` green;
-  merge-scale documentation review. (3–5)
+  routine has a chapter to the `daxpy` standard. Evidence: `cargo doc`
+  clean with warnings denied; every chapter's example runs under
+  `cargo test`; merge-scale documentation review. (3–5)
 
 Committed total: 58–99 engineer-days; optional campaigns 18–35 more.
 

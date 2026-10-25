@@ -121,8 +121,8 @@ pub fn ztrsm_right(
 ) {
 	check_mat(a.len(), n, n, acs);
 	check_mat(b.len(), m, n, bcs);
-	// X·A = αB solved column-wise: X[:,j] = (αB[:,j] − Σ X[:,k]·a[k,j])
-	// / a[j,j], the sum over already-solved columns k (k < j for
+	// X·A = αB solved column-wise: X[:,j] = (αB[:,j] − Σ X[:,k]·a`[k,j]`)
+	// / a`[j,j]`, the sum over already-solved columns k (k < j for
 	// upper, k > j for lower). Columns never alias.
 	let bp = b.as_mut_ptr();
 	let col_mut = |idx: usize| unsafe { core::slice::from_raw_parts_mut(bp.add(idx * bcs), m) };

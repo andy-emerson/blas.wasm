@@ -1,7 +1,7 @@
 //! `zgerc` — conjugated rank-1 update: A ← A + αx·yᴴ.
 //!
 //! Implementation: column-zaxpy — identical to `zgeru` except column
-//! j's scalar is α·conj(y[j]) (the conjugation lands on the scalar,
+//! j's scalar is α·conj(`y[j]`) (the conjugation lands on the scalar,
 //! never on a stream).
 
 use super::check_mat;

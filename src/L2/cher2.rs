@@ -2,7 +2,7 @@
 //! one triangle stored.
 //!
 //! Implementation: column-caxpy — two Level 1 `caxpy` streams per
-//! stored strict segment (scalars α·conj(y[j]) and conj(α·x[j]); the
+//! stored strict segment (scalars α·conj(`y[j]`) and conj(α·`x[j]`); the
 //! conjugations land on the scalars). Diagonal update is real and
 //! stored with imaginary part exactly 0 — reference `cher2`'s DBLE()
 //! convention, the layer's Hermitian invariant.

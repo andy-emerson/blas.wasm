@@ -4,7 +4,7 @@
 //! Implementation: the `dsyrk` shape — truncated column-zaxpy,
 //! 4-column fan-out over the common triangle segment, ragged edges
 //! scalar in the same per-element order (bit-for-bit tested). Column
-//! j's inner-l scalar is α·conj(A[j,l]). After each column's
+//! j's inner-l scalar is α·conj(`A[j,l]`). After each column's
 //! accumulation the diagonal's imaginary part is set to exactly 0 —
 //! reference `zherk`'s DBLE() convention (the products' imaginary
 //! roundoff is discarded), the layer's Hermitian invariant.

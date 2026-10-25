@@ -119,7 +119,7 @@ pub fn strmm_right(
 ) {
 	check_mat(a.len(), n, n, acs);
 	check_mat(b.len(), m, n, bcs);
-	// result column j = α·Σ_{k in triangle} a[k,j]·B_orig[:,k]. The
+	// result column j = α·Σ_{k in triangle} a`[k,j]`·B_orig[:,k]. The
 	// column order (descending for upper, ascending for lower) touches
 	// each original column before anything overwrites it; groups of
 	// four keep that order internally, then share one stream per

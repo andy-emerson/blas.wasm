@@ -311,7 +311,7 @@ pub fn sgemm_packed(
 /// stored partial.
 /// # Safety
 /// `ap` must be valid for `kc*8` f32s, `bp` for `kc*4`; `cp` points at
-/// C[i, j] (stride ccs) with 8 rows and 4 columns in bounds.
+/// `C[i, j]` (stride ccs) with 8 rows and 4 columns in bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 #[allow(clippy::too_many_arguments)]
 unsafe fn tile_8x4_packed(
@@ -360,8 +360,8 @@ unsafe fn tile_8x4_packed(
 /// the f64 4×4 tile with the same register count at twice the lane
 /// width.
 /// # Safety
-/// `ap` points at A[i, 0] (stride acs, k columns), `bp` at B[0, j]
-/// (stride bcs), `cp` at C[i, j] (stride ccs); 8 rows and 4 B/C
+/// `ap` points at `A[i, 0]` (stride acs, k columns), `bp` at `B[0, j]`
+/// (stride bcs), `cp` at `C[i, j]` (stride ccs); 8 rows and 4 B/C
 /// columns must be in bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 #[allow(clippy::too_many_arguments)]

@@ -332,7 +332,7 @@ pub fn dgemm_packed(
 /// continuing accumulation from the stored partial.
 /// # Safety
 /// `ap` must be valid for `kc*4` f64s, `bp` for `kc*4`; `cp` points at
-/// C[i, j] (stride ccs) with 4 rows and 4 columns in bounds.
+/// `C[i, j]` (stride ccs) with 4 rows and 4 columns in bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 #[allow(clippy::too_many_arguments)]
 unsafe fn tile_4x4_packed(
@@ -379,8 +379,8 @@ unsafe fn tile_4x4_packed(
 
 /// One 4×4 tile: rows i..i+4 (two f64x2 registers) × columns j..j+4.
 /// # Safety
-/// `ap` points at A[i, 0] (stride acs, k columns), `bp` at B[0, j]
-/// (stride bcs), `cp` at C[i, j] (stride ccs); 4 rows and 4 B/C
+/// `ap` points at `A[i, 0]` (stride acs, k columns), `bp` at `B[0, j]`
+/// (stride bcs), `cp` at `C[i, j]` (stride ccs); 4 rows and 4 B/C
 /// columns must be in bounds.
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 #[allow(clippy::too_many_arguments)]

@@ -2,8 +2,8 @@
 //! triangle stored.
 //!
 //! Implementation: column-caxpy over the stored strict segment
-//! (column j's scalar is α·conj(x[j])); the diagonal update
-//! re(x[j]·t) is real and is stored with imaginary part exactly 0 —
+//! (column j's scalar is α·conj(`x[j]`)); the diagonal update
+//! re(`x[j]`·t) is real and is stored with imaginary part exactly 0 —
 //! reference `cher`'s DBLE() convention, kept as the layer's
 //! Hermitian invariant (stored diagonals stay exactly real).
 
