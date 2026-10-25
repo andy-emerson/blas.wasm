@@ -257,15 +257,20 @@ above.
 - [ ] **D4 — The chapters** (pulled forward from M5 by D15; in
   progress on this branch): one README per family and per level under
   `src/`, included as the module's documentation, with the generated
-  dependency maps. Done: the Level 3 chapter and its six families
-  (gemm, symm, syrk, syr2k, trmm, trsm), the source map
-  (`src/README.md`, also the `book::call_graph` chapter), the Level 3
-  routine headers trimmed to what differs by type. Not done: the
-  Level 2 and Level 1 chapters (seven and ten families; the Level 1
-  and 2 scoreboards move from `bench/README.md` with them), the Level
-  2 and 1 routine headers, and a runnable example per chapter to the
-  `daxpy` standard. Evidence: `cargo doc` clean with warnings denied;
-  `tools/depmap.mjs --check`; merge-scale documentation review. (3–5)
+  dependency maps. Done: the three level chapters and all 23 family
+  chapters (Level 3: gemm, symm, syrk, syr2k, trmm, trsm; Level 2:
+  gemv, ger, symv, syr, syr2, trmv, trsv; Level 1: axpy, scal, copy,
+  swap, dot, nrm2, asum, iamax, rot, rotg), the source map
+  (`src/README.md`, also the `book::call_graph` chapter), the
+  scoreboards moved out of `bench/README.md` into the level chapters,
+  the Level 3 routine headers trimmed to what differs by type. Not
+  done: the Level 2 and Level 1 routine headers still carry their
+  pre-chapter prose (true, but a second copy of what the chapters
+  say); a runnable example per chapter to the `daxpy` standard; a
+  Level 1 and 2 scoreboard draw at the current head (the rows are the
+  July 2026 campaign's). Evidence: `cargo doc` clean with warnings
+  denied; `tools/depmap.mjs --check`; merge-scale documentation
+  review. (3–5)
 
 Committed total: 58–99 engineer-days; optional campaigns 18–35 more.
 

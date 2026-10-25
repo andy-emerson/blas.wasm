@@ -17,61 +17,17 @@ the fastest same-run memory stream (GB/s), Level 3 against the
 same-run register-resident arithmetic peak (GFLOP/s); the success
 metric is distance from the ceiling (scipy/faer are market
 comparisons only). Every figure is the range across **two
-independent runner draws**. The Level 3 tables moved to
-`src/L3/README.md` and its family READMEs, which own those numbers;
-the Level 1 and 2 tables below move the same way when their READMEs
-are written.
+independent runner draws**. The tables themselves live in the level
+and family READMEs under `src/`, which own those numbers; this page
+keeps the method, the instruments and their defects.
 
-### Level 1 (n = 2048, % of fastest same-run stream)
+### Levels 1 and 2
 
-| routine | f64 | f32 | c64 | c32 |
-|---|---|---|---|---|
-| copy | 52–57% | 45–54% | 62–63% | 52–58% |
-| swap | 93–97% | 73–76% | 100% | 89–98% |
-| scal | 100% | 100% | 70–75% | 77–78% |
-| dscal | | | 79–83% | 93–100% |
-| rot | 85–86% | 66–67% | 97–99% | 86–100% |
-| axpy | 76–77% | 59–68% | 81–83% | 58–60% |
-| dot (complex: dotu / dotc) | 53–57% | 39–43% | 53–57% / 53–57% | 46–54% / 46–54% |
-| nrm2 | 47–53% | 46% | 45% | 45–48% |
-| asum | 44–50% | 42–45% | 41–42% | 44–46% |
-| iamax | 17–21% | 8% | 24–25% | 13–16% |
-
-The reductions (dot/nrm2/asum) read one array; their honest ceiling
-is the READ path (the triad), not the fastest read-modify-write
-stream — against the triad they sit at 73–100% in both types.
-iamax's two-pass shape is priced conservatively (only one pass
-counted); the f32 row's 8% is a recorded lever — the scalar
-first-index rescan is per-element and dominates (a fused
-single-pass candidate already lost its f64 race, campaign record step 9).
-The complex delegations earn their keep: swap/rot/the real-α scal
-ride the tuned real streams at 86–100% of the ceiling in both
-complex types; the genuinely complex streams pay the shuffle work of
-the lane product form. icamax inherits isamax's known weakness (the
-per-element scalar rescan — recorded lever).
-
-### Level 2 (n = 2048, % of fastest same-run stream)
-
-| routine | f64 | f32 | c64 | c32 |
-|---|---|---|---|---|
-| gemv | 57–64% | 59–64% | 50–56% | 60–63% |
-| gemv_t (complex: also gemv_c) | 43–52% | 66–68% | 39–42% / 39–42% | 39–40% / 38–41% |
-| ger (complex: geru / gerc) | 79–90% | 100% | 65–70% / 65–70% | 88–91% / 91–92% |
-| symv (complex: hemv) | 53–54% | 48% | 16–21% ¹ | 12% |
-| trmv | 60–66% | 54–59% | 47–52% | 60–65% |
-| trsv | 59–65% | 53–57% | 47–53% | 54–56% |
-| syr (complex: her) | 100% | 87–90% | 60–64% | 85–93% |
-| syr2 (complex: her2) | 50–51% | 45–46% | 32–35% | 47–49% |
-
-¹ zhemv ships the 4-column grouped fused pass: ~13% faster in ms
-than the single-column shape on both draws (runs
-29705606221/29705603966); its % range spans one normal-class and one
-slow-class machine draw. The same grouping lost for c32 (~2% slower,
-both draws), so chemv
-keeps the single-column pass; its 12% marks the c32 hemv gap honestly:
-at two complexes per register the extra blend work costs more than
-the saved traffic. The remaining recorded levers here are the i*amax
-rescans.
+The Level 1 and Level 2 scoreboards (n = 2048 against the fastest
+same-run memory stream, two draws from the July 2026 campaign record)
+live in `src/L1/README.md` and `src/L2/README.md`, the levels'
+chapters; each family's rows and the reading of them are in the family
+READMEs under those folders.
 
 ### Level 3
 

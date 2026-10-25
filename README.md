@@ -46,7 +46,7 @@ review (`AGENTS.md`) judges it against that reader.
 | `src/L1/README.md`, `src/L2/README.md`, `src/L3/README.md` | one level each: its families, its dependency graph down to the leaves, its scoreboard | the person using or studying the library |
 | `src/L*/<family>/README.md` | one operation family each (gemm, symv, axpy, …): the operation, the exact rounding sequence every shape reproduces, how it is computed and why, what it calls (generated), how it performs against the machine and the named competitors, where its tests are | the person using or studying the library |
 | `tests/README.md` | what each routine is tested to, and the cross-target bit patterns | maintainer |
-| `bench/README.md` | the measurement method, the instruments and their defects, the Level 1 and 2 scoreboards until their READMEs take them | maintainer |
+| `bench/README.md` | the measurement method, the instruments and their defects, how to run a race | maintainer |
 | the crate documentation (`cargo doc --open`; GitHub Pages after merge) | the book: the READMEs above rendered as chapters beside the code they describe, each routine's page from its module header, the mathematics and the rounding-order arguments, examples compiled by `cargo test` | the person using or studying the library |
 | `AGENTS.md` | the working agreement between the Human and the Agent (unedited upstream release; `CLAUDE.md` points at it) | both |
 
