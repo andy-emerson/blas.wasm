@@ -68,3 +68,44 @@ fn dsyrk_transposed_form_equals_the_explicit_transpose_bitwise() {
 		}
 	}
 }
+
+#[test]
+fn dsyrk_packed_bit_identical_to_the_sweep_and_never_writes_the_unstored_triangle() {
+	// the K1 candidate against the shipping sweep: every n across the
+	// MR/4 tails and the KC block edge, both triangles, three (α, β)
+	// pairs; the unstored triangle is NaN-poisoned and must come back as
+	// it went in
+	let mut rng = Lcg(0x5E1 + 11);
+	let sizes: Vec<(usize, usize)> = (0..24usize).map(|n| (n, 1 + (n * 5) % 9)).chain([(31, 40), (64, 64), (65, 257), (130, 300), (257, 12)]).collect();
+	for &(n, k) in &sizes {
+		for upper in [true, false] {
+			let (acs, ccs) = (n + 1, n + 2);
+			let a = rng.mat_f64(n, k, acs);
+			let mut c0 = rng.mat_f64(n, n, ccs);
+			for j in 0..n {
+				for i in 0..n {
+					if !(if upper { i <= j } else { i >= j }) {
+						c0[j * ccs + i] = f64::NAN;
+					}
+				}
+			}
+			for (alpha, beta) in [(0.5, 0.25), (-1.3, 0.0), (0.7, 1.0)] {
+				let mut c1 = c0.clone();
+				dsyrk(uplo(upper), Trans::NoTrans, n, k, alpha, &a, acs, beta, &mut c1, ccs, &mut []).unwrap();
+				let mut c2 = c0.clone();
+				let mut work = vec![f64::NAN; dsyrk_packed_work(n, k)];
+				dsyrk_packed(upper, alpha, n, k, &a, acs, beta, &mut c2, ccs, &mut work);
+				for j in 0..n {
+					for i in 0..n {
+						let stored = if upper { i <= j } else { i >= j };
+						if stored {
+							assert_eq!(c1[j * ccs + i].to_bits(), c2[j * ccs + i].to_bits(), "dsyrk_packed vs sweep upper={upper} n={n} k={k} ({i},{j})");
+						} else {
+							assert!(c2[j * ccs + i].is_nan(), "dsyrk_packed wrote the unstored triangle upper={upper} n={n} ({i},{j})");
+						}
+					}
+				}
+			}
+		}
+	}
+}

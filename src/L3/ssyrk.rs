@@ -10,6 +10,7 @@
 //! all three campaign record step-1 draws.
 
 use super::check_mat;
+use super::sgemm::{tile_8x4_packed_bcast, KC, MC, MR};
 use crate::{Error, Trans, Uplo};
 use crate::kernels::saxpy4;
 use crate::L1::saxpy_k;
@@ -130,5 +131,181 @@ pub(crate) fn ssyrk_k(
 			saxpy_k(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
 		}
 		j += 1;
+	}
+}
+
+/// The K1 candidate: `ssyrk` on the packing layer (the f32 twin of
+/// [`crate::L3::dsyrk_packed`] with the 8×4 tile, so two column groups
+/// cross the diagonal per row block). `C ← βC + α·A·Aᵀ`
+/// runs as the packed gemm with the B panel read from A's rows (op(B) =
+/// Aᵀ, so `B[l, j] = A[j, l]`, α folded in at pack time) and
+/// the broadcast tile of the packed gemm as the micro-kernel; a tile entirely in the
+/// unstored triangle is skipped, a tile crossing the diagonal is
+/// computed into a scratch tile and copied back only where stored, so
+/// the unstored triangle is never written. The `n % MR` row tail and the
+/// `n % 4` column tail run the plain column-daxpy sweeps. Per-element
+/// rounding sequence identical to the shipping sweep (βC, then ascending-k adds
+/// of `A[i,l]·(α·A[j,l])`): bit-for-bit interchangeable, tested. Raced
+/// against the shipping sweep and against OpenBLAS compiled to wasm
+/// (`bench/README.md`).
+#[allow(clippy::too_many_arguments)]
+pub fn ssyrk_packed(upper: bool, alpha: f32, n: usize, k: usize, a: &[f32], acs: usize, beta: f32, c: &mut [f32], ccs: usize, work: &mut [f32]) {
+	check_mat(a.len(), n, k, acs);
+	check_mat(c.len(), n, n, ccs);
+	let need = ssyrk_packed_work(n, k);
+	assert!(work.len() >= need, "ssyrk_packed: workspace shorter than ssyrk_packed_work");
+	if k == 0 {
+		for j in 0..n {
+			let (lo, hi) = if upper { (0, j + 1) } else { (j, n) };
+			sscale_y(beta, &mut c[j * ccs + lo..j * ccs + hi]);
+		}
+		return;
+	}
+	let n4 = n - n % 4;
+	let n_mr = n - n % MR;
+	// whether the MR×4 tile at (rows r0.., cols c0..) is all stored, all
+	// unstored, or crosses the diagonal
+	let tile_kind = |r0: usize, c0: usize| -> u8 {
+		let (r1, c1) = (r0 + MR - 1, c0 + 3);
+		if upper {
+			if r1 <= c0 { 2 } else if r0 > c1 { 0 } else { 1 }
+		} else if r0 >= c1 {
+			2
+		} else if r1 < c0 {
+			0
+		} else {
+			1
+		}
+	};
+	if n4 > 0 && n_mr > 0 {
+		let kcm = KC.min(k);
+		let (bp, rest) = work[..need].split_at_mut(kcm * n4);
+		let (ap, dt) = rest.split_at_mut(MC.min(n_mr) * kcm);
+		let mut pc = 0usize;
+		while pc < k {
+			let kc = KC.min(k - pc);
+			// pack op(B) = Aᵀ: per 4-column group, k-major ×4, α folded in
+			for jg in 0..n4 / 4 {
+				let dst = &mut bp[jg * kc * 4..(jg + 1) * kc * 4];
+				let j = jg * 4;
+				for l in 0..kc {
+					for u in 0..4 {
+						dst[l * 4 + u] = alpha * a[(pc + l) * acs + j + u];
+					}
+				}
+			}
+			let first = pc == 0;
+			let mut ic = 0usize;
+			while ic < n_mr {
+				let mc = MC.min(n_mr - ic);
+				for g in 0..mc / MR {
+					let base = g * kc * MR;
+					for l in 0..kc {
+						let src = (pc + l) * acs + ic + g * MR;
+						ap[base + l * MR..base + l * MR + MR].copy_from_slice(&a[src..src + MR]);
+					}
+				}
+				for jg in 0..n4 / 4 {
+					for g in 0..mc / MR {
+						let r0 = ic + g * MR;
+						let c0 = jg * 4;
+						match tile_kind(r0, c0) {
+							0 => {}
+							2 => unsafe {
+								tile_8x4_packed_bcast(
+									kc,
+									ap.as_ptr().add(g * kc * MR),
+									bp.as_ptr().add(jg * kc * 4),
+									beta,
+									first,
+									c.as_mut_ptr().add(c0 * ccs + r0),
+									ccs,
+								);
+							},
+							_ => {
+								// the diagonal tile: its scratch copy carries the
+								// partials across k-blocks; the stored elements are
+								// copied back after the last block
+								let slot = (r0 / MR) * (MR / 4) + (c0 - r0) / 4; // the (MR/4) groups crossing this row block, in column order
+								let st = &mut dt[slot * 4 * MR..(slot + 1) * 4 * MR];
+								if first {
+									for u in 0..4 {
+										for r in 0..MR {
+											let (i, j) = (r0 + r, c0 + u);
+											let stored = if upper { i <= j } else { i >= j };
+											st[u * MR + r] = if stored && beta != 0.0 { c[j * ccs + i] } else { 0.0 };
+										}
+									}
+								}
+								unsafe {
+									tile_8x4_packed_bcast(
+										kc,
+										ap.as_ptr().add(g * kc * MR),
+										bp.as_ptr().add(jg * kc * 4),
+										beta,
+										first,
+										st.as_mut_ptr(),
+										MR,
+									);
+								}
+								if pc + kc >= k {
+									for u in 0..4 {
+										for r in 0..MR {
+											let (i, j) = (r0 + r, c0 + u);
+											let stored = if upper { i <= j } else { i >= j };
+											if stored {
+												c[j * ccs + i] = st[u * MR + r];
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				ic += mc;
+			}
+			pc += kc;
+		}
+	}
+	// row tail (n_mr..n) × packed columns, the stored rows of each
+	// column: all of them below the diagonal, those down to the diagonal
+	// above it (the 8-row tile leaves up to 7 tail rows, which can hold
+	// stored upper elements of the packed columns)
+	if n_mr < n {
+		for j in 0..n4 {
+			let (lo, hi) = if upper { (n_mr, (j + 1).max(n_mr)) } else { (n_mr.max(j), n) };
+			if lo >= hi {
+				continue;
+			}
+			let seg = &mut c[j * ccs + lo..j * ccs + hi];
+			sscale_y(beta, seg);
+			for l in 0..k {
+				saxpy_k(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
+			}
+		}
+	}
+	// column tail: the plain sweep per stored column
+	for j in n4..n {
+		let (lo, hi) = if upper { (0, j + 1) } else { (j, n) };
+		let seg = &mut c[j * ccs + lo..j * ccs + hi];
+		sscale_y(beta, seg);
+		for l in 0..k {
+			saxpy_k(alpha * a[l * acs + j], &a[l * acs + lo..l * acs + hi], seg);
+		}
+	}
+}
+
+/// Elements of scratch [`ssyrk_packed`] needs: the B panel, the A panel
+/// and one scratch tile per diagonal tile; zero when the packed loops
+/// have nothing to do.
+pub fn ssyrk_packed_work(n: usize, k: usize) -> usize {
+	let n4 = n - n % 4;
+	let n_mr = n - n % MR;
+	if k == 0 || n4 == 0 || n_mr == 0 {
+		0
+	} else {
+		let kc = KC.min(k);
+		kc * n4 + MC.min(n_mr) * kc + MR * n_mr
 	}
 }

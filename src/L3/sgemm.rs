@@ -19,15 +19,15 @@ use crate::L2::sgemv_k;
 
 // Packed-panel sizes and the routing threshold, shared by the
 // dispatcher, the packed shape and the workspace query.
-const KC: usize = 256;
-const MC: usize = 128;
+pub(crate) const KC: usize = 256;
+pub(crate) const MC: usize = 128;
 /// The K2 candidate's block sizes: swept over KC 120–256 and MC 64–256
 /// in the dev container with no measurable difference, so they stay at
 /// the shipping values; never above KC/MC so [`sgemm_packed_work`]
 /// covers both shapes.
 const KC2: usize = KC;
 const MC2: usize = MC;
-const MR: usize = 8;
+pub(crate) const MR: usize = 8;
 
 /// `C ← α·op(A)·op(B) + βC` with `op(A)` `m×k` and `op(B)` `k×n`, `C`
 /// `m×n`, each at its own leading dimension. `op(X)` is `X`, `Xᵀ` or
@@ -515,7 +515,7 @@ pub fn sgemm_packed_bcast(
 /// As [`tile_8x4_packed`].
 #[cfg_attr(target_arch = "wasm32", target_feature(enable = "simd128"))]
 #[allow(clippy::too_many_arguments)]
-unsafe fn tile_8x4_packed_bcast(
+pub(crate) unsafe fn tile_8x4_packed_bcast(
 	kc: usize,
 	ap: *const f32,
 	bp: *const f32,

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "rooflines | packed-race | k2-race | tri-race | gemm-t-race | b0 | both"
+        description: "rooflines | packed-race | k2-race | k1-race | tri-race | gemm-t-race | b0 | both"
         required: false
         default: "rooflines"
 
@@ -60,6 +60,13 @@ jobs:
         run: |
           cd bench
           node k2-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
+            | tee -a ../bench-results.log
+
+      - name: K1 race (shipping syrk sweep vs the packed candidate, f64 and f32)
+        if: ${{ inputs.suite == 'k1-race' || inputs.suite == 'both' }}
+        run: |
+          cd bench
+          node k1-ab.mjs target/wasm32-unknown-unknown/release/blas_bench.wasm \
             | tee -a ../bench-results.log
 
       - name: Transposed trmm/trsm race (copy vs stream, all types)

@@ -1832,6 +1832,42 @@ pub extern "C" fn run_gemm_rect_tiled(ty: usize, m: usize, k: usize, n: usize) -
     gemm_rect(ty, m, k, n, GemmShape::Tiled)
 }
 
+/// K1: dsyrk/ssyrk at n×n with k columns, the shipping sweep (`packed`
+/// = 0) or the packed candidate (1); upper when `upper` != 0. β = 0.5,
+/// α = 0.001, C refreshed from the setup state's symmetric buffer; the
+/// workspace from the setup state.
+#[no_mangle]
+pub extern "C" fn run_syrk_shape(ty: usize, n: usize, k: usize, upper: usize, packed: usize) -> f64 {
+    use blas_wasm::L3 as l3;
+    let s = state_mut();
+    let cap = s.n * s.n;
+    assert!(n * k <= cap && n * n <= cap, "run_syrk_shape: setup too small");
+    let up = upper != 0;
+    match ty {
+        0 => {
+            let a = &s.a[..n * k];
+            let c = &mut s.sym[..n * n];
+            if packed != 0 {
+                l3::dsyrk_packed(up, 0.001, n, k, a, n, 0.5, c, n, ws(&mut s.work, l3::dsyrk_packed_work(n, k), 0.0));
+            } else {
+                l3::dsyrk(if up { Uplo::Upper } else { Uplo::Lower }, Trans::NoTrans, n, k, 0.001, a, n, 0.5, c, n, ws(&mut s.work, l3::dsyrk_work(Trans::NoTrans, n, k), 0.0)).unwrap();
+            }
+            c[0] + c[(n - 1) * n + n - 1] + c[if up { (n - 1) * n } else { n - 1 }]
+        }
+        1 => {
+            let a = &s.a32[..n * k];
+            let c = &mut s.sym32[..n * n];
+            if packed != 0 {
+                l3::ssyrk_packed(up, 0.001, n, k, a, n, 0.5, c, n, ws(&mut s.work32, l3::ssyrk_packed_work(n, k), 0.0));
+            } else {
+                l3::ssyrk(if up { Uplo::Upper } else { Uplo::Lower }, Trans::NoTrans, n, k, 0.001, a, n, 0.5, c, n, ws(&mut s.work32, l3::ssyrk_work(Trans::NoTrans, n, k), 0.0)).unwrap();
+            }
+            (c[0] + c[(n - 1) * n + n - 1] + c[if up { (n - 1) * n } else { n - 1 }]) as f64
+        }
+        _ => f64::NAN,
+    }
+}
+
 /// The K2 candidate (real types only).
 #[no_mangle]
 pub extern "C" fn run_gemm_rect_packed_bcast(ty: usize, m: usize, k: usize, n: usize) -> f64 {
