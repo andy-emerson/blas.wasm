@@ -23,9 +23,6 @@ pub enum ErrorKind {
 	/// The workspace slice is shorter than the size query for these
 	/// dimensions.
 	Workspace,
-	/// A form the reference interface defines but this crate has not
-	/// built yet; which forms are missing is listed in `STATUS.md`.
-	Unsupported,
 }
 
 /// An argument error from one routine.
@@ -46,7 +43,6 @@ impl core::fmt::Display for Error {
 			ErrorKind::Argument => "invalid value",
 			ErrorKind::Length => "slice shorter than its declared extent",
 			ErrorKind::Workspace => "workspace shorter than the size query",
-			ErrorKind::Unsupported => "form not built yet",
 		};
 		write!(f, "{}: argument {} has an {}", self.routine, self.arg, what)
 	}
@@ -102,11 +98,6 @@ pub(crate) fn work(routine: &'static str, arg: u8, len: usize, need: usize) -> R
 		return Err(Error { routine, arg, kind: ErrorKind::Workspace });
 	}
 	Ok(())
-}
-
-#[inline]
-pub(crate) fn unsupported(routine: &'static str, arg: u8) -> Error {
-	Error { routine, arg, kind: ErrorKind::Unsupported }
 }
 
 #[inline]

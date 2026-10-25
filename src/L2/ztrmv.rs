@@ -5,10 +5,11 @@
 //! order: ascending for upper, descending for lower), ragged band and
 //! diagonal writes scalar in the original step order. Per-element
 //! rounding sequence unchanged — bit-for-bit the plain column loop,
-//! locked by the test. Transposed/conjugate forms: not built — no
-//! consumer yet (explicit gap).
+//! locked by the test. The transposed
+//! form is a dot-fold reduction per stored column (`ztrmv_t_k`).
 
 use super::check_mat;
+use crate::L1::{zdotu_k, zdotc_k};
 use crate::{Diag, Error, Trans, Uplo};
 use crate::c64::C64;
 use crate::kernels::zaxpy4in;
@@ -19,24 +20,25 @@ use crate::L1::zaxpy_k;
 /// `diag` says so; `x` has `n` elements. `op(A)` is `A`, `Aᵀ` or `Aᴴ`
 /// per `trans`.
 ///
-/// The transposed forms are not built yet (`STATUS.md`, todo S2):
-/// `trans` other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
-/// argument 2.
+/// The transposed forms (`Trans::Trans`, and `Trans::ConjTrans` with the
+/// stored elements conjugated) take each new element as the `zdotu`/`zdotc`
+/// fold of a stored column's triangle segment with `x`: a different,
+/// documented rounding order from the no-transpose sweep, replayed bit
+/// for bit by the tests.
 ///
 /// Errors: `lda < max(1, n)` (argument 6); `a` or `x` shorter than its
 /// extent (arguments 5, 7).
 pub fn ztrmv(uplo: Uplo, trans: Trans, diag: Diag, n: usize, a: &[C64], lda: usize, x: &mut [C64]) -> Result<(), Error> {
 	const R: &str = "ztrmv";
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
 	crate::error::vec(R, 7, x.len(), n)?;
 	if n == 0 {
 		return Ok(());
 	}
-	ztrmv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]);
+	match trans {
+		Trans::NoTrans => ztrmv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]),
+		_ => ztrmv_t_k(n, a, lda, uplo.is_upper(), trans == Trans::ConjTrans, diag.is_unit(), &mut x[..n]),
+	}
 	Ok(())
 }
 
@@ -124,6 +126,41 @@ pub(crate) fn ztrmv_k(n: usize, a: &[C64], cs: usize, upper: bool, unit: bool, x
 					x[g + u] = t[u] * a[cj + g + u];
 				}
 			}
+		}
+	}
+}
+
+/// `x ← op(A)·x` with `op(A) = Aᵀ` (`conj`: `Aᴴ`, every stored element conjugated as read), A triangular
+/// n×n at column stride `cs`; `upper` names the STORED triangle (op(A)
+/// holds the other). Per element: `x[j] ← d·x[j] + t` (`d` the diagonal, or the bare `x[j]` for a unit
+/// one) with `t` the fold of stored column j's triangle segment against
+/// the original `x`, the fold being the `zdotu`/`zdotc`
+/// kernel's register-parallel order (`src/L1`), so the contract is a
+/// deterministic reduction order rather than the sweep's sequence — the
+/// tests replay that fold bit for bit. No singularity check.
+pub(crate) fn ztrmv_t_k(n: usize, a: &[C64], cs: usize, upper: bool, conj: bool, unit: bool, x: &mut [C64]) {
+	check_mat(a.len(), n, n, cs);
+	assert_eq!(x.len(), n, "ztrmv_t: x length mismatch");
+	let cj = |v: C64| if conj { v.conj() } else { v };
+	if upper {
+		// stored upper is op(A) lower: x[j] depends on the original x[..j],
+		// so columns go descending and every read is still original
+		for j in (0..n).rev() {
+			let col = &a[j * cs..j * cs + j];
+			let xs = &x[..j];
+			let t = if conj { zdotc_k(col, xs) } else { zdotu_k(col, xs) };
+			let d = if unit { x[j] } else { x[j] * cj(a[j * cs + j]) };
+			x[j] = d + t;
+		}
+	} else {
+		// stored lower is op(A) upper: x[j] depends on the original
+		// x[j + 1..], so columns go ascending
+		for j in 0..n {
+			let col = &a[j * cs + j + 1..j * cs + n];
+			let xs = &x[j + 1..n];
+			let t = if conj { zdotc_k(col, xs) } else { zdotu_k(col, xs) };
+			let d = if unit { x[j] } else { x[j] * cj(a[j * cs + j]) };
+			x[j] = d + t;
 		}
 	}
 }

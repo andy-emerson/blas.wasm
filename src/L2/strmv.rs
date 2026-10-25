@@ -9,10 +9,11 @@
 //! is still consumed before its own slot is overwritten (the four
 //! group t-values are provably untouched until their step), and the
 //! per-element rounding sequence is unchanged — bit-for-bit the plain
-//! column loop, locked by the existing test. Transposed form: not
-//! built — no consumer yet (explicit gap).
+//! column loop, locked by the existing test. The transposed
+//! form is a dot-fold reduction per stored column (`strmv_t_k`).
 
 use super::check_mat;
+use crate::L1::sdot_k;
 use crate::{Diag, Error, Trans, Uplo};
 use crate::kernels::saxpy4in;
 use crate::L1::saxpy_k;
@@ -22,24 +23,25 @@ use crate::L1::saxpy_k;
 /// `diag` says so; `x` has `n` elements. `op(A)` is `A`, `Aᵀ` or `Aᴴ`
 /// per `trans`.
 ///
-/// The transposed forms are not built yet (`STATUS.md`, todo S2):
-/// `trans` other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
-/// argument 2.
+/// The transposed forms (`Trans::Trans`; `ConjTrans` is the same for a real
+/// matrix) take each new element as the `sdot`
+/// fold of a stored column's triangle segment with `x`: a different,
+/// documented rounding order from the no-transpose sweep, replayed bit
+/// for bit by the tests.
 ///
 /// Errors: `lda < max(1, n)` (argument 6); `a` or `x` shorter than its
 /// extent (arguments 5, 7).
 pub fn strmv(uplo: Uplo, trans: Trans, diag: Diag, n: usize, a: &[f32], lda: usize, x: &mut [f32]) -> Result<(), Error> {
 	const R: &str = "strmv";
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
 	crate::error::vec(R, 7, x.len(), n)?;
 	if n == 0 {
 		return Ok(());
 	}
-	strmv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]);
+	match trans {
+		Trans::NoTrans => strmv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]),
+		_ => strmv_t_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]),
+	}
 	Ok(())
 }
 
@@ -127,6 +129,40 @@ pub(crate) fn strmv_k(n: usize, a: &[f32], cs: usize, upper: bool, unit: bool, x
 					x[g + u] = t[u] * a[cj + g + u];
 				}
 			}
+		}
+	}
+}
+
+/// `x ← op(A)·x` with `op(A) = Aᵀ`, A triangular
+/// n×n at column stride `cs`; `upper` names the STORED triangle (op(A)
+/// holds the other). Per element: `x[j] ← d·x[j] + t` (`d` the diagonal, or the bare `x[j]` for a unit
+/// one) with `t` the fold of stored column j's triangle segment against
+/// the original `x`, the fold being the `sdot`
+/// kernel's register-parallel order (`src/L1`), so the contract is a
+/// deterministic reduction order rather than the sweep's sequence — the
+/// tests replay that fold bit for bit. No singularity check.
+pub(crate) fn strmv_t_k(n: usize, a: &[f32], cs: usize, upper: bool, unit: bool, x: &mut [f32]) {
+	check_mat(a.len(), n, n, cs);
+	assert_eq!(x.len(), n, "strmv_t: x length mismatch");
+	if upper {
+		// stored upper is op(A) lower: x[j] depends on the original x[..j],
+		// so columns go descending and every read is still original
+		for j in (0..n).rev() {
+			let col = &a[j * cs..j * cs + j];
+			let xs = &x[..j];
+			let t = sdot_k(col, xs);
+			let d = if unit { x[j] } else { x[j] * a[j * cs + j] };
+			x[j] = d + t;
+		}
+	} else {
+		// stored lower is op(A) upper: x[j] depends on the original
+		// x[j + 1..], so columns go ascending
+		for j in 0..n {
+			let col = &a[j * cs + j + 1..j * cs + n];
+			let xs = &x[j + 1..n];
+			let t = sdot_k(col, xs);
+			let d = if unit { x[j] } else { x[j] * a[j * cs + j] };
+			x[j] = d + t;
 		}
 	}
 }

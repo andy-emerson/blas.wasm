@@ -2,6 +2,7 @@
 //! precondition comes back as an `Error` naming the routine and the
 //! argument position; longer slices are used up to the declared
 //! lengths; forms not built yet say so.
+use super::common::*;
 use blas_wasm::L2::*;
 use blas_wasm::{Diag, Error, ErrorKind, Trans, Uplo, C64};
 
@@ -53,13 +54,15 @@ fn rank_updates_and_symmetric_positions() {
 }
 
 #[test]
-fn triangular_vectors_transposes_are_not_built_yet() {
+fn triangular_vectors_positions_in_every_form() {
 	let n = 3;
 	let a = vec![1.0; 9];
 	let mut x = vec![1.0; 3];
 	assert_eq!(dtrmv(Uplo::Upper, Trans::NoTrans, Diag::NonUnit, n, &a, 3, &mut x), Ok(()));
-	assert_eq!(dtrmv(Uplo::Upper, Trans::Trans, Diag::NonUnit, n, &a, 3, &mut x), Err(e("dtrmv", 2, ErrorKind::Unsupported)));
-	assert_eq!(dtrsv(Uplo::Upper, Trans::ConjTrans, Diag::Unit, n, &a, 3, &mut x), Err(e("dtrsv", 2, ErrorKind::Unsupported)));
+	// the transposed forms take the same checks
+	assert_eq!(dtrmv(Uplo::Upper, Trans::Trans, Diag::NonUnit, n, &a, 2, &mut x), Err(e("dtrmv", 6, ErrorKind::Argument)));
+	assert_eq!(dtrsv(Uplo::Upper, Trans::ConjTrans, Diag::Unit, n, &a, 3, &mut x[..2]), Err(e("dtrsv", 7, ErrorKind::Length)));
+	assert_eq!(dtrmv(Uplo::Upper, Trans::Trans, Diag::NonUnit, n, &a, 3, &mut x), Ok(()));
 	assert_eq!(dtrsv(Uplo::Upper, Trans::NoTrans, Diag::Unit, n, &a, 2, &mut x), Err(e("dtrsv", 6, ErrorKind::Argument)));
 	assert_eq!(dtrsv(Uplo::Upper, Trans::NoTrans, Diag::Unit, n, &a, 3, &mut x[..2]), Err(e("dtrsv", 7, ErrorKind::Length)));
 }
@@ -91,4 +94,25 @@ fn empty_dimensions_return_ok_and_write_nothing() {
 	assert_eq!(zher(Uplo::Upper, 0, 1.0, &[], &mut [], 1), Ok(()));
 	// lda below max(1, rows) is still an error on an empty matrix
 	assert_eq!(dgemv(Trans::NoTrans, 0, 3, 1.0, &[], 0, &a3, 0.5, &mut []), Err(e("dgemv", 6, ErrorKind::Argument)));
+}
+
+#[test]
+fn dot_folds_match_the_kernels() {
+	// the replays the transposed trmv/trsv tests lean on reproduce the
+	// Level 1 dot kernels' register folds bit for bit, at lengths that
+	// cross every chunk boundary and leave every tail length
+	use blas_wasm::L1::*;
+	let mut rng = Lcg(0xD07);
+	for n in [0usize, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 65, 130, 257] {
+		let (x, y) = (rng.vec_f64(n), rng.vec_f64(n));
+		assert_eq!(ddot(&x, &y).unwrap().to_bits(), dot_fold_f64(&x, &y).to_bits(), "ddot n={n}");
+		let (x, y) = (rng.vec_f32(n), rng.vec_f32(n));
+		assert_eq!(sdot(&x, &y).unwrap().to_bits(), dot_fold_f32(&x, &y).to_bits(), "sdot n={n}");
+		let (x, y) = (rng.vec_c64(n), rng.vec_c64(n));
+		assert!(bits_eq_c(zdotu(&x, &y).unwrap(), dot_fold_c64(&x, &y, false)), "zdotu n={n}");
+		assert!(bits_eq_c(zdotc(&x, &y).unwrap(), dot_fold_c64(&x, &y, true)), "zdotc n={n}");
+		let (x, y) = (rng.vec_c32(n), rng.vec_c32(n));
+		assert!(bits_eq_cc(cdotu(&x, &y).unwrap(), dot_fold_c32(&x, &y, false)), "cdotu n={n}");
+		assert!(bits_eq_cc(cdotc(&x, &y).unwrap(), dot_fold_c32(&x, &y, true)), "cdotc n={n}");
+	}
 }

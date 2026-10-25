@@ -9,10 +9,11 @@
 //! from the common remaining segment in one shared pass. Per-element
 //! rounding sequence unchanged — bit-for-bit the plain loop, locked
 //! by the test. No singularity check — a zero diagonal yields
-//! inf/NaN, as in reference BLAS. Transposed/conjugate forms: not
-//! built — no consumer yet (explicit gap).
+//! inf/NaN, as in reference BLAS. The transposed
+//! form is a dot-fold reduction per stored column (`ctrsv_t_k`).
 
 use super::check_mat;
+use crate::L1::{cdotu_k, cdotc_k};
 use crate::{Diag, Error, Trans, Uplo};
 use crate::c32::C32;
 use crate::kernels::caxpy4in;
@@ -23,24 +24,25 @@ use crate::L1::caxpy_k;
 /// `diag` says so; `x` has `n` elements. `op(A)` is `A`, `Aᵀ` or `Aᴴ`
 /// per `trans`.
 ///
-/// The transposed forms are not built yet (`STATUS.md`, todo S2):
-/// `trans` other than [`Trans::NoTrans`] returns
-/// [`ErrorKind::Unsupported`](crate::ErrorKind::Unsupported) on
-/// argument 2.
+/// The transposed forms (`Trans::Trans`, and `Trans::ConjTrans` with the
+/// stored elements conjugated) take each new element as the `cdotu`/`cdotc`
+/// fold of a stored column's triangle segment with `x`: a different,
+/// documented rounding order from the no-transpose sweep, replayed bit
+/// for bit by the tests.
 ///
 /// Errors: `lda < max(1, n)` (argument 6); `a` or `x` shorter than its
 /// extent (arguments 5, 7).
 pub fn ctrsv(uplo: Uplo, trans: Trans, diag: Diag, n: usize, a: &[C32], lda: usize, x: &mut [C32]) -> Result<(), Error> {
 	const R: &str = "ctrsv";
-	if trans != Trans::NoTrans {
-		return Err(crate::error::unsupported(R, 2));
-	}
 	crate::error::mat(R, 5, 6, a.len(), n, n, lda)?;
 	crate::error::vec(R, 7, x.len(), n)?;
 	if n == 0 {
 		return Ok(());
 	}
-	ctrsv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]);
+	match trans {
+		Trans::NoTrans => ctrsv_k(n, a, lda, uplo.is_upper(), diag.is_unit(), &mut x[..n]),
+		_ => ctrsv_t_k(n, a, lda, uplo.is_upper(), trans == Trans::ConjTrans, diag.is_unit(), &mut x[..n]),
+	}
 	Ok(())
 }
 
@@ -128,6 +130,39 @@ pub(crate) fn ctrsv_k(n: usize, a: &[C32], cs: usize, upper: bool, unit: bool, x
 			let t = x[j];
 			caxpy_k(-t, &a[cj + j + 1..cj + n], &mut x[j + 1..]);
 			j += 1;
+		}
+	}
+}
+
+/// `x ← op(A)⁻¹·x` with `op(A) = Aᵀ` (`conj`: `Aᴴ`, every stored element conjugated as read), A triangular
+/// n×n at column stride `cs`; `upper` names the STORED triangle (op(A)
+/// holds the other). Per element: `x[j] ← (x[j] − t) / d` with `t` the fold of stored column j's
+/// triangle segment against the already solved part of `x`, the fold being the `cdotu`/`cdotc`
+/// kernel's register-parallel order (`src/L1`), so the contract is a
+/// deterministic reduction order rather than the sweep's sequence — the
+/// tests replay that fold bit for bit. No singularity check.
+pub(crate) fn ctrsv_t_k(n: usize, a: &[C32], cs: usize, upper: bool, conj: bool, unit: bool, x: &mut [C32]) {
+	check_mat(a.len(), n, n, cs);
+	assert_eq!(x.len(), n, "ctrsv_t: x length mismatch");
+	let cj = |v: C32| if conj { v.conj() } else { v };
+	if upper {
+		// stored upper is op(A) lower: forward substitution, each new x[j]
+		// from the already solved x[..j]
+		for j in 0..n {
+			let col = &a[j * cs..j * cs + j];
+			let xs = &x[..j];
+			let t = if conj { cdotc_k(col, xs) } else { cdotu_k(col, xs) };
+			let v = x[j] - t;
+			x[j] = if unit { v } else { v / cj(a[j * cs + j]) };
+		}
+	} else {
+		// stored lower is op(A) upper: back substitution from x[j + 1..]
+		for j in (0..n).rev() {
+			let col = &a[j * cs + j + 1..j * cs + n];
+			let xs = &x[j + 1..n];
+			let t = if conj { cdotc_k(col, xs) } else { cdotu_k(col, xs) };
+			let v = x[j] - t;
+			x[j] = if unit { v } else { v / cj(a[j * cs + j]) };
 		}
 	}
 }

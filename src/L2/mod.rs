@@ -57,9 +57,9 @@ pub(crate) use dgemv::dgemv_k;
 #[allow(unused_imports)]
 pub(crate) use dgemv::dgemv_t_k;
 #[allow(unused_imports)]
-pub(crate) use dtrmv::dtrmv_k;
+pub(crate) use dtrmv::{dtrmv_k, dtrmv_t_k};
 #[allow(unused_imports)]
-pub(crate) use dtrsv::dtrsv_k;
+pub(crate) use dtrsv::{dtrsv_k, dtrsv_t_k};
 #[allow(unused_imports)]
 pub(crate) use dger::dger_k;
 #[allow(unused_imports)]
@@ -80,9 +80,9 @@ pub(crate) use sgemv::sgemv_k;
 #[allow(unused_imports)]
 pub(crate) use sgemv::sgemv_t_k;
 #[allow(unused_imports)]
-pub(crate) use strmv::strmv_k;
+pub(crate) use strmv::{strmv_k, strmv_t_k};
 #[allow(unused_imports)]
-pub(crate) use strsv::strsv_k;
+pub(crate) use strsv::{strsv_k, strsv_t_k};
 #[allow(unused_imports)]
 pub(crate) use sger::sger_k;
 #[allow(unused_imports)]
@@ -104,9 +104,9 @@ pub(crate) use zgemv::zgemv_k;
 #[allow(unused_imports)]
 pub(crate) use zgemv::zgemv_t_k;
 #[allow(unused_imports)]
-pub(crate) use ztrmv::ztrmv_k;
+pub(crate) use ztrmv::{ztrmv_k, ztrmv_t_k};
 #[allow(unused_imports)]
-pub(crate) use ztrsv::ztrsv_k;
+pub(crate) use ztrsv::{ztrsv_k, ztrsv_t_k};
 #[allow(unused_imports)]
 pub(crate) use zgemv::zgemv_c_k;
 #[allow(unused_imports)]
@@ -132,9 +132,9 @@ pub(crate) use cgemv::cgemv_k;
 #[allow(unused_imports)]
 pub(crate) use cgemv::cgemv_t_k;
 #[allow(unused_imports)]
-pub(crate) use ctrmv::ctrmv_k;
+pub(crate) use ctrmv::{ctrmv_k, ctrmv_t_k};
 #[allow(unused_imports)]
-pub(crate) use ctrsv::ctrsv_k;
+pub(crate) use ctrsv::{ctrsv_k, ctrsv_t_k};
 #[allow(unused_imports)]
 pub(crate) use cgemv::cgemv_c_k;
 #[allow(unused_imports)]
